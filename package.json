@@ -1,0 +1,26 @@
+{
+  "name": "asset-management",
+  "version": "1.0.0",
+  "description": "Secure Asset Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:prod": "sudo node server.js",
+    "gmail": "sudo node gmail-bulk-upload-service.js",
+    "ssl": "mkdir -p ssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ssl/server.key -out ssl/server.crt -subj '/C=US/ST=State/L=City/O=AssetManagement/CN=asset-manager.local'",
+    "hash-password": "node -e \"const bcrypt = require('bcryptjs'); const pw = process.argv[1]; bcrypt.hash(pw, 10).then(hash => console.log('ADMIN_PASSWORD_HASH=' + hash));\" "
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "form-data": "^4.0.4",
+    "googleapis": "^153.0.0",
+    "helmet": "^7.1.0",
+    "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
+    "pdf-parse": "^1.1.1"
+  }
+}
