@@ -23,12 +23,7 @@ ssl/
 *.crt
 *.pem
 
-# Authentication tokens
-token.json
-credentials.json
-
 # Temporary files
-temp-*.pdf
 *.tmp
 *.temp
 

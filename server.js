@@ -9,12 +9,12 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer'); // For handling file uploads
 const pdfParse = require('pdf-parse'); // For parsing PDF files
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Ollama configuration
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2';
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -110,13 +110,11 @@ const requireAuth = (req, res, next) => {
 // Login endpoint
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
-    
-    // In a real application, you would validate against a database
-    // This is just an example with a hardcoded user
+
     const validUsername = process.env.ADMIN_USERNAME || 'admin';
     const validPasswordHash = process.env.ADMIN_PASSWORD_HASH;
-    
-    if (username === validUsername && 
+
+    if (username === validUsername &&
         await bcrypt.compare(password, validPasswordHash)) {
         req.session.user = { username };
         res.json({ message: 'Login successful' });
@@ -138,8 +136,8 @@ app.get('/api/entries', requireAuth, (req, res) => {
 
 // Add new entry
 app.post('/api/entries', requireAuth, (req, res) => {
-    const { month, type, amount, description } = req.body;
-    
+    const { month, type, amount, description, tags } = req.body;
+
     if (!month || !type || !amount || !description) {
         return res.status(400).json({ message: 'All fields are required' });
     }
@@ -149,7 +147,8 @@ app.post('/api/entries', requireAuth, (req, res) => {
         month,
         type,
         amount: parseFloat(amount),
-        description
+        description,
+        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : []
     };
 
     entries.push(newEntry);
@@ -161,7 +160,7 @@ app.post('/api/entries', requireAuth, (req, res) => {
 app.delete('/api/entries/:id', requireAuth, (req, res) => {
     const id = parseInt(req.params.id);
     const index = entries.findIndex(entry => entry.id === id);
-    
+
     if (index === -1) {
         return res.status(404).json({ message: 'Entry not found' });
     }
@@ -179,233 +178,132 @@ app.get('/', (req, res) => {
 // Set up multer for file uploads (store in memory)
 const upload = multer({ storage: multer.memoryStorage() });
 
-// API key authentication middleware for Gmail service
-const requireApiKey = (req, res, next) => {
-    const apiKey = req.headers['x-api-key'];
-    const validApiKey = process.env.GMAIL_SERVICE_API_KEY;
-    
-    if (!validApiKey) {
-        return res.status(500).json({ message: 'Gmail service API key not configured' });
-    }
-    
-    if (apiKey === validApiKey) {
-        next();
-    } else {
-        res.status(401).json({ message: 'Invalid API key' });
-    }
-};
-
-// PDF processing endpoint for Gmail service (with API key authentication)
-app.post('/api/gmail-process-pdf', requireApiKey, upload.single('pdfFile'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'No PDF file uploaded.' });
-    }
-    
-    if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ message: 'Gemini API key not configured.' });
-    }
-    
-    try {
-        // Parse the PDF buffer
-        const data = await pdfParse(req.file.buffer);
-        const text = data.text;
-        
-        console.log('=== PDF EXTRACTED TEXT (Gmail Service) ===');
-        console.log(text.substring(0, 500) + '...'); // Log first 500 chars for debugging
-        console.log('=== END PDF TEXT ===');
-
-        // Use Gemini to interpret the PDF content
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-        
-        const prompt = `Please analyze the following PDF content and extract financial expense entries. 
-        
-        Look for any financial transactions, expenses, or monetary amounts with dates and descriptions.
-        
-        Return the data in this exact JSON format:
-        [
-            {
-                "month": "YYYY-MM",
-                "type": "expense",
-                "amount": number,
-                "description": "string"
-            }
-        ]
-        
-        Rules:
-        - Convert any date format to YYYY-MM format
-        - Extract only numeric amounts (remove currency symbols)
-        - Provide clear descriptions for each expense
-        - If no clear date is found, use current month
-        - Set type as "expense" for all entries
-        - Only return valid JSON, no additional text
-        
-        PDF Content:
-        ${text}`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const aiResponse = response.text();
-        
-        console.log('=== GEMINI RESPONSE (Gmail Service) ===');
-        console.log(aiResponse);
-        console.log('=== END GEMINI RESPONSE ===');
-
-        // Parse the AI response
-        let expenses = [];
-        try {
-            // Try to extract JSON from the response
-            const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                expenses = JSON.parse(jsonMatch[0]);
-            } else {
-                // If no JSON array found, try to parse the entire response
-                expenses = JSON.parse(aiResponse);
-            }
-            
-            // Validate and clean the expenses
-            expenses = expenses.filter(exp => 
-                exp && 
-                exp.month && 
-                typeof exp.amount === 'number' && 
-                exp.description &&
-                exp.amount > 0
-            );
-            
-            // Add entries to the system
-            for (const expense of expenses) {
-                const newEntry = {
-                    id: nextId++,
-                    month: expense.month,
-                    type: expense.type || 'expense',
-                    amount: parseFloat(expense.amount),
-                    description: `[Auto] ${expense.description}`
-                };
-                entries.push(newEntry);
-            }
-            
-            // Save entries to file
-            saveEntries();
-            
-            console.log(`=== ADDED ${expenses.length} ENTRIES FROM GMAIL SERVICE ===`);
-            
-        } catch (parseError) {
-            console.error('Error parsing AI response:', parseError);
-            console.error('AI Response was:', aiResponse);
-            return res.status(500).json({ 
-                message: 'Failed to parse AI response. Please check the PDF format.',
-                debug: aiResponse.substring(0, 200)
-            });
-        }
-        
-        console.log('=== FINAL EXPENSES ===');
-        console.log(expenses);
-        
-        res.json({
-            message: `Successfully processed ${expenses.length} expenses`,
-            expenses: expenses
-        });
-    } catch (error) {
-        console.error('Error processing PDF with Gemini:', error);
-        res.status(500).json({ message: 'Failed to process PDF with AI.' });
-    }
-});
-
-// PDF processing endpoint with Gemini AI (for web interface)
+// PDF processing endpoint with Ollama AI (for web interface)
 app.post('/api/process-pdf', requireAuth, upload.single('pdfFile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No PDF file uploaded.' });
     }
-    
-    if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ message: 'Gemini API key not configured.' });
-    }
-    
+
     try {
         // Parse the PDF buffer
         const data = await pdfParse(req.file.buffer);
         const text = data.text;
-        
+
         console.log('=== PDF EXTRACTED TEXT ===');
-        console.log(text.substring(0, 500) + '...'); // Log first 500 chars for debugging
+        console.log(text.substring(0, 500) + '...');
         console.log('=== END PDF TEXT ===');
 
-        // Use Gemini to interpret the PDF content
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-        
-        const prompt = `Please analyze the following PDF content and extract financial expense entries. 
-        
+        // Build the prompt for Ollama
+        const prompt = `Please analyze the following PDF content and extract financial expense entries.
+
         Look for any financial transactions, expenses, or monetary amounts with dates and descriptions.
-        
+
         Return the data in this exact JSON format:
-        [
-            {
-                "month": "YYYY-MM",
-                "amount": number,
-                "description": "string"
-            }
-        ]
-        
+        {
+            "expenses": [
+                {
+                    "month": "YYYY-MM",
+                    "amount": 123.45,
+                    "description": "Description of the expense",
+                    "tags": ["category1"]
+                }
+            ]
+        }
+
         Rules:
         - Convert any date format to YYYY-MM format
         - Extract only numeric amounts (remove currency symbols)
         - Provide clear descriptions for each expense
         - If no clear date is found, use current month
         - Only return valid JSON, no additional text
-        
+        - Assign one or more category tags to each entry from this list: "food", "transport", "entertainment", "utilities", "healthcare", "education", "shopping", "subscription", "housing", "salary", "freelance", "investment", "transfer", "other"
+        - Choose the most appropriate tags based on the description
+        - Always return tags as an array of strings
+
         PDF Content:
         ${text}`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const aiResponse = response.text();
-        
-        console.log('=== GEMINI RESPONSE ===');
+        // Call Ollama API
+        const ollamaResponse = await fetch(`${OLLAMA_URL}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: OLLAMA_MODEL,
+                prompt: prompt,
+                stream: false,
+                format: 'json'
+            })
+        });
+
+        if (!ollamaResponse.ok) {
+            const errorText = await ollamaResponse.text();
+            console.error('Ollama API error:', ollamaResponse.status, errorText);
+            return res.status(500).json({ message: 'Failed to get response from Ollama. Is it running?' });
+        }
+
+        const ollamaResult = await ollamaResponse.json();
+        const aiResponse = ollamaResult.response;
+
+        console.log('=== OLLAMA RESPONSE ===');
         console.log(aiResponse);
-        console.log('=== END GEMINI RESPONSE ===');
+        console.log('=== END OLLAMA RESPONSE ===');
 
         // Parse the AI response
         let expenses = [];
         try {
-            // Try to extract JSON from the response
-            const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                expenses = JSON.parse(jsonMatch[0]);
+            // Try to parse the response as JSON
+            const parsed = JSON.parse(aiResponse);
+
+            // Handle both { expenses: [...] } and [...] formats
+            if (Array.isArray(parsed)) {
+                expenses = parsed;
+            } else if (parsed.expenses && Array.isArray(parsed.expenses)) {
+                expenses = parsed.expenses;
             } else {
-                // If no JSON array found, try to parse the entire response
-                expenses = JSON.parse(aiResponse);
+                // Try to extract JSON array from the response
+                const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+                if (jsonMatch) {
+                    expenses = JSON.parse(jsonMatch[0]);
+                }
             }
-            
+
             // Validate and clean the expenses
-            expenses = expenses.filter(exp => 
-                exp && 
-                exp.month && 
-                typeof exp.amount === 'number' && 
+            expenses = expenses.filter(exp =>
+                exp &&
+                exp.month &&
+                typeof exp.amount === 'number' &&
                 exp.description &&
                 exp.amount > 0
             );
-            
+
+            // Normalize tags
+            expenses = expenses.map(exp => ({
+                ...exp,
+                tags: Array.isArray(exp.tags) ? exp.tags.map(t => String(t).toLowerCase().trim()) : []
+            }));
+
             // Add IDs to the expenses
             expenses = expenses.map(exp => ({
                 ...exp,
                 id: Date.now() + Math.floor(Math.random() * 10000)
             }));
-            
+
         } catch (parseError) {
             console.error('Error parsing AI response:', parseError);
             console.error('AI Response was:', aiResponse);
-            return res.status(500).json({ 
+            return res.status(500).json({
                 message: 'Failed to parse AI response. Please check the PDF format.',
                 debug: aiResponse.substring(0, 200)
             });
         }
-        
+
         console.log('=== FINAL EXPENSES ===');
         console.log(expenses);
-        
+
         res.json(expenses);
     } catch (error) {
-        console.error('Error processing PDF with Gemini:', error);
-        res.status(500).json({ message: 'Failed to process PDF with AI.' });
+        console.error('Error processing PDF with Ollama:', error);
+        res.status(500).json({ message: 'Failed to process PDF with AI. Ensure Ollama is running.' });
     }
 });
 
@@ -418,4 +316,15 @@ const options = {
 const PORT = process.env.PORT || 443;
 https.createServer(options, app).listen(PORT, () => {
     console.log(`Server running on https://localhost:${PORT}`);
-}); 
+
+    // Check Ollama connectivity
+    fetch(`${OLLAMA_URL}/api/tags`)
+        .then(res => res.json())
+        .then(data => {
+            const models = data.models?.map(m => m.name).join(', ') || 'none';
+            console.log(`Ollama connected. Available models: ${models}`);
+        })
+        .catch(() => {
+            console.warn('Warning: Could not connect to Ollama. PDF processing will not work until Ollama is running.');
+        });
+});
