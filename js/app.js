@@ -255,7 +255,7 @@ function generateContinuousMonths(startMonth, endMonth) {
 }
 
 // Update charts with current data
-function updateCharts(entriesToShow = entries, forceDefaultMonths = false) {
+function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filterStart = null, filterEnd = null) {
     const monthlyData = {};
     const incomeData = {};
     const expenseData = {};
@@ -274,13 +274,22 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false) {
     let months;
     if (forceDefaultMonths) {
         months = getMonthLabelsAroundCurrent();
+    } else if (filterStart && filterEnd) {
+        // Use filter date range for chart window
+        months = generateContinuousMonths(filterStart, filterEnd);
     } else {
         const availableMonths = Object.keys(monthlyData).sort();
         if (availableMonths.length === 0) {
             months = getMonthLabelsAroundCurrent();
         } else if (availableMonths.length === 1) {
-            // If only one month has data, show a range around it
-            months = availableMonths;
+            // If only one month has data, show 3-month context window
+            const singleMonth = availableMonths[0];
+            const [year, month] = singleMonth.split('-').map(Number);
+            const prevDate = new Date(year, month - 2, 1);
+            const nextDate = new Date(year, month, 1);
+            const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+            const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+            months = generateContinuousMonths(prevMonth, nextMonth);
         } else {
             // Generate continuous months between earliest and latest
             const startMonth = availableMonths[0];
@@ -327,6 +336,8 @@ function filterEntries() {
     const monthFilterStart = document.getElementById('monthFilterStart').value;
     const monthFilterEnd = document.getElementById('monthFilterEnd').value;
     const typeFilter = document.getElementById('typeFilter').value;
+    const categoryFilterSelect = document.getElementById('categoryFilter');
+    const selectedCategories = Array.from(categoryFilterSelect.selectedOptions).map(opt => opt.value);
 
     let filteredEntries = entries;
 
@@ -340,12 +351,18 @@ function filterEntries() {
         filteredEntries = filteredEntries.filter(entry => entry.type === typeFilter);
     }
 
+    if (selectedCategories.length > 0) {
+        filteredEntries = filteredEntries.filter(entry =>
+            entry.tags && entry.tags.some(tag => selectedCategories.includes(tag))
+        );
+    }
+
     // Store the current filtered entries for sorting
     currentFilteredEntries = filteredEntries;
 
     displayEntries(filteredEntries);
     updateSummary(filteredEntries);
-    updateCharts(filteredEntries, false);
+    updateCharts(filteredEntries, false, monthFilterStart, monthFilterEnd);
 }
 
 // Sort entries function
@@ -369,6 +386,10 @@ function sortEntries(entriesToShow, column, direction) {
             case 'description':
                 aValue = a.description.toLowerCase();
                 bValue = b.description.toLowerCase();
+                break;
+            case 'tags':
+                aValue = (a.tags && a.tags[0]) || 'zzz'; // Sort empty last
+                bValue = (b.tags && b.tags[0]) || 'zzz';
                 break;
             default:
                 return 0;
@@ -418,6 +439,7 @@ function displayEntries(entriesToShow) {
             <td>${entry.description}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
             <td>
+                <button class="edit-btn" data-id="${entry.id}">Edit</button>
                 <button class="delete-btn" data-id="${entry.id}">Delete</button>
             </td>
         `;
@@ -479,6 +501,23 @@ closeBulkUploadModalBtn.addEventListener('click', () => {
     bulkUploadModal.style.display = 'none';
 });
 
+// Category options for dropdowns
+const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+
+function generateCategorySelect(selectedTag, index) {
+    const options = categoryOptions.map(cat =>
+        `<option value="${cat}"${cat === selectedTag ? ' selected' : ''}>${cat.charAt(0).toUpperCase() + cat.slice(1)}</option>`
+    ).join('');
+    return `<select class="preview-select category-select" data-index="${index}">${options}</select>`;
+}
+
+function generateTypeSelect(selectedType, index) {
+    return `<select class="preview-select type-select" data-index="${index}">
+        <option value="expense"${selectedType === 'expense' ? ' selected' : ''}>Expense</option>
+        <option value="income"${selectedType === 'income' ? ' selected' : ''}>Income</option>
+    </select>`;
+}
+
 processBulkPdfBtn.addEventListener('click', async () => {
     const pdfFile = bulkPdfUploadInput.files[0];
     if (!pdfFile) {
@@ -499,23 +538,48 @@ processBulkPdfBtn.addEventListener('click', async () => {
             body: formData
         });
         if (response.ok) {
-            const batchExpenses = await response.json();
-            const validExpenses = batchExpenses.filter(exp => exp && exp.month && exp.amount && exp.description);
-            bulkExtractedEntries = validExpenses.map(exp => ({ ...exp, type: 'expense', tags: exp.tags || [] }));
-            // Preview in table
+            const batchEntries = await response.json();
+            const validEntries = batchEntries.filter(exp => exp && exp.month && exp.amount && exp.description);
+            bulkExtractedEntries = validEntries.map(exp => ({
+                ...exp,
+                type: exp.type || 'expense',
+                tags: exp.tags || []
+            }));
+            // Preview in table with editable dropdowns
             bulkExtractedEntriesTbody.innerHTML = '';
             if (bulkExtractedEntries.length > 0) {
-                bulkExtractedEntries.forEach(entry => {
-                    const tags = (entry.tags || []).map(t =>
-                        `<span class="tag tag-${t}">${t}</span>`
-                    ).join(' ');
+                bulkExtractedEntries.forEach((entry, index) => {
+                    const currentTag = (entry.tags && entry.tags[0]) || 'other';
+                    const currentType = entry.type || 'expense';
                     const row = document.createElement('tr');
-                    row.innerHTML = `<td>${entry.month}</td><td>$${parseFloat(entry.amount).toFixed(2)}</td><td>${entry.description}</td><td>${tags || '-'}</td>`;
+                    row.innerHTML = `
+                        <td>${entry.month}</td>
+                        <td>${generateTypeSelect(currentType, index)}</td>
+                        <td>$${parseFloat(entry.amount).toFixed(2)}</td>
+                        <td>${entry.description}</td>
+                        <td>${generateCategorySelect(currentTag, index)}</td>
+                    `;
                     bulkExtractedEntriesTbody.appendChild(row);
                 });
+
+                // Add event listeners for dropdown changes
+                document.querySelectorAll('.category-select').forEach(select => {
+                    select.addEventListener('change', (e) => {
+                        const index = parseInt(e.target.dataset.index);
+                        bulkExtractedEntries[index].tags = [e.target.value];
+                    });
+                });
+
+                document.querySelectorAll('.type-select').forEach(select => {
+                    select.addEventListener('change', (e) => {
+                        const index = parseInt(e.target.dataset.index);
+                        bulkExtractedEntries[index].type = e.target.value;
+                    });
+                });
+
                 confirmBulkEntriesBtn.style.display = 'inline-block';
             } else {
-                bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="4">No valid entries found in PDF.</td></tr>';
+                bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="5">No valid entries found in PDF.</td></tr>';
                 confirmBulkEntriesBtn.style.display = 'none';
             }
         } else {
@@ -536,7 +600,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
         try {
-            // Save each entry to the server
+            // Save each entry to the server with their current type and tags
             const savePromises = bulkExtractedEntries.map(async (entry) => {
                 const response = await fetch('/api/entries', {
                     method: 'POST',
@@ -545,7 +609,7 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                     },
                     body: JSON.stringify({
                         month: entry.month,
-                        type: 'expense',
+                        type: entry.type || 'expense',
                         amount: entry.amount,
                         description: entry.description,
                         tags: entry.tags || []
@@ -726,6 +790,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+
+        // Edit entry - open modal
+        if (e.target.classList.contains('edit-btn')) {
+            const id = parseInt(e.target.dataset.id);
+            const entry = entries.find(entry => entry.id === id);
+            if (entry) {
+                document.getElementById('editEntryId').value = entry.id;
+                document.getElementById('editMonth').value = entry.month;
+                document.getElementById('editType').value = entry.type;
+                document.getElementById('editAmount').value = entry.amount;
+                document.getElementById('editDescription').value = entry.description;
+                document.getElementById('editTags').value = (entry.tags || []).join(', ');
+                document.getElementById('editEntryModal').style.display = 'block';
+            }
+        }
+    });
+
+    // Edit entry form submission
+    document.getElementById('editEntryForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = parseInt(document.getElementById('editEntryId').value);
+        const tagsInput = document.getElementById('editTags').value;
+        const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+
+        const updatedEntry = {
+            month: document.getElementById('editMonth').value,
+            type: document.getElementById('editType').value,
+            amount: parseFloat(document.getElementById('editAmount').value),
+            description: document.getElementById('editDescription').value,
+            tags: tags
+        };
+
+        try {
+            const response = await fetch(`/api/entries/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedEntry)
+            });
+
+            if (response.ok) {
+                const savedEntry = await response.json();
+                // Update local entries array
+                const index = entries.findIndex(entry => entry.id === id);
+                if (index !== -1) {
+                    entries[index] = savedEntry;
+                }
+                document.getElementById('editEntryModal').style.display = 'none';
+                filterEntries();
+            } else {
+                alert('Failed to update entry.');
+            }
+        } catch (error) {
+            console.error('Error updating entry:', error);
+            alert('Failed to update entry. Check console for details.');
+        }
+    });
+
+    // Close edit modal
+    document.getElementById('closeEditModal').addEventListener('click', () => {
+        document.getElementById('editEntryModal').style.display = 'none';
+    });
+
+    // Close edit modal when clicking outside
+    window.addEventListener('click', (e) => {
+        const editModal = document.getElementById('editEntryModal');
+        if (e.target === editModal) {
+            editModal.style.display = 'none';
+        }
     });
 
     // Filter controls - only clear button now, apply is handled by dynamic listeners
@@ -733,6 +865,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('monthFilterStart').value = '';
         document.getElementById('monthFilterEnd').value = '';
         document.getElementById('typeFilter').value = 'all';
+        // Deselect all options in multi-select
+        const categoryFilter = document.getElementById('categoryFilter');
+        Array.from(categoryFilter.options).forEach(opt => opt.selected = false);
         // Reset currentFilteredEntries to all entries
         currentFilteredEntries = entries;
         // Reset filters should show ALL entries again
@@ -789,4 +924,5 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('monthFilterStart').addEventListener('input', filterEntries);
     document.getElementById('monthFilterEnd').addEventListener('input', filterEntries);
     document.getElementById('typeFilter').addEventListener('change', filterEntries);
+    document.getElementById('categoryFilter').addEventListener('change', filterEntries);
 });
