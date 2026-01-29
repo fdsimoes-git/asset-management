@@ -155,6 +155,19 @@
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
         }
+        .form-group select[multiple] {
+            min-height: 120px;
+            padding: 0.25rem;
+        }
+        .form-group select[multiple] option {
+            padding: 0.4rem 0.6rem;
+            border-radius: 0.25rem;
+            margin: 1px 0;
+        }
+        .form-group select[multiple] option:checked {
+            background: var(--primary-color);
+            color: white;
+        }
         .filter-btn {
             background: var(--secondary-color);
             color: white;
@@ -165,7 +178,7 @@
         }
         .charts-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 2rem;
         }
         .chart-wrapper {
@@ -174,11 +187,10 @@
             padding: 1.5rem;
             border: 1px solid var(--border-color);
             box-shadow: var(--shadow-sm);
-            min-height: 350px;
+            height: 400px;
+            position: relative;
         }
         canvas {
-            width: 100% !important;
-            height: 350px !important;
             display: block;
         }
         .summary {
@@ -240,24 +252,34 @@
             cursor: pointer;
             user-select: none;
             position: relative;
-            transition: background-color 0.2s ease;
         }
         .sortable:hover {
             background: #e2e8f0 !important;
         }
         .sortable.asc::after {
-            content: " ↑";
+            content: " \2191";
             color: var(--success-color);
             font-weight: bold;
         }
         .sortable.desc::after {
-            content: " ↓";
+            content: " \2193";
             color: var(--danger-color);
             font-weight: bold;
         }
         .sortable::after {
-            content: " ↕";
+            content: " \2195";
             color: var(--text-secondary);
+        }
+        .edit-btn {
+            background: var(--primary-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+            border-radius: 0.375rem;
+            margin-right: 0.5rem;
+        }
+        .edit-btn:hover {
+            background: #1d4ed8;
         }
         .delete-btn {
             background: var(--danger-color);
@@ -268,6 +290,61 @@
         }
         .delete-btn:hover {
             background: #dc2626;
+        }
+        /* Tag badge styles */
+        .tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin: 0.1rem;
+            text-transform: capitalize;
+            letter-spacing: 0.02em;
+        }
+        .tag-food { background: #fef3c7; color: #92400e; }
+        .tag-transport { background: #dbeafe; color: #1e40af; }
+        .tag-entertainment { background: #ede9fe; color: #5b21b6; }
+        .tag-utilities { background: #e0e7ff; color: #3730a3; }
+        .tag-healthcare { background: #fce7f3; color: #9d174d; }
+        .tag-education { background: #d1fae5; color: #065f46; }
+        .tag-shopping { background: #fff7ed; color: #9a3412; }
+        .tag-subscription { background: #f0fdf4; color: #166534; }
+        .tag-housing { background: #f1f5f9; color: #475569; }
+        .tag-salary { background: #dcfce7; color: #15803d; }
+        .tag-freelance { background: #ccfbf1; color: #0f766e; }
+        .tag-investment { background: #faf5ff; color: #7e22ce; }
+        .tag-transfer { background: #f0f9ff; color: #0369a1; }
+        .tag-other { background: #f5f5f5; color: #737373; }
+        /* Preview table selects */
+        .preview-select {
+            padding: 0.35rem 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            background: var(--surface-color);
+            cursor: pointer;
+        }
+        .preview-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        /* Entry type badges */
+        .entry-type {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+        .entry-type-income {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .entry-type-expense {
+            background: #fee2e2;
+            color: #991b1b;
         }
         .modal {
             display: none;
@@ -326,9 +403,6 @@
                 padding: 1.5rem;
             }
         }
-        * {
-            transition: all 0.2s ease;
-        }
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -380,7 +454,45 @@
                             <label for="description">Description:</label>
                             <input type="text" id="description" required>
                         </div>
+                        <div class="form-group">
+                            <label for="tags">Tags (comma-separated):</label>
+                            <input type="text" id="tags" placeholder="e.g. food, subscription">
+                        </div>
                         <button type="submit">Add Entry</button>
+                    </form>
+                </div>
+            </div>
+            <!-- Edit Entry Modal -->
+            <div id="editEntryModal" class="modal" style="display:none;">
+                <div class="modal-content">
+                    <span class="close" id="closeEditModal">&times;</span>
+                    <h2>Edit Entry</h2>
+                    <form id="editEntryForm">
+                        <input type="hidden" id="editEntryId">
+                        <div class="form-group">
+                            <label for="editMonth">Month:</label>
+                            <input type="month" id="editMonth" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editType">Type:</label>
+                            <select id="editType" required>
+                                <option value="income">Income</option>
+                                <option value="expense">Expense</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="editAmount">Amount:</label>
+                            <input type="number" id="editAmount" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editDescription">Description:</label>
+                            <input type="text" id="editDescription" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="editTags">Tags (comma-separated):</label>
+                            <input type="text" id="editTags" placeholder="e.g. food, subscription">
+                        </div>
+                        <button type="submit">Save Changes</button>
                     </form>
                 </div>
             </div>
@@ -392,14 +504,14 @@
                     <input type="file" id="bulkPdfUpload" accept="application/pdf" />
                     <button id="processBulkPdfBtn">Upload and Process</button>
                     <div id="loadingIndicator" style="display:none; text-align: center; margin: 20px 0;">
-                        <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                        <p style="margin-top: 10px; color: #666;">Analyzing PDF with AI...</p>
+                        <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <p style="margin-top: 10px; color: var(--text-secondary);">Analyzing PDF with AI...</p>
                     </div>
                     <h3>Preview Extracted Entries</h3>
-                    <div style="max-height: 250px; overflow-y: auto; border: 1px solid #ccc; margin-bottom: 10px;">
+                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); margin-bottom: 10px; border-radius: 0.5rem;">
                         <table style="width:100%;">
                             <thead>
-                                <tr><th>Month</th><th>Amount</th><th>Description</th></tr>
+                                <tr><th>Month</th><th>Type</th><th>Amount</th><th>Description</th><th>Category</th></tr>
                             </thead>
                             <tbody id="bulkExtractedEntries"></tbody>
                         </table>
@@ -426,6 +538,27 @@
                             <option value="expense">Expense</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="categoryFilter">Category:</label>
+                        <select id="categoryFilter" multiple size="6">
+                            <option value="food">Food</option>
+                            <option value="groceries">Groceries</option>
+                            <option value="transport">Transport</option>
+                            <option value="travel">Travel</option>
+                            <option value="entertainment">Entertainment</option>
+                            <option value="utilities">Utilities</option>
+                            <option value="healthcare">Healthcare</option>
+                            <option value="education">Education</option>
+                            <option value="shopping">Shopping</option>
+                            <option value="subscription">Subscription</option>
+                            <option value="housing">Housing</option>
+                            <option value="salary">Salary</option>
+                            <option value="freelance">Freelance</option>
+                            <option value="investment">Investment</option>
+                            <option value="transfer">Transfer</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
                     <button id="clearFilters" class="filter-btn">Clear Filters</button>
                 </div>
             </section>
@@ -433,10 +566,13 @@
                 <h2>Monthly Overview</h2>
                 <div class="charts-container">
                     <div class="chart-wrapper">
-                        <canvas id="monthlyBalanceChart" height="350"></canvas>
+                        <canvas id="monthlyBalanceChart"></canvas>
                     </div>
                     <div class="chart-wrapper">
-                        <canvas id="incomeVsExpenseChart" height="350"></canvas>
+                        <canvas id="incomeVsExpenseChart"></canvas>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="categoryChart"></canvas>
                     </div>
                 </div>
             </section>
@@ -460,10 +596,11 @@
                     <table id="entriesTable">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="month">Month ↕</th>
-                                <th class="sortable" data-sort="type">Type ↕</th>
-                                <th class="sortable" data-sort="amount">Amount ↕</th>
-                                <th class="sortable" data-sort="description">Description ↕</th>
+                                <th class="sortable" data-sort="month">Month</th>
+                                <th class="sortable" data-sort="type">Type</th>
+                                <th class="sortable" data-sort="amount">Amount</th>
+                                <th class="sortable" data-sort="description">Description</th>
+                                <th class="sortable" data-sort="tags">Tags</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -491,4 +628,4 @@
     </script>
     <script src="/js/app.js"></script>
 </body>
-</html> 
+</html>
