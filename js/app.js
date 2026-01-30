@@ -683,42 +683,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
                 tags: exp.tags || []
             }));
             // Preview in table with editable dropdowns
-            bulkExtractedEntriesTbody.innerHTML = '';
-            if (bulkExtractedEntries.length > 0) {
-                bulkExtractedEntries.forEach((entry, index) => {
-                    const currentTag = (entry.tags && entry.tags[0]) || 'other';
-                    const currentType = entry.type || 'expense';
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${entry.month}</td>
-                        <td>${generateTypeSelect(currentType, index)}</td>
-                        <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-                        <td>${entry.description}</td>
-                        <td>${generateCategorySelect(currentTag, index)}</td>
-                    `;
-                    bulkExtractedEntriesTbody.appendChild(row);
-                });
-
-                // Add event listeners for dropdown changes
-                document.querySelectorAll('.category-select').forEach(select => {
-                    select.addEventListener('change', (e) => {
-                        const index = parseInt(e.target.dataset.index);
-                        bulkExtractedEntries[index].tags = [e.target.value];
-                    });
-                });
-
-                document.querySelectorAll('.type-select').forEach(select => {
-                    select.addEventListener('change', (e) => {
-                        const index = parseInt(e.target.dataset.index);
-                        bulkExtractedEntries[index].type = e.target.value;
-                    });
-                });
-
-                confirmBulkEntriesBtn.style.display = 'inline-block';
-            } else {
-                bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="5">No valid entries found in PDF.</td></tr>';
-                confirmBulkEntriesBtn.style.display = 'none';
-            }
+            renderBulkPreviewTable();
         } else {
             const errorData = await response.text();
             alert(`Error processing PDF: ${response.statusText}. ${errorData}`);
@@ -733,6 +698,119 @@ processBulkPdfBtn.addEventListener('click', async () => {
         processBulkPdfBtn.textContent = 'Upload and Process';
     }
 });
+
+// Render the bulk preview table
+function renderBulkPreviewTable() {
+    bulkExtractedEntriesTbody.innerHTML = '';
+    if (bulkExtractedEntries.length > 0) {
+        bulkExtractedEntries.forEach((entry, index) => {
+            const currentTag = (entry.tags && entry.tags[0]) || 'other';
+            const currentType = entry.type || 'expense';
+            const row = document.createElement('tr');
+            row.dataset.index = index;
+
+            if (entry.isEditing) {
+                // Editing mode - show input fields
+                row.innerHTML = `
+                    <td><input type="month" class="bulk-edit-month" value="${entry.month}" style="width:100%;padding:4px;"></td>
+                    <td>${generateTypeSelect(currentType, index)}</td>
+                    <td><input type="number" class="bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" style="width:80px;padding:4px;"></td>
+                    <td><input type="text" class="bulk-edit-description" value="${entry.description}" style="width:100%;padding:4px;"></td>
+                    <td>${generateCategorySelect(currentTag, index)}</td>
+                    <td>
+                        <button class="bulk-save-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Save</button>
+                        <button class="bulk-cancel-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#64748b;color:white;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+                    </td>
+                `;
+            } else {
+                // View mode - show values with edit/delete buttons
+                row.innerHTML = `
+                    <td>${entry.month}</td>
+                    <td>${generateTypeSelect(currentType, index)}</td>
+                    <td>$${parseFloat(entry.amount).toFixed(2)}</td>
+                    <td>${entry.description}</td>
+                    <td>${generateCategorySelect(currentTag, index)}</td>
+                    <td>
+                        <button class="bulk-edit-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Edit</button>
+                        <button class="bulk-delete-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;">Delete</button>
+                    </td>
+                `;
+            }
+            bulkExtractedEntriesTbody.appendChild(row);
+        });
+
+        // Add event listeners for dropdown changes
+        document.querySelectorAll('.category-select').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].tags = [e.target.value];
+            });
+        });
+
+        document.querySelectorAll('.type-select').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].type = e.target.value;
+            });
+        });
+
+        // Add event listeners for edit buttons
+        document.querySelectorAll('.bulk-edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].isEditing = true;
+                renderBulkPreviewTable();
+            });
+        });
+
+        // Add event listeners for delete buttons
+        document.querySelectorAll('.bulk-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                if (confirm('Delete this entry from the preview?')) {
+                    bulkExtractedEntries.splice(index, 1);
+                    renderBulkPreviewTable();
+                }
+            });
+        });
+
+        // Add event listeners for save buttons (edit mode)
+        document.querySelectorAll('.bulk-save-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                const row = e.target.closest('tr');
+                const month = row.querySelector('.bulk-edit-month').value;
+                const amount = row.querySelector('.bulk-edit-amount').value;
+                const description = row.querySelector('.bulk-edit-description').value;
+
+                if (!month || !amount || !description) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+
+                bulkExtractedEntries[index].month = month;
+                bulkExtractedEntries[index].amount = parseFloat(amount);
+                bulkExtractedEntries[index].description = description;
+                bulkExtractedEntries[index].isEditing = false;
+                renderBulkPreviewTable();
+            });
+        });
+
+        // Add event listeners for cancel buttons (edit mode)
+        document.querySelectorAll('.bulk-cancel-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].isEditing = false;
+                renderBulkPreviewTable();
+            });
+        });
+
+        confirmBulkEntriesBtn.style.display = 'inline-block';
+    } else {
+        bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="6">No valid entries found in PDF.</td></tr>';
+        confirmBulkEntriesBtn.style.display = 'none';
+    }
+}
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
