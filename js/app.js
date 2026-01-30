@@ -2,6 +2,7 @@ let entries = [];
 let monthlyBalanceChart = null;
 let incomeVsExpenseChart = null;
 let categoryChart = null;
+let categoryStackedChart = null;
 // Add a variable to track currently filtered entries
 let currentFilteredEntries = [];
 
@@ -14,6 +15,7 @@ function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
     const incomeVsExpenseCtx = document.getElementById('incomeVsExpenseChart').getContext('2d');
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
     // Common chart options for better visibility
     const commonOptions = {
@@ -213,6 +215,88 @@ function initializeCharts() {
             }
         }
     });
+
+    // Stacked bar chart for expense categories by month
+    const stackedCategoryColors = [
+        '#f59e0b', '#3b82f6', '#8b5cf6', '#6366f1',
+        '#ec4899', '#10b981', '#f97316', '#22c55e',
+        '#94a3b8', '#14b8a6', '#a855f7', '#0ea5e9',
+        '#ef4444', '#737373', '#06b6d4', '#84cc16'
+    ];
+
+    const expenseCategories = ['food', 'groceries', 'transport', 'travel', 'entertainment',
+        'utilities', 'healthcare', 'education', 'shopping', 'subscription',
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+
+    const stackedDatasets = expenseCategories.map((category, index) => ({
+        label: category.charAt(0).toUpperCase() + category.slice(1),
+        data: [],
+        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length],
+        borderColor: stackedCategoryColors[index % stackedCategoryColors.length],
+        borderWidth: 1,
+        borderRadius: 2
+    }));
+
+    categoryStackedChart = new Chart(categoryStackedCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: stackedDatasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#1e293b',
+                        font: { size: 10 },
+                        boxWidth: 12,
+                        padding: 8
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Expense Categories by Month',
+                    color: '#1e293b',
+                    font: { size: 14, weight: '600' },
+                    padding: { bottom: 10 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.dataset.label || '';
+                            const value = context.parsed.y;
+                            return `${label}: $${value.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { color: '#e2e8f0' },
+                    ticks: {
+                        color: '#475569',
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    grid: { color: '#e2e8f0' },
+                    ticks: {
+                        color: '#475569',
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function getMonthLabelsAroundCurrent() {
@@ -329,6 +413,57 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryChart.data.labels = sortedTags.map(([tag]) => tag.charAt(0).toUpperCase() + tag.slice(1));
     categoryChart.data.datasets[0].data = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
     categoryChart.update();
+
+    // Update stacked category chart - expenses by category per month
+    const expenseCategoryList = ['food', 'groceries', 'transport', 'travel', 'entertainment',
+        'utilities', 'healthcare', 'education', 'shopping', 'subscription',
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+
+    // Build a map: { month: { category: totalAmount } }
+    const categoryMonthlyData = {};
+    months.forEach(month => {
+        categoryMonthlyData[month] = {};
+        expenseCategoryList.forEach(cat => {
+            categoryMonthlyData[month][cat] = 0;
+        });
+    });
+
+    // Aggregate expense entries by month and category
+    entriesToShow
+        .filter(e => e.type === 'expense')
+        .forEach(entry => {
+            const month = entry.month;
+            if (!categoryMonthlyData[month]) return;
+
+            const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
+            const perTagAmount = parseFloat(entry.amount) / entryTags.length;
+
+            entryTags.forEach(tag => {
+                const normalizedTag = expenseCategoryList.includes(tag) ? tag : 'other';
+                categoryMonthlyData[month][normalizedTag] += perTagAmount;
+            });
+        });
+
+    // Update chart labels (months)
+    categoryStackedChart.data.labels = months;
+
+    // Determine which categories have any data
+    const categoriesWithData = expenseCategoryList.filter(category => {
+        return months.some(month => categoryMonthlyData[month][category] > 0);
+    });
+
+    // Update each dataset with monthly values for its category
+    categoryStackedChart.data.datasets.forEach((dataset, index) => {
+        const category = expenseCategoryList[index];
+        dataset.data = months.map(month => {
+            const value = categoryMonthlyData[month]?.[category] || 0;
+            return Math.round(value * 100) / 100;
+        });
+        // Hide categories with no data from legend
+        dataset.hidden = !categoriesWithData.includes(category);
+    });
+
+    categoryStackedChart.update();
 }
 
 // Filter entries based on selected criteria
