@@ -178,6 +178,103 @@ function migrateExistingEntries() {
     }
 }
 
+// Migration: Add partnerId field to existing users
+function migrateUsersForCouples() {
+    let migrated = false;
+    users.forEach(user => {
+        if (user.partnerId === undefined) {
+            user.partnerId = null;
+            user.partnerLinkedAt = null;
+            migrated = true;
+        }
+    });
+    if (migrated) {
+        saveUsers();
+        console.log('Migrated users for couples feature');
+    }
+}
+
+// Migration: Add isCoupleExpense field to existing entries
+function migrateEntriesForCouples() {
+    let migrated = false;
+    entries.forEach(entry => {
+        if (entry.isCoupleExpense === undefined) {
+            entry.isCoupleExpense = false;
+            migrated = true;
+        }
+    });
+    if (migrated) {
+        saveEntries();
+        console.log('Migrated entries for couples feature');
+    }
+}
+
+// ============ COUPLE MANAGEMENT HELPERS ============
+
+// Link two users as a couple
+function linkCouple(userId1, userId2) {
+    const user1 = findUserById(userId1);
+    const user2 = findUserById(userId2);
+
+    if (!user1 || !user2) {
+        throw new Error('One or both users not found');
+    }
+
+    if (!user1.isActive || !user2.isActive) {
+        throw new Error('Cannot link inactive users');
+    }
+
+    if (user1.partnerId || user2.partnerId) {
+        throw new Error('One or both users already have a partner');
+    }
+
+    if (userId1 === userId2) {
+        throw new Error('Cannot link user to themselves');
+    }
+
+    const now = new Date().toISOString();
+
+    user1.partnerId = userId2;
+    user1.partnerLinkedAt = now;
+    user1.updatedAt = now;
+
+    user2.partnerId = userId1;
+    user2.partnerLinkedAt = now;
+    user2.updatedAt = now;
+
+    saveUsers();
+
+    return { user1, user2, linkedAt: now };
+}
+
+// Unlink a couple
+function unlinkCouple(userId) {
+    const user = findUserById(userId);
+    if (!user || !user.partnerId) {
+        throw new Error('User has no partner');
+    }
+
+    const partner = findUserById(user.partnerId);
+    const now = new Date().toISOString();
+
+    const affectedUsers = [user.id];
+
+    user.partnerId = null;
+    user.partnerLinkedAt = null;
+    user.updatedAt = now;
+
+    if (partner) {
+        partner.partnerId = null;
+        partner.partnerLinkedAt = null;
+        partner.updatedAt = now;
+        affectedUsers.push(partner.id);
+    }
+
+    saveUsers();
+
+    return affectedUsers;
+}
+
 // Load data on startup
 loadUsers();
 loadEntries();
@@ -185,6 +282,8 @@ loadEntries();
 // Run migrations
 migrateInitialAdmin();
 migrateExistingEntries();
+migrateUsersForCouples();
+migrateEntriesForCouples();
 
 // Security middleware
 app.use(helmet({
@@ -318,11 +417,23 @@ app.post('/api/register', async (req, res) => {
 
 // Get current user info
 app.get('/api/user', requireAuth, (req, res) => {
-    res.json({
+    const response = {
         id: req.user.id,
         username: req.user.username,
-        role: req.user.role
-    });
+        role: req.user.role,
+        partnerId: req.user.partnerId || null,
+        partnerLinkedAt: req.user.partnerLinkedAt || null
+    };
+
+    // Include partner username if linked
+    if (req.user.partnerId) {
+        const partner = findUserById(req.user.partnerId);
+        if (partner) {
+            response.partnerUsername = partner.username;
+        }
+    }
+
+    res.json(response);
 });
 
 // Logout endpoint
@@ -333,13 +444,29 @@ app.post('/api/logout', (req, res) => {
 
 // Get all entries for current user
 app.get('/api/entries', requireAuth, (req, res) => {
-    const userEntries = entries.filter(entry => entry.userId === req.user.id);
+    const viewMode = req.query.viewMode || 'individual';
+    let userEntries;
+
+    if (viewMode === 'combined' && req.user.partnerId) {
+        // Combined view: Get couple-flagged entries from both user and partner
+        userEntries = entries.filter(entry =>
+            entry.isCoupleExpense === true &&
+            (entry.userId === req.user.id || entry.userId === req.user.partnerId)
+        );
+    } else {
+        // Individual view: Only non-couple expenses from current user
+        userEntries = entries.filter(entry =>
+            entry.userId === req.user.id &&
+            entry.isCoupleExpense !== true
+        );
+    }
+
     res.json(userEntries);
 });
 
 // Add new entry
 app.post('/api/entries', requireAuth, (req, res) => {
-    const { month, type, amount, description, tags } = req.body;
+    const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
     if (!month || !type || !amount || !description) {
         return res.status(400).json({ message: 'All fields are required' });
@@ -352,7 +479,8 @@ app.post('/api/entries', requireAuth, (req, res) => {
         type,
         amount: parseFloat(amount),
         description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : []
+        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        isCoupleExpense: Boolean(isCoupleExpense)
     };
 
     entries.push(newEntry);
@@ -369,7 +497,7 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
         return res.status(404).json({ message: 'Entry not found' });
     }
 
-    const { month, type, amount, description, tags } = req.body;
+    const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
     if (!month || !type || !amount || !description) {
         return res.status(400).json({ message: 'All fields are required' });
@@ -381,7 +509,8 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
         type,
         amount: parseFloat(amount),
         description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : []
+        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        isCoupleExpense: Boolean(isCoupleExpense)
     };
 
     saveEntries();
@@ -406,15 +535,28 @@ app.delete('/api/entries/:id', requireAuth, (req, res) => {
 
 // Get all users (admin only)
 app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
-    const sanitizedUsers = users.map(u => ({
-        id: u.id,
-        username: u.username,
-        role: u.role,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
-        isActive: u.isActive,
-        entriesCount: entries.filter(e => e.userId === u.id).length
-    }));
+    const sanitizedUsers = users.map(u => {
+        const userData = {
+            id: u.id,
+            username: u.username,
+            role: u.role,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+            isActive: u.isActive,
+            entriesCount: entries.filter(e => e.userId === u.id).length,
+            partnerId: u.partnerId || null
+        };
+
+        // Include partner username if linked
+        if (u.partnerId) {
+            const partner = findUserById(u.partnerId);
+            if (partner) {
+                userData.partnerUsername = partner.username;
+            }
+        }
+
+        return userData;
+    });
     res.json(sanitizedUsers);
 });
 
@@ -550,6 +692,73 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
     saveUsers();
 
     res.json({ message: 'User deleted successfully' });
+});
+
+// ============ COUPLE MANAGEMENT ENDPOINTS ============
+
+// Get all couples (admin only)
+app.get('/api/admin/couples', requireAuth, requireAdmin, (req, res) => {
+    const couples = [];
+    const processedIds = new Set();
+
+    users.forEach(user => {
+        if (user.partnerId && !processedIds.has(user.id)) {
+            const partner = findUserById(user.partnerId);
+            if (partner) {
+                couples.push({
+                    user1: { id: user.id, username: user.username },
+                    user2: { id: partner.id, username: partner.username },
+                    linkedAt: user.partnerLinkedAt
+                });
+                processedIds.add(user.id);
+                processedIds.add(partner.id);
+            }
+        }
+    });
+
+    res.json({ couples });
+});
+
+// Link two users as a couple (admin only)
+app.post('/api/admin/couples/link', requireAuth, requireAdmin, (req, res) => {
+    const { userId1, userId2 } = req.body;
+
+    if (!userId1 || !userId2) {
+        return res.status(400).json({ message: 'Both user IDs are required' });
+    }
+
+    try {
+        const result = linkCouple(parseInt(userId1), parseInt(userId2));
+        res.json({
+            message: 'Users linked as couple successfully',
+            couple: {
+                user1: { id: result.user1.id, username: result.user1.username },
+                user2: { id: result.user2.id, username: result.user2.username },
+                linkedAt: result.linkedAt
+            }
+        });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
+
+// Unlink a couple (admin only)
+app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    try {
+        const affectedUsers = unlinkCouple(parseInt(userId));
+        res.json({
+            message: 'Couple unlinked successfully',
+            affectedUsers
+        });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
 });
 
 // Serve the main application

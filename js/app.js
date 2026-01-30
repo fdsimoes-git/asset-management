@@ -12,6 +12,10 @@ let currentUser = null;
 let currentSortColumn = null;
 let currentSortDirection = 'asc';
 
+// Couple feature state
+let currentViewMode = 'individual';
+let hasPartner = false;
+
 // Initialize charts
 function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
@@ -569,11 +573,12 @@ function displayEntries(entriesToShow) {
         const tags = (entry.tags || []).map(t =>
             `<span class="tag tag-${t}">${t}</span>`
         ).join(' ');
+        const coupleBadge = entry.isCoupleExpense ? '<span class="couple-badge">Couple</span>' : '';
         row.innerHTML = `
             <td>${entry.month}</td>
             <td><span class="entry-type entry-type-${entry.type}">${entry.type}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-            <td>${entry.description}</td>
+            <td>${coupleBadge}${entry.description}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
             <td>
                 <button class="edit-btn" data-id="${entry.id}">Edit</button>
@@ -961,6 +966,11 @@ function openModal() {
     const modal = document.getElementById('entryModal');
     const form = document.getElementById('entryForm');
     form.reset();
+    // Reset couple expense checkbox
+    const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
+    if (isCoupleExpenseCheckbox) {
+        isCoupleExpenseCheckbox.checked = false;
+    }
     modal.style.display = 'block';
     // Focus first input
     setTimeout(() => {
@@ -1016,13 +1026,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tagsInput = document.getElementById('tags').value;
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
+        const isCoupleExpense = isCoupleExpenseCheckbox ? isCoupleExpenseCheckbox.checked : false;
 
         const entry = {
             month: document.getElementById('month').value,
             type: document.getElementById('type').value,
             amount: amountValue,
             description: document.getElementById('description').value,
-            tags: tags
+            tags: tags,
+            isCoupleExpense: isCoupleExpense
         };
         if (!entry.month || !entry.type || !entry.amount) {
             alert('Please fill in Month, Type, and Amount for manual entry.');
@@ -1103,6 +1116,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('editAmount').value = entry.amount;
                 document.getElementById('editDescription').value = entry.description;
                 document.getElementById('editTags').value = (entry.tags || []).join(', ');
+                const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
+                if (editIsCoupleExpense) {
+                    editIsCoupleExpense.checked = entry.isCoupleExpense || false;
+                }
                 document.getElementById('editEntryModal').style.display = 'block';
             }
         }
@@ -1114,13 +1131,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = parseInt(document.getElementById('editEntryId').value);
         const tagsInput = document.getElementById('editTags').value;
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
+        const isCoupleExpense = editIsCoupleExpense ? editIsCoupleExpense.checked : false;
 
         const updatedEntry = {
             month: document.getElementById('editMonth').value,
             type: document.getElementById('editType').value,
             amount: parseFloat(document.getElementById('editAmount').value),
             description: document.getElementById('editDescription').value,
-            tags: tags
+            tags: tags,
+            isCoupleExpense: isCoupleExpense
         };
 
         try {
@@ -1235,7 +1255,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/user');
             if (response.ok) {
                 currentUser = await response.json();
+                hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
+                updateUIForPartner();
             }
         } catch (error) {
             console.error('Error fetching user:', error);
@@ -1249,6 +1271,55 @@ document.addEventListener('DOMContentLoaded', () => {
             adminBtn.style.display = 'inline-flex';
         } else {
             adminBtn.style.display = 'none';
+        }
+    }
+
+    // Update UI for couple features
+    function updateUIForPartner() {
+        const viewModeContainer = document.getElementById('viewModeContainer');
+        const coupleExpenseToggle = document.getElementById('coupleExpenseToggle');
+        const editCoupleExpenseToggle = document.getElementById('editCoupleExpenseToggle');
+        const partnerInfo = document.getElementById('partnerInfo');
+
+        if (hasPartner) {
+            viewModeContainer.style.display = 'flex';
+            if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'block';
+            if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'block';
+            if (partnerInfo && currentUser.partnerUsername) {
+                partnerInfo.textContent = `Partner: ${currentUser.partnerUsername}`;
+            }
+        } else {
+            viewModeContainer.style.display = 'none';
+            if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'none';
+            if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'none';
+        }
+    }
+
+    // Set view mode and reload entries
+    function setViewMode(mode) {
+        currentViewMode = mode;
+
+        // Update button states
+        document.getElementById('individualViewBtn').classList.toggle('active', mode === 'individual');
+        document.getElementById('combinedViewBtn').classList.toggle('active', mode === 'combined');
+
+        // Reload entries with new view mode
+        loadEntries();
+    }
+
+    // Load entries from server with viewMode
+    async function loadEntries() {
+        try {
+            const response = await fetch(`/api/entries?viewMode=${currentViewMode}`);
+            if (response.ok) {
+                entries = await response.json();
+                currentFilteredEntries = entries;
+                displayEntries(entries);
+                updateSummary(entries);
+                updateCharts(entries, true);
+            }
+        } catch (error) {
+            console.error('Error loading entries:', error);
         }
     }
 
@@ -1272,10 +1343,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         users.forEach(user => {
             const row = document.createElement('tr');
+            const partnerDisplay = user.partnerUsername
+                ? `<span class="partner-badge">${user.partnerUsername}</span>`
+                : '-';
             row.innerHTML = `
                 <td>${user.id}</td>
                 <td>${user.username}</td>
                 <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+                <td>${partnerDisplay}</td>
                 <td><span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">
                     ${user.isActive ? 'Active' : 'Inactive'}</span></td>
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
@@ -1365,6 +1440,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('adminPanelBtn').addEventListener('click', () => {
         document.getElementById('adminModal').style.display = 'block';
         loadUsersForAdmin();
+        loadCouplesForAdmin();
+        populateCoupleDropdowns();
     });
 
     document.getElementById('closeAdminModal').addEventListener('click', () => {
@@ -1377,6 +1454,149 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === adminModal) {
             adminModal.style.display = 'none';
         }
+    });
+
+    // ============ COUPLE MANAGEMENT FUNCTIONALITY ============
+
+    // Load couples for admin
+    async function loadCouplesForAdmin() {
+        try {
+            const response = await fetch('/api/admin/couples');
+            if (response.ok) {
+                const data = await response.json();
+                displayCouplesTable(data.couples);
+            }
+        } catch (error) {
+            console.error('Error loading couples:', error);
+        }
+    }
+
+    // Display couples in admin table
+    function displayCouplesTable(couples) {
+        const tbody = document.getElementById('couplesTableBody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (couples.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No couples linked yet</td></tr>';
+            return;
+        }
+
+        couples.forEach(couple => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${couple.user1.username}</td>
+                <td>${couple.user2.username}</td>
+                <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
+                <td>
+                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">Unlink</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Populate couple dropdowns with unlinked users
+    async function populateCoupleDropdowns() {
+        try {
+            const response = await fetch('/api/admin/users');
+            if (response.ok) {
+                const users = await response.json();
+                const unlinkedUsers = users.filter(u => !u.partnerId && u.isActive);
+
+                const select1 = document.getElementById('coupleUser1');
+                const select2 = document.getElementById('coupleUser2');
+
+                if (!select1 || !select2) return;
+
+                [select1, select2].forEach(select => {
+                    select.innerHTML = '<option value="">Select user...</option>';
+                    unlinkedUsers.forEach(user => {
+                        select.innerHTML += `<option value="${user.id}">${user.username}</option>`;
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Error populating couple dropdowns:', error);
+        }
+    }
+
+    // Link couple form submission
+    const linkCoupleForm = document.getElementById('linkCoupleForm');
+    if (linkCoupleForm) {
+        linkCoupleForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId1 = parseInt(document.getElementById('coupleUser1').value);
+            const userId2 = parseInt(document.getElementById('coupleUser2').value);
+
+            if (!userId1 || !userId2) {
+                alert('Please select both users');
+                return;
+            }
+
+            if (userId1 === userId2) {
+                alert('Please select two different users');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/couples/link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId1, userId2 })
+                });
+
+                if (response.ok) {
+                    alert('Users linked as couple successfully');
+                    loadCouplesForAdmin();
+                    populateCoupleDropdowns();
+                    loadUsersForAdmin();
+                    e.target.reset();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed to link users');
+                }
+            } catch (error) {
+                alert('Error linking users');
+            }
+        });
+    }
+
+    // Unlink couple
+    window.unlinkCouple = async function(userId) {
+        if (!confirm('Are you sure you want to unlink this couple?')) return;
+
+        try {
+            const response = await fetch('/api/admin/couples/unlink', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId })
+            });
+
+            if (response.ok) {
+                alert('Couple unlinked successfully');
+                loadCouplesForAdmin();
+                populateCoupleDropdowns();
+                loadUsersForAdmin();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to unlink couple');
+            }
+        } catch (error) {
+            alert('Error unlinking couple');
+        }
+    };
+
+    // ============ VIEW MODE TOGGLE EVENT LISTENERS ============
+
+    document.getElementById('individualViewBtn').addEventListener('click', () => {
+        setViewMode('individual');
+    });
+
+    document.getElementById('combinedViewBtn').addEventListener('click', () => {
+        setViewMode('combined');
     });
 
     // Fetch current user on load

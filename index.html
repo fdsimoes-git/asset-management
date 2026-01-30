@@ -553,6 +553,120 @@
             padding: 0.25rem 0.5rem;
             font-size: 0.75rem;
         }
+        /* Couple Feature Styles */
+        .view-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: var(--surface-color);
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+        .view-mode-toggle label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        .toggle-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .view-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.375rem;
+            background: var(--background-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        .view-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .view-btn:hover:not(.active) {
+            background: #e2e8f0;
+        }
+        .couple-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            background: #fef3c7;
+            color: #92400e;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            text-transform: uppercase;
+        }
+        .couple-expense-toggle {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #fef3c7;
+            border-radius: 0.5rem;
+            border: 1px solid #fcd34d;
+        }
+        .couple-expense-toggle .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .couple-expense-toggle .checkbox-label input[type="checkbox"] {
+            width: 1.25rem;
+            height: 1.25rem;
+            cursor: pointer;
+        }
+        .couple-expense-toggle .help-text {
+            display: block;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .admin-couples-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+        .admin-couples-section h3 {
+            margin: 0 0 1rem 0;
+            font-size: 1.125rem;
+            color: var(--text-primary);
+        }
+        .admin-link-couple {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+        .admin-link-couple h4 {
+            margin: 0 0 1rem 0;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+        .couples-table {
+            margin-top: 1rem;
+        }
+        .couples-table h4 {
+            margin: 0 0 1rem 0;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+        .partner-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            background: #fef3c7;
+            color: #92400e;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -596,6 +710,13 @@
                             <label for="tags">Tags (comma-separated):</label>
                             <input type="text" id="tags" placeholder="e.g. food, subscription">
                         </div>
+                        <div class="couple-expense-toggle" id="coupleExpenseToggle" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="isCoupleExpense">
+                                <span>This is a couple expense</span>
+                            </label>
+                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
+                        </div>
                         <button type="submit">Add Entry</button>
                     </form>
                 </div>
@@ -629,6 +750,13 @@
                         <div class="form-group">
                             <label for="editTags">Tags (comma-separated):</label>
                             <input type="text" id="editTags" placeholder="e.g. food, subscription">
+                        </div>
+                        <div class="couple-expense-toggle" id="editCoupleExpenseToggle" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="editIsCoupleExpense">
+                                <span>This is a couple expense</span>
+                            </label>
+                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
                         </div>
                         <button type="submit">Save Changes</button>
                     </form>
@@ -696,6 +824,7 @@
                                     <th>ID</th>
                                     <th>Username</th>
                                     <th>Role</th>
+                                    <th>Partner</th>
                                     <th>Status</th>
                                     <th>Created</th>
                                     <th>Entries</th>
@@ -705,7 +834,59 @@
                             <tbody id="usersTableBody"></tbody>
                         </table>
                     </div>
+
+                    <!-- Couple Management Section -->
+                    <div class="admin-couples-section">
+                        <h3>Couple Management</h3>
+
+                        <!-- Link Couple Form -->
+                        <div class="admin-link-couple">
+                            <h4>Link Users as Couple</h4>
+                            <form id="linkCoupleForm">
+                                <div class="admin-form-row">
+                                    <div class="form-group">
+                                        <label for="coupleUser1">User 1:</label>
+                                        <select id="coupleUser1" required>
+                                            <option value="">Select user...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="coupleUser2">User 2:</label>
+                                        <select id="coupleUser2" required>
+                                            <option value="">Select user...</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="add-entry-btn">Link as Couple</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Existing Couples List -->
+                        <div class="couples-table">
+                            <h4>Linked Couples</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>User 1</th>
+                                        <th>User 2</th>
+                                        <th>Linked Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="couplesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <!-- View Mode Toggle (visible only for users with partners) -->
+            <div id="viewModeContainer" class="view-mode-toggle" style="display: none;">
+                <label>View Mode:</label>
+                <div class="toggle-buttons">
+                    <button type="button" id="individualViewBtn" class="view-btn active">Individual</button>
+                    <button type="button" id="combinedViewBtn" class="view-btn">Combined (Couple)</button>
+                </div>
+                <span id="partnerInfo" style="font-size: 0.875rem; color: var(--text-secondary);"></span>
             </div>
             <section class="filters-section">
                 <h2>Filters</h2>
