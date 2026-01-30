@@ -699,6 +699,67 @@ processBulkPdfBtn.addEventListener('click', async () => {
     }
 });
 
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Helper function to validate month format (YYYY-MM)
+function isValidMonthFormat(month) {
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+}
+
+// Helper function to save entry from edit mode
+function saveEntryFromEdit(index, row) {
+    const month = row.querySelector('.bulk-edit-month').value;
+    const amount = row.querySelector('.bulk-edit-amount').value;
+    const description = row.querySelector('.bulk-edit-description').value.trim();
+    const parsedAmount = parseFloat(amount);
+
+    // Validate month format
+    if (!isValidMonthFormat(month)) {
+        alert('Please enter a valid month in YYYY-MM format');
+        return false;
+    }
+
+    // Validate amount is a positive number
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+        alert('Please enter a valid positive amount');
+        return false;
+    }
+
+    // Validate description is not empty after trimming
+    if (!description) {
+        alert('Please enter a description');
+        return false;
+    }
+
+    bulkExtractedEntries[index].month = month;
+    bulkExtractedEntries[index].amount = parsedAmount;
+    bulkExtractedEntries[index].description = description;
+    delete bulkExtractedEntries[index].isEditing;
+    delete bulkExtractedEntries[index].originalValues;
+    renderBulkPreviewTable();
+    return true;
+}
+
+// Helper function to cancel entry edit and restore original values
+function cancelEntryEdit(index) {
+    const entry = bulkExtractedEntries[index];
+    if (entry.originalValues) {
+        entry.month = entry.originalValues.month;
+        entry.amount = entry.originalValues.amount;
+        entry.description = entry.originalValues.description;
+        entry.type = entry.originalValues.type;
+        entry.tags = entry.originalValues.tags;
+        delete entry.originalValues;
+    }
+    delete entry.isEditing;
+    renderBulkPreviewTable();
+}
+
 // Render the bulk preview table
 function renderBulkPreviewTable() {
     bulkExtractedEntriesTbody.innerHTML = '';
@@ -710,36 +771,38 @@ function renderBulkPreviewTable() {
             row.dataset.index = index;
 
             if (entry.isEditing) {
-                // Editing mode - show input fields
+                // Editing mode - show input fields with type/category as read-only
+                const escapedDescription = escapeHtml(entry.description);
                 row.innerHTML = `
-                    <td><input type="month" class="bulk-edit-month" value="${entry.month}" style="width:100%;padding:4px;"></td>
-                    <td>${generateTypeSelect(currentType, index)}</td>
-                    <td><input type="number" class="bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" style="width:80px;padding:4px;"></td>
-                    <td><input type="text" class="bulk-edit-description" value="${entry.description}" style="width:100%;padding:4px;"></td>
-                    <td>${generateCategorySelect(currentTag, index)}</td>
+                    <td><input type="month" class="bulk-edit-input bulk-edit-month" value="${entry.month}" aria-label="Month for entry ${index + 1}"></td>
+                    <td>${currentType}</td>
+                    <td><input type="number" class="bulk-edit-input bulk-edit-input--amount bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" min="0.01" aria-label="Amount for entry ${index + 1}"></td>
+                    <td><input type="text" class="bulk-edit-input bulk-edit-description" value="${escapedDescription}" aria-label="Description for entry ${index + 1}"></td>
+                    <td>${currentTag}</td>
                     <td>
-                        <button class="bulk-save-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Save</button>
-                        <button class="bulk-cancel-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#64748b;color:white;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+                        <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">Save</button>
+                        <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">Cancel</button>
                     </td>
                 `;
             } else {
                 // View mode - show values with edit/delete buttons
+                const escapedDescription = escapeHtml(entry.description);
                 row.innerHTML = `
                     <td>${entry.month}</td>
                     <td>${generateTypeSelect(currentType, index)}</td>
                     <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-                    <td>${entry.description}</td>
+                    <td>${escapedDescription}</td>
                     <td>${generateCategorySelect(currentTag, index)}</td>
                     <td>
-                        <button class="bulk-edit-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Edit</button>
-                        <button class="bulk-delete-btn" data-index="${index}" style="padding:2px 8px;font-size:0.75rem;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;">Delete</button>
+                        <button class="bulk-action-btn bulk-action-btn--edit bulk-edit-btn" data-index="${index}" aria-label="Edit entry: ${escapedDescription}">Edit</button>
+                        <button class="bulk-action-btn bulk-action-btn--delete bulk-delete-btn" data-index="${index}" aria-label="Delete entry: ${escapedDescription}">Delete</button>
                     </td>
                 `;
             }
             bulkExtractedEntriesTbody.appendChild(row);
         });
 
-        // Add event listeners for dropdown changes
+        // Add event listeners for dropdown changes (only in view mode)
         document.querySelectorAll('.category-select').forEach(select => {
             select.addEventListener('change', (e) => {
                 const index = parseInt(e.target.dataset.index);
@@ -758,7 +821,24 @@ function renderBulkPreviewTable() {
         document.querySelectorAll('.bulk-edit-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const index = parseInt(e.target.dataset.index);
-                bulkExtractedEntries[index].isEditing = true;
+                const entry = bulkExtractedEntries[index];
+
+                // Ensure only one entry is in edit mode at a time
+                bulkExtractedEntries.forEach((e, i) => {
+                    if (i !== index && e.isEditing) {
+                        cancelEntryEdit(i);
+                    }
+                });
+
+                // Store original values for cancel functionality
+                entry.originalValues = {
+                    month: entry.month,
+                    amount: entry.amount,
+                    description: entry.description,
+                    type: entry.type || 'expense',
+                    tags: entry.tags ? [...entry.tags] : ['other']
+                };
+                entry.isEditing = true;
                 renderBulkPreviewTable();
             });
         });
@@ -779,20 +859,7 @@ function renderBulkPreviewTable() {
             btn.addEventListener('click', (e) => {
                 const index = parseInt(e.target.dataset.index);
                 const row = e.target.closest('tr');
-                const month = row.querySelector('.bulk-edit-month').value;
-                const amount = row.querySelector('.bulk-edit-amount').value;
-                const description = row.querySelector('.bulk-edit-description').value;
-
-                if (!month || !amount || !description) {
-                    alert('Please fill in all fields');
-                    return;
-                }
-
-                bulkExtractedEntries[index].month = month;
-                bulkExtractedEntries[index].amount = parseFloat(amount);
-                bulkExtractedEntries[index].description = description;
-                bulkExtractedEntries[index].isEditing = false;
-                renderBulkPreviewTable();
+                saveEntryFromEdit(index, row);
             });
         });
 
@@ -800,8 +867,23 @@ function renderBulkPreviewTable() {
         document.querySelectorAll('.bulk-cancel-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const index = parseInt(e.target.dataset.index);
-                bulkExtractedEntries[index].isEditing = false;
-                renderBulkPreviewTable();
+                cancelEntryEdit(index);
+            });
+        });
+
+        // Add keyboard event listeners for edit mode inputs (Enter to save, Escape to cancel)
+        document.querySelectorAll('.bulk-edit-input').forEach(input => {
+            input.addEventListener('keydown', (e) => {
+                const row = e.target.closest('tr');
+                const index = parseInt(row.dataset.index);
+
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveEntryFromEdit(index, row);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEntryEdit(index);
+                }
             });
         });
 
