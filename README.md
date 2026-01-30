@@ -1,36 +1,51 @@
 # Asset Management Web Application
 
-A secure web-based asset management system with AI-powered expense tracking that automatically processes financial documents using local AI models via Ollama.
+A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents using Google Gemini AI.
 
 ## Features
 
 ### Core Functionality
+- **Multi-User Support**: Multiple users with independent data isolation
+- **User Registration**: Public registration for new users
 - **User Authentication**: Secure login with bcrypt password hashing
 - **Asset Tracking**: Add monthly income and expense entries manually
 - **Data Visualization**: Interactive charts showing asset progression, income vs expenses, and expense categories
-- **Advanced Filtering**: Filter entries by date range and transaction type
+- **Advanced Filtering**: Filter entries by date range, transaction type, and categories
 - **Data Management**: Edit and delete existing entries
 - **Encrypted Storage**: All data encrypted at rest using AES-256-CBC
 
+### Multi-User System
+- **Public Registration**: New users can create accounts
+- **Data Isolation**: Each user sees only their own entries
+- **Admin Panel**: Admins can create, activate/deactivate, and delete users
+- **Role-Based Access**: Admin and regular user roles
+
 ### AI-Powered Processing
-- **PDF Analysis**: Upload financial documents for automatic expense extraction using local Ollama AI models
+- **PDF Analysis**: Upload financial documents for automatic expense extraction using Google Gemini AI
 - **Smart Data Extraction**: Automatically identifies amounts, dates, descriptions, and categories from PDFs
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
-- **Bulk Import**: Process multiple expenses from a single document
+- **Bulk Import**: Process multiple expenses from a single document with preview
+
+### Data Visualization
+- **Asset Progression**: Line chart showing cumulative total assets over time
+- **Monthly Comparison**: Grouped bar chart of income vs expenses per month
+- **Category Distribution**: Horizontal bar chart showing expense breakdown by category
+- **Category Trends**: Stacked bar chart showing expense categories evolution per month
+- **Summary Statistics**: Total income, expenses, and net balance
 
 ### Network & Security
 - **Local DNS**: Access via `https://asset-manager.local` on your network
 - **HTTPS Encryption**: All communications secured with SSL/TLS
 - **Network Access**: Available to all devices on your LAN
 - **Session Management**: Secure session-based authentication
-- **Data Encryption**: Client data encrypted before storage
+- **Data Encryption**: User and entry data encrypted before storage
 
 ## Requirements
 
 - **Node.js** 18.x or higher
 - **npm** (Node Package Manager)
 - **Modern web browser** with JavaScript enabled
-- **Ollama** running locally (https://ollama.ai)
+- **Google Gemini API Key** (for PDF processing)
 
 ## Installation
 
@@ -46,14 +61,7 @@ A secure web-based asset management system with AI-powered expense tracking that
    npm run ssl
    ```
 
-5. **Install and start Ollama**:
-   ```bash
-   # Install Ollama from https://ollama.ai
-   ollama serve
-   ollama pull llama3.2
-   ```
-
-6. **Configure environment variables** by creating `.env`:
+5. **Configure environment variables** by creating `.env`:
    ```env
    SESSION_SECRET=your-secure-session-secret
    ADMIN_USERNAME=admin
@@ -61,23 +69,33 @@ A secure web-based asset management system with AI-powered expense tracking that
    SSL_KEY_PATH=ssl/server.key
    SSL_CERT_PATH=ssl/server.crt
    PORT=443
-   OLLAMA_URL=http://localhost:11434
-   OLLAMA_MODEL=llama3.2
+   GEMINI_API_KEY=your-gemini-api-key
    ENCRYPTION_KEY=your-32-byte-hex-encryption-key
+   ```
+
+6. **Generate admin password hash**:
+   ```bash
+   npm run hash-password your-password
    ```
 
 ## Authentication Setup
 
-The default login credentials are:
-- **Username**: `admin`
-- **Password**: `isa_e_fe_management`
+### Initial Admin Setup
+On first run, the system automatically migrates the admin user from environment variables:
+- `ADMIN_USERNAME` (defaults to "admin")
+- `ADMIN_PASSWORD_HASH` (bcrypt hash from `.env`)
 
-To change the password:
-1. Generate a new bcrypt hash:
-   ```bash
-   npm run hash-password your-new-password
-   ```
-2. Update `ADMIN_PASSWORD_HASH` in your `.env` file
+### User Registration
+New users can register at `/register.html` with:
+- Username (3-30 characters, alphanumeric and underscores)
+- Password (minimum 8 characters)
+
+### Admin User Management
+Admins can access the Admin Panel to:
+- Create new users with specified roles
+- Activate/deactivate user accounts
+- Delete users (and their associated entries)
+- View user statistics
 
 ## Network Setup (Local DNS)
 
@@ -87,10 +105,7 @@ To access via `https://asset-manager.local`:
    - **Linux/macOS**: `echo "192.168.86.80 asset-manager.local" | sudo tee -a /etc/hosts`
    - **Windows**: Add `192.168.86.80 asset-manager.local` to `C:\Windows\System32\drivers\etc\hosts`
 
-2. **Or configure your router** to use the Raspberry Pi as DNS server:
-   - Router admin panel > DNS Settings
-   - Primary DNS: `192.168.86.80`
-   - Secondary DNS: `8.8.8.8`
+2. **Or configure your router** to use the server as DNS
 
 ## Usage
 
@@ -106,47 +121,36 @@ sudo node server.js
 
 ### Using the System
 
-1. **Login** with your credentials
-2. **Manual Entry**: Add income/expenses using the form (with optional category tags)
+1. **Register/Login**: Create an account or login with existing credentials
+2. **Manual Entry**: Add income/expenses using the form with optional category tags
 3. **PDF Upload**: Upload financial documents for AI-powered expense extraction
-4. **Data Analysis**: View charts and filter data by date/type
-5. **Category Analysis**: View expense distribution by AI-assigned category tags
+4. **Data Analysis**: View charts and filter data by date/type/category
+5. **Admin Panel** (admins only): Manage users from the Admin Panel button
 
-## Features Overview
+## Category Tags
 
-### Manual Entry
-- Select month, type (income/expense), amount, and description
-- Add category tags (comma-separated) for expense classification
-- Real-time validation and formatting
-- Instant addition to dashboard
-
-### PDF Processing
-- Upload bank statements, invoices, or receipts
-- Local AI (Ollama) extracts transaction details automatically
-- AI assigns category tags to each expense
-- Batch import of multiple expenses with preview
-- Smart date and amount recognition
-
-### Data Visualization
-- **Asset Progression**: Line chart showing total assets over time
-- **Monthly Comparison**: Bar chart of income vs expenses
-- **Category Distribution**: Horizontal bar chart showing expense breakdown by category
-- **Summary Statistics**: Total income, expenses, and net balance
-- **Filtering**: Date ranges and transaction types
+Available expense/income categories:
+- Food, Groceries, Transport, Travel, Entertainment
+- Utilities, Healthcare, Education, Shopping, Subscription
+- Housing, Salary, Freelance, Investment, Transfer, Other
 
 ## Security Features
 
 - **HTTPS Encryption**: All data transmitted securely
-- **Password Hashing**: bcrypt with salt rounds
-- **Session Security**: HTTP-only, secure cookies
+- **Password Hashing**: bcrypt with 10 salt rounds
+- **Session Security**: HTTP-only, secure cookies (24-hour expiration)
 - **Data Encryption**: AES-256-CBC for stored data
 - **Input Validation**: Server-side validation for all inputs
+- **Data Isolation**: Users can only access their own entries
+- **Role-Based Access**: Admin-only endpoints protected
 
 ## Data Storage
 
-- **Location**: `data/entries.json` (encrypted)
+- **Users**: `data/users.json` (encrypted)
+- **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **Entry Model**: `{ id, month, type, amount, description, tags }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive }`
+- **Entry Model**: `{ id, userId, month, type, amount, description, tags }`
 
 ## Technical Details
 
@@ -154,49 +158,76 @@ sudo node server.js
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
 - **Database**: Encrypted JSON file storage
-- **AI Integration**: Ollama (local LLM - llama3.2)
-- **Security**: Helmet.js, bcrypt, custom encryption
+- **AI Integration**: Google Gemini API (gemini-3-flash-preview)
+- **Security**: Helmet.js, bcrypt, express-session, custom AES encryption
 
 ### API Endpoints
+
+#### Authentication
 - `POST /api/login` - User authentication
-- `GET /api/entries` - Retrieve all entries
+- `POST /api/register` - User registration
+- `POST /api/logout` - End session
+- `GET /api/user` - Get current user info
+
+#### Entries (requires authentication)
+- `GET /api/entries` - Retrieve user's entries
 - `POST /api/entries` - Add new entry
+- `PUT /api/entries/:id` - Update entry
 - `DELETE /api/entries/:id` - Delete entry
 - `POST /api/process-pdf` - Process PDF with AI
+
+#### Admin (requires admin role)
+- `GET /api/admin/users` - List all users
+- `POST /api/admin/users` - Create user
+- `PUT /api/admin/users/:id` - Update user
+- `DELETE /api/admin/users/:id` - Delete user
 
 ### File Structure
 ```
 asset-management/
 ├── ssl/                 # SSL certificates
-├── data/               # Encrypted data storage
-├── js/                 # Frontend JavaScript
-├── server.js          # Main server application
-├── index.html         # Main dashboard
-├── login.html         # Authentication page
-├── package.json       # Dependencies
-└── .env              # Configuration (not in repo)
+├── data/                # Encrypted data storage
+│   ├── users.json       # User accounts (encrypted)
+│   └── entries.json     # Financial entries (encrypted)
+├── js/
+│   ├── app.js           # Main application logic
+│   ├── login.js         # Login page logic
+│   └── register.js      # Registration page logic
+├── server.js            # Main server application
+├── index.html           # Main dashboard
+├── login.html           # Login page
+├── register.html        # Registration page
+├── package.json         # Dependencies
+└── .env                 # Configuration (not in repo)
 ```
+
+## Migration
+
+When upgrading from single-user to multi-user:
+1. The system automatically creates an admin user from `.env` credentials
+2. Existing entries are automatically assigned to the admin user
+3. No manual migration steps required
 
 ## Maintenance
 
 - **Logs**: Server logs available in terminal output
 - **Updates**: `npm update` to update dependencies
 - **SSL Renewal**: Regenerate certificates annually
-- **Ollama Models**: Update with `ollama pull llama3.2`
+- **Backup**: Copy `data/` directory for backups
 
 ## Troubleshooting
 
 ### Common Issues
 1. **Certificate Errors**: Regenerate SSL certificates or accept self-signed
-2. **Ollama Not Responding**: Ensure `ollama serve` is running
+2. **Gemini API Errors**: Verify `GEMINI_API_KEY` is valid
 3. **DNS Issues**: Verify hosts file or router DNS configuration
 4. **Permission Errors**: Run server with `sudo` for port 443
-5. **PDF Processing Fails**: Check Ollama model is downloaded (`ollama list`)
+5. **Login Issues**: Ensure user account is active
 
 ### Debug Mode
 - Check browser developer console for client-side errors
-- Server logs show detailed processing information including Ollama responses
+- Server logs show detailed processing information including AI responses
 
 ---
 
-**Note**: This system is designed for personal financial management. For production use, consider implementing additional security measures and using a proper database system.
+**Note**: This system is designed for personal/family financial management. For production use with many users, consider implementing rate limiting, a proper database system, and additional security measures.
