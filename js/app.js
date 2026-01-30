@@ -5,6 +5,8 @@ let categoryChart = null;
 let categoryStackedChart = null;
 // Add a variable to track currently filtered entries
 let currentFilteredEntries = [];
+// Current user info
+let currentUser = null;
 
 // Sorting state
 let currentSortColumn = null;
@@ -1060,4 +1062,159 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('monthFilterEnd').addEventListener('input', filterEntries);
     document.getElementById('typeFilter').addEventListener('change', filterEntries);
     document.getElementById('categoryFilter').addEventListener('change', filterEntries);
+
+    // ============ ADMIN PANEL FUNCTIONALITY ============
+
+    // Fetch current user info on load
+    async function fetchCurrentUser() {
+        try {
+            const response = await fetch('/api/user');
+            if (response.ok) {
+                currentUser = await response.json();
+                updateUIForRole();
+            }
+        } catch (error) {
+            console.error('Error fetching user:', error);
+        }
+    }
+
+    // Update UI based on user role
+    function updateUIForRole() {
+        const adminBtn = document.getElementById('adminPanelBtn');
+        if (currentUser && currentUser.role === 'admin') {
+            adminBtn.style.display = 'inline-flex';
+        } else {
+            adminBtn.style.display = 'none';
+        }
+    }
+
+    // Load users for admin panel
+    async function loadUsersForAdmin() {
+        try {
+            const response = await fetch('/api/admin/users');
+            if (response.ok) {
+                const users = await response.json();
+                displayUsersTable(users);
+            }
+        } catch (error) {
+            console.error('Error loading users:', error);
+        }
+    }
+
+    // Display users in admin table
+    function displayUsersTable(users) {
+        const tbody = document.getElementById('usersTableBody');
+        tbody.innerHTML = '';
+
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${user.id}</td>
+                <td>${user.username}</td>
+                <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+                <td><span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">
+                    ${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+                <td>${user.entriesCount || 0}</td>
+                <td class="user-actions">
+                    <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? 'Deactivate' : 'Activate'}</button>
+                    ${user.id !== currentUser.id ?
+                        `<button class="delete-btn" onclick="deleteUser(${user.id})">Delete</button>` : ''}
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Toggle user active status
+    window.toggleUserStatus = async function(userId, newStatus) {
+        try {
+            const response = await fetch(`/api/admin/users/${userId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isActive: newStatus })
+            });
+
+            if (response.ok) {
+                loadUsersForAdmin();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to update user');
+            }
+        } catch (error) {
+            alert('Error updating user');
+        }
+    };
+
+    // Delete user
+    window.deleteUser = async function(userId) {
+        if (!confirm('Are you sure you want to delete this user? All their entries will also be deleted.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/users/${userId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                alert('User deleted successfully');
+                loadUsersForAdmin();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to delete user');
+            }
+        } catch (error) {
+            alert('Error deleting user');
+        }
+    };
+
+    // Create user from admin panel
+    document.getElementById('createUserForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById('newUsername').value;
+        const password = document.getElementById('newPassword').value;
+        const role = document.getElementById('newRole').value;
+
+        try {
+            const response = await fetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role })
+            });
+
+            if (response.ok) {
+                alert('User created successfully');
+                loadUsersForAdmin();
+                e.target.reset();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to create user');
+            }
+        } catch (error) {
+            alert('Error creating user');
+        }
+    });
+
+    // Admin panel modal handlers
+    document.getElementById('adminPanelBtn').addEventListener('click', () => {
+        document.getElementById('adminModal').style.display = 'block';
+        loadUsersForAdmin();
+    });
+
+    document.getElementById('closeAdminModal').addEventListener('click', () => {
+        document.getElementById('adminModal').style.display = 'none';
+    });
+
+    // Close admin modal when clicking outside
+    window.addEventListener('click', (event) => {
+        const adminModal = document.getElementById('adminModal');
+        if (event.target === adminModal) {
+            adminModal.style.display = 'none';
+        }
+    });
+
+    // Fetch current user on load
+    fetchCurrentUser();
 });

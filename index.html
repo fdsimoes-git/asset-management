@@ -103,6 +103,15 @@
             transform: translateY(-1px);
             box-shadow: var(--shadow-md);
         }
+        .admin-btn {
+            background: #7c3aed;
+            color: white;
+        }
+        .admin-btn:hover {
+            background: #6d28d9;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
         main {
             padding: 2rem;
         }
@@ -416,6 +425,91 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #475569;
         }
+        /* Admin Panel Styles */
+        .admin-modal .modal-content {
+            max-width: 900px;
+        }
+        .admin-create-user {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+        .admin-create-user h3 {
+            margin: 0 0 1rem 0;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+        .admin-form-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .admin-form-row .form-group {
+            flex: 1;
+            min-width: 150px;
+            margin-bottom: 0;
+        }
+        .users-table {
+            overflow-x: auto;
+        }
+        .users-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .users-table th,
+        .users-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .users-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .role-admin {
+            background: #ede9fe;
+            color: #6d28d9;
+        }
+        .role-user {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .status-active {
+            background: #dcfce7;
+            color: #15803d;
+        }
+        .status-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .user-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .user-actions button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
     </style>
 </head>
 <body>
@@ -425,6 +519,7 @@
             <div class="header-buttons">
                 <button id="addEntryBtn" class="add-entry-btn">Add New Entry</button>
                 <button id="openBulkUploadModal" class="bulk-upload-btn">Bulk PDF Upload</button>
+                <button id="adminPanelBtn" class="admin-btn" style="display:none;">Admin Panel</button>
                 <button id="logoutBtn" class="logout-btn">Logout</button>
             </div>
         </header>
@@ -517,6 +612,56 @@
                         </table>
                     </div>
                     <button id="confirmBulkEntriesBtn" style="display:none;">Confirm and Add Entries</button>
+                </div>
+            </div>
+            <!-- Admin Panel Modal -->
+            <div id="adminModal" class="modal admin-modal" style="display:none;">
+                <div class="modal-content">
+                    <span class="close" id="closeAdminModal">&times;</span>
+                    <h2>User Management</h2>
+
+                    <!-- Create User Form -->
+                    <div class="admin-create-user">
+                        <h3>Create New User</h3>
+                        <form id="createUserForm">
+                            <div class="admin-form-row">
+                                <div class="form-group">
+                                    <label for="newUsername">Username:</label>
+                                    <input type="text" id="newUsername" required minlength="3" maxlength="30">
+                                </div>
+                                <div class="form-group">
+                                    <label for="newPassword">Password:</label>
+                                    <input type="password" id="newPassword" required minlength="8">
+                                </div>
+                                <div class="form-group">
+                                    <label for="newRole">Role:</label>
+                                    <select id="newRole">
+                                        <option value="user">User</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="add-entry-btn">Create User</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Users Table -->
+                    <div class="users-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Entries</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <section class="filters-section">

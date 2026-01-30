@@ -87,8 +87,104 @@ function saveEntries() {
     }
 }
 
-// Load entries on startup
+// ============ USER STORAGE SYSTEM ============
+
+// Users file path
+const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+
+// Initialize users storage
+let users = [];
+let nextUserId = 1;
+
+// Load users from file
+function loadUsers() {
+    try {
+        if (fs.existsSync(USERS_FILE)) {
+            const data = fs.readFileSync(USERS_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed.iv && parsed.encryptedData) {
+                const decrypted = decryptData(parsed.encryptedData, parsed.iv);
+                users = decrypted.users || [];
+                nextUserId = decrypted.nextUserId || 1;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+        users = [];
+    }
+}
+
+// Save users to file
+function saveUsers() {
+    try {
+        const dataDir = path.dirname(USERS_FILE);
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        const encrypted = encryptData({ users, nextUserId });
+        fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
+    } catch (error) {
+        console.error('Error saving users:', error);
+    }
+}
+
+// Find user by username (case-insensitive)
+function findUserByUsername(username) {
+    return users.find(u => u.username.toLowerCase() === username.toLowerCase());
+}
+
+// Find user by ID
+function findUserById(id) {
+    return users.find(u => u.id === id);
+}
+
+// Migration: Create initial admin user from env vars if no users exist
+async function migrateInitialAdmin() {
+    if (users.length === 0) {
+        const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+        const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+
+        if (adminPasswordHash) {
+            users.push({
+                id: nextUserId++,
+                username: adminUsername,
+                passwordHash: adminPasswordHash,
+                role: 'admin',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                isActive: true
+            });
+            saveUsers();
+            console.log(`Migrated admin user: ${adminUsername}`);
+        }
+    }
+}
+
+// Migration: Add userId to existing entries (assign to first admin)
+function migrateExistingEntries() {
+    const adminUser = users.find(u => u.role === 'admin');
+    if (adminUser) {
+        let migrated = false;
+        entries.forEach(entry => {
+            if (!entry.userId) {
+                entry.userId = adminUser.id;
+                migrated = true;
+            }
+        });
+        if (migrated) {
+            saveEntries();
+            console.log('Migrated existing entries to admin user');
+        }
+    }
+}
+
+// Load data on startup
+loadUsers();
 loadEntries();
+
+// Run migrations
+migrateInitialAdmin();
+migrateExistingEntries();
 
 // Security middleware
 app.use(helmet({
@@ -111,27 +207,122 @@ app.use(session({
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
-    if (req.session && req.session.user) {
-        next();
-    } else {
-        res.status(401).json({ message: 'Unauthorized' });
+    if (req.session && req.session.user && req.session.user.id) {
+        const user = findUserById(req.session.user.id);
+        if (user && user.isActive) {
+            req.user = user;
+            return next();
+        }
+        req.session.destroy();
+        return res.status(401).json({ message: 'Session invalid. Please log in again.' });
     }
+    res.status(401).json({ message: 'Unauthorized' });
+};
+
+// Admin-only middleware
+const requireAdmin = (req, res, next) => {
+    if (req.user && req.user.role === 'admin') {
+        return next();
+    }
+    res.status(403).json({ message: 'Admin access required' });
 };
 
 // Login endpoint
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
 
-    const validUsername = process.env.ADMIN_USERNAME || 'admin';
-    const validPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required' });
+    }
 
-    if (username === validUsername &&
-        await bcrypt.compare(password, validPasswordHash)) {
-        req.session.user = { username };
-        res.json({ message: 'Login successful' });
+    const user = findUserByUsername(username);
+
+    if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
+        req.session.user = {
+            id: user.id,
+            username: user.username,
+            role: user.role
+        };
+        res.json({
+            message: 'Login successful',
+            user: {
+                id: user.id,
+                username: user.username,
+                role: user.role
+            }
+        });
     } else {
         res.status(401).json({ message: 'Invalid credentials' });
     }
+});
+
+// Registration endpoint
+app.post('/api/register', async (req, res) => {
+    const { username, password, confirmPassword } = req.body;
+
+    // Validation
+    if (!username || !password || !confirmPassword) {
+        return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    if (username.length < 3 || username.length > 30) {
+        return res.status(400).json({ message: 'Username must be 3-30 characters' });
+    }
+
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    }
+
+    // Check for valid username characters
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        return res.status(400).json({ message: 'Username can only contain letters, numbers, and underscores' });
+    }
+
+    // Check if username already exists
+    if (findUserByUsername(username)) {
+        return res.status(409).json({ message: 'Username already taken' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const newUser = {
+            id: nextUserId++,
+            username: username,
+            passwordHash: passwordHash,
+            role: 'user',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true
+        };
+
+        users.push(newUser);
+        saveUsers();
+
+        res.status(201).json({
+            message: 'Registration successful',
+            user: {
+                id: newUser.id,
+                username: newUser.username,
+                role: newUser.role
+            }
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Registration failed' });
+    }
+});
+
+// Get current user info
+app.get('/api/user', requireAuth, (req, res) => {
+    res.json({
+        id: req.user.id,
+        username: req.user.username,
+        role: req.user.role
+    });
 });
 
 // Logout endpoint
@@ -140,9 +331,10 @@ app.post('/api/logout', (req, res) => {
     res.json({ message: 'Logged out successfully' });
 });
 
-// Get all entries
+// Get all entries for current user
 app.get('/api/entries', requireAuth, (req, res) => {
-    res.json(entries);
+    const userEntries = entries.filter(entry => entry.userId === req.user.id);
+    res.json(userEntries);
 });
 
 // Add new entry
@@ -155,6 +347,7 @@ app.post('/api/entries', requireAuth, (req, res) => {
 
     const newEntry = {
         id: nextId++,
+        userId: req.user.id,  // Associate with current user
         month,
         type,
         amount: parseFloat(amount),
@@ -163,14 +356,14 @@ app.post('/api/entries', requireAuth, (req, res) => {
     };
 
     entries.push(newEntry);
-    saveEntries(); // Save to file after adding
+    saveEntries();
     res.status(201).json(newEntry);
 });
 
-// Update entry
+// Update entry - ensure user owns the entry
 app.put('/api/entries/:id', requireAuth, (req, res) => {
     const id = parseInt(req.params.id);
-    const index = entries.findIndex(entry => entry.id === id);
+    const index = entries.findIndex(entry => entry.id === id && entry.userId === req.user.id);
 
     if (index === -1) {
         return res.status(404).json({ message: 'Entry not found' });
@@ -195,18 +388,168 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
     res.json(entries[index]);
 });
 
-// Delete entry
+// Delete entry - ensure user owns the entry
 app.delete('/api/entries/:id', requireAuth, (req, res) => {
     const id = parseInt(req.params.id);
-    const index = entries.findIndex(entry => entry.id === id);
+    const index = entries.findIndex(entry => entry.id === id && entry.userId === req.user.id);
 
     if (index === -1) {
         return res.status(404).json({ message: 'Entry not found' });
     }
 
     entries.splice(index, 1);
-    saveEntries(); // Save to file after deleting
+    saveEntries();
     res.json({ message: 'Entry deleted successfully' });
+});
+
+// ============ ADMIN ENDPOINTS ============
+
+// Get all users (admin only)
+app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
+    const sanitizedUsers = users.map(u => ({
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        isActive: u.isActive,
+        entriesCount: entries.filter(e => e.userId === u.id).length
+    }));
+    res.json(sanitizedUsers);
+});
+
+// Create user (admin only)
+app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+    const { username, password, role } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Username and password are required' });
+    }
+
+    if (findUserByUsername(username)) {
+        return res.status(409).json({ message: 'Username already exists' });
+    }
+
+    const validRoles = ['user', 'admin'];
+    const userRole = validRoles.includes(role) ? role : 'user';
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const newUser = {
+            id: nextUserId++,
+            username,
+            passwordHash,
+            role: userRole,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true
+        };
+
+        users.push(newUser);
+        saveUsers();
+
+        res.status(201).json({
+            id: newUser.id,
+            username: newUser.username,
+            role: newUser.role,
+            createdAt: newUser.createdAt,
+            isActive: newUser.isActive
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to create user' });
+    }
+});
+
+// Update user (admin only)
+app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+    const userId = parseInt(req.params.id);
+    const userIndex = users.findIndex(u => u.id === userId);
+
+    if (userIndex === -1) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { username, password, role, isActive } = req.body;
+    const user = users[userIndex];
+
+    // Prevent admin from demoting themselves
+    if (userId === req.user.id && role && role !== 'admin') {
+        return res.status(400).json({ message: 'Cannot demote yourself' });
+    }
+
+    // Prevent deactivating last admin
+    if (isActive === false && user.role === 'admin') {
+        const activeAdmins = users.filter(u => u.role === 'admin' && u.isActive);
+        if (activeAdmins.length === 1) {
+            return res.status(400).json({ message: 'Cannot deactivate the last admin' });
+        }
+    }
+
+    // Update fields
+    if (username && username !== user.username) {
+        if (findUserByUsername(username)) {
+            return res.status(409).json({ message: 'Username already taken' });
+        }
+        user.username = username;
+    }
+
+    if (password) {
+        user.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    if (role && ['user', 'admin'].includes(role)) {
+        user.role = role;
+    }
+
+    if (typeof isActive === 'boolean') {
+        user.isActive = isActive;
+    }
+
+    user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        isActive: user.isActive
+    });
+});
+
+// Delete user (admin only)
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
+    const userId = parseInt(req.params.id);
+    const userIndex = users.findIndex(u => u.id === userId);
+
+    if (userIndex === -1) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Prevent self-deletion
+    if (userId === req.user.id) {
+        return res.status(400).json({ message: 'Cannot delete yourself' });
+    }
+
+    // Prevent deleting last admin
+    const user = users[userIndex];
+    if (user.role === 'admin') {
+        const adminCount = users.filter(u => u.role === 'admin').length;
+        if (adminCount === 1) {
+            return res.status(400).json({ message: 'Cannot delete the last admin' });
+        }
+    }
+
+    // Delete user's entries
+    entries = entries.filter(e => e.userId !== userId);
+    saveEntries();
+
+    // Delete user
+    users.splice(userIndex, 1);
+    saveUsers();
+
+    res.json({ message: 'User deleted successfully' });
 });
 
 // Serve the main application
@@ -352,6 +695,7 @@ ${text}`;
                     ...entry,
                     tags,
                     type,
+                    userId: req.user.id,  // Associate with current user
                     id: Date.now() + Math.floor(Math.random() * 10000)
                 };
             });

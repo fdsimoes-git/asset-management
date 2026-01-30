@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Asset Management</title>
+    <title>Register - Asset Management</title>
     <style>
         /* Modern Professional Login Styling */
         :root {
@@ -45,7 +45,7 @@
             padding: 2rem;
         }
 
-        .login-form {
+        .register-form {
             background: var(--surface-color);
             padding: 3rem 2rem;
             border-radius: 1.5rem;
@@ -54,7 +54,7 @@
             text-align: center;
         }
 
-        .login-form h1 {
+        .register-form h1 {
             margin: 0 0 2rem 0;
             font-size: 2rem;
             font-weight: 700;
@@ -93,6 +93,13 @@
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
             background: var(--surface-color);
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 0.25rem;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
         }
 
         button {
@@ -134,6 +141,21 @@
             animation: shake 0.5s ease-in-out;
         }
 
+        .success-message {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            border-radius: 0.5rem;
+            color: var(--success-color);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-5px); }
@@ -163,19 +185,19 @@
             100% { transform: rotate(360deg); }
         }
 
-        .register-link {
+        .login-link {
             margin-top: 1.5rem;
             font-size: 0.875rem;
             color: var(--text-secondary);
         }
 
-        .register-link a {
+        .login-link a {
             color: var(--primary-color);
             text-decoration: none;
             font-weight: 600;
         }
 
-        .register-link a:hover {
+        .login-link a:hover {
             text-decoration: underline;
         }
 
@@ -185,11 +207,11 @@
                 padding: 1rem;
             }
 
-            .login-form {
+            .register-form {
                 padding: 2rem 1.5rem;
             }
 
-            .login-form h1 {
+            .register-form h1 {
                 font-size: 1.75rem;
             }
         }
@@ -197,23 +219,31 @@
 </head>
 <body>
     <div class="container">
-        <div class="login-form">
-            <h1>Asset Management Login</h1>
-            <form id="loginForm">
+        <div class="register-form">
+            <h1>Create Account</h1>
+            <form id="registerForm">
                 <div class="form-group">
                     <label for="username">Username:</label>
-                    <input type="text" id="username" required>
+                    <input type="text" id="username" required minlength="3" maxlength="30"
+                           pattern="[a-zA-Z0-9_]+" title="Letters, numbers, and underscores only">
+                    <small>3-30 characters, letters, numbers, and underscores only</small>
                 </div>
                 <div class="form-group">
                     <label for="password">Password:</label>
-                    <input type="password" id="password" required>
+                    <input type="password" id="password" required minlength="8">
+                    <small>Minimum 8 characters</small>
                 </div>
-                <button type="submit">Login</button>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password:</label>
+                    <input type="password" id="confirmPassword" required>
+                </div>
+                <button type="submit">Register</button>
             </form>
-            <p class="register-link">Don't have an account? <a href="/register.html">Register</a></p>
+            <p class="login-link">Already have an account? <a href="/login.html">Login</a></p>
             <div id="error-message" class="error-message"></div>
+            <div id="success-message" class="success-message"></div>
         </div>
     </div>
-    <script src="/js/login.js"></script>
+    <script src="/js/register.js"></script>
 </body>
-</html> 
+</html>
