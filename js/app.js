@@ -770,15 +770,20 @@ function renderBulkPreviewTable() {
             const row = document.createElement('tr');
             row.dataset.index = index;
 
+            // Escape all user-provided values to prevent XSS
+            const escapedMonth = escapeHtml(entry.month);
+            const escapedDescription = escapeHtml(entry.description);
+            const escapedType = escapeHtml(currentType);
+            const escapedTag = escapeHtml(currentTag);
+
             if (entry.isEditing) {
                 // Editing mode - show input fields with type/category as read-only
-                const escapedDescription = escapeHtml(entry.description);
                 row.innerHTML = `
-                    <td><input type="month" class="bulk-edit-input bulk-edit-month" value="${entry.month}" aria-label="Month for entry ${index + 1}"></td>
-                    <td>${currentType}</td>
+                    <td><input type="month" class="bulk-edit-input bulk-edit-month" value="${escapedMonth}" aria-label="Month for entry ${index + 1}"></td>
+                    <td>${escapedType}</td>
                     <td><input type="number" class="bulk-edit-input bulk-edit-input--amount bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" min="0.01" aria-label="Amount for entry ${index + 1}"></td>
                     <td><input type="text" class="bulk-edit-input bulk-edit-description" value="${escapedDescription}" aria-label="Description for entry ${index + 1}"></td>
-                    <td>${currentTag}</td>
+                    <td>${escapedTag}</td>
                     <td>
                         <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">Save</button>
                         <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">Cancel</button>
@@ -786,9 +791,8 @@ function renderBulkPreviewTable() {
                 `;
             } else {
                 // View mode - show values with edit/delete buttons
-                const escapedDescription = escapeHtml(entry.description);
                 row.innerHTML = `
-                    <td>${entry.month}</td>
+                    <td>${escapedMonth}</td>
                     <td>${generateTypeSelect(currentType, index)}</td>
                     <td>$${parseFloat(entry.amount).toFixed(2)}</td>
                     <td>${escapedDescription}</td>
