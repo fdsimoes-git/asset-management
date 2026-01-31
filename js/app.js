@@ -23,38 +23,67 @@ function initializeCharts() {
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
     const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
-    // Common chart options for better visibility
+    // Dark theme colors
+    const colors = {
+        textPrimary: '#f8fafc',
+        textSecondary: '#94a3b8',
+        textMuted: '#64748b',
+        gridColor: 'rgba(148, 163, 184, 0.1)',
+        accent: '#f59e0b',
+        accentGlow: 'rgba(245, 158, 11, 0.2)',
+        success: '#10b981',
+        danger: '#ef4444'
+    };
+
+    // Common chart options for dark theme
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
             legend: {
                 labels: {
-                    color: '#1e293b',
+                    color: colors.textSecondary,
                     font: {
-                        size: 12
-                    }
+                        size: 12,
+                        family: "'DM Sans', sans-serif"
+                    },
+                    padding: 15
                 }
+            },
+            tooltip: {
+                backgroundColor: '#1e293b',
+                titleColor: colors.textPrimary,
+                bodyColor: colors.textSecondary,
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
+                titleFont: { family: "'DM Sans', sans-serif", weight: '600' },
+                bodyFont: { family: "'DM Sans', sans-serif" }
             }
         },
         scales: {
             y: {
                 beginAtZero: true,
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569'
+                    color: colors.textMuted,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             },
             x: {
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
                     maxRotation: 45,
-                    minRotation: 45
+                    minRotation: 45,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             }
         }
@@ -67,13 +96,22 @@ function initializeCharts() {
         plugins: {
             legend: {
                 labels: {
-                    color: '#1e293b',
+                    color: colors.textSecondary,
                     font: {
-                        size: 12
-                    }
+                        size: 12,
+                        family: "'DM Sans', sans-serif"
+                    },
+                    padding: 15
                 }
             },
             tooltip: {
+                backgroundColor: '#1e293b',
+                titleColor: colors.textPrimary,
+                bodyColor: colors.textSecondary,
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
                 callbacks: {
                     label: function(context) {
                         const label = context.dataset.label || '';
@@ -87,10 +125,12 @@ function initializeCharts() {
             y: {
                 beginAtZero: true,
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
+                    font: { family: "'DM Sans', sans-serif" },
                     callback: function(value) {
                         return '$' + value.toFixed(0);
                     }
@@ -98,12 +138,14 @@ function initializeCharts() {
             },
             x: {
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
                     maxRotation: 45,
-                    minRotation: 45
+                    minRotation: 45,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             }
         }
@@ -116,15 +158,16 @@ function initializeCharts() {
             datasets: [{
                 label: 'Monthly Balance',
                 data: [],
-                borderColor: '#2563eb',
-                backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                tension: 0.3,
+                borderColor: colors.accent,
+                backgroundColor: colors.accentGlow,
+                tension: 0.4,
                 fill: true,
-                pointBackgroundColor: '#2563eb',
-                pointBorderColor: '#fff',
+                pointBackgroundColor: colors.accent,
+                pointBorderColor: '#0f172a',
                 pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                borderWidth: 3
             }]
         },
         options: commonOptions
@@ -138,18 +181,20 @@ function initializeCharts() {
                 {
                     label: 'Income',
                     data: [],
-                    backgroundColor: '#10b981',
-                    borderColor: '#059669',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: colors.success,
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    hoverBackgroundColor: colors.success
                 },
                 {
                     label: 'Expenses',
                     data: [],
-                    backgroundColor: '#ef4444',
-                    borderColor: '#dc2626',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                    borderColor: colors.danger,
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    hoverBackgroundColor: colors.danger
                 }
             ]
         },
@@ -158,10 +203,10 @@ function initializeCharts() {
 
     // Category distribution chart (horizontal bar)
     const categoryColors = [
-        '#f59e0b', '#3b82f6', '#8b5cf6', '#6366f1',
+        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
         '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#a855f7', '#0ea5e9',
-        '#ef4444', '#737373'
+        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
+        '#ef4444', '#64748b'
     ];
 
     categoryChart = new Chart(categoryCtx, {
@@ -171,10 +216,11 @@ function initializeCharts() {
             datasets: [{
                 label: 'Amount',
                 data: [],
-                backgroundColor: categoryColors,
-                borderColor: categoryColors.map(c => c),
-                borderWidth: 1,
-                borderRadius: 4
+                backgroundColor: categoryColors.map(c => c + 'cc'),
+                borderColor: categoryColors,
+                borderWidth: 2,
+                borderRadius: 6,
+                hoverBackgroundColor: categoryColors
             }]
         },
         options: {
@@ -188,11 +234,18 @@ function initializeCharts() {
                 title: {
                     display: true,
                     text: 'Expenses by Category',
-                    color: '#1e293b',
-                    font: { size: 14, weight: '600' },
-                    padding: { bottom: 15 }
+                    color: colors.textPrimary,
+                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    padding: { bottom: 20 }
                 },
                 tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: colors.textPrimary,
+                    bodyColor: colors.textSecondary,
+                    borderColor: 'rgba(148, 163, 184, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
                             return `$${context.parsed.x.toFixed(2)}`;
@@ -203,9 +256,10 @@ function initializeCharts() {
             scales: {
                 x: {
                     beginAtZero: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
+                        font: { family: "'DM Sans', sans-serif" },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -214,8 +268,8 @@ function initializeCharts() {
                 y: {
                     grid: { display: false },
                     ticks: {
-                        color: '#1e293b',
-                        font: { size: 12, weight: '500' }
+                        color: colors.textSecondary,
+                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
                     }
                 }
             }
@@ -224,23 +278,24 @@ function initializeCharts() {
 
     // Stacked bar chart for expense categories by month
     const stackedCategoryColors = [
-        '#f59e0b', '#3b82f6', '#8b5cf6', '#6366f1',
+        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
         '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#a855f7', '#0ea5e9',
-        '#ef4444', '#737373', '#06b6d4', '#84cc16'
+        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
+        '#ef4444', '#64748b', '#06b6d4', '#84cc16'
     ];
 
     const expenseCategories = ['food', 'groceries', 'transport', 'travel', 'entertainment',
         'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
     const stackedDatasets = expenseCategories.map((category, index) => ({
         label: category.charAt(0).toUpperCase() + category.slice(1),
         data: [],
-        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length],
+        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length] + 'cc',
         borderColor: stackedCategoryColors[index % stackedCategoryColors.length],
         borderWidth: 1,
-        borderRadius: 2
+        borderRadius: 3,
+        hoverBackgroundColor: stackedCategoryColors[index % stackedCategoryColors.length]
     }));
 
     categoryStackedChart = new Chart(categoryStackedCtx, {
@@ -256,20 +311,27 @@ function initializeCharts() {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        color: '#1e293b',
-                        font: { size: 10 },
+                        color: colors.textSecondary,
+                        font: { size: 10, family: "'DM Sans', sans-serif" },
                         boxWidth: 12,
-                        padding: 8
+                        padding: 10
                     }
                 },
                 title: {
                     display: true,
                     text: 'Expense Categories by Month',
-                    color: '#1e293b',
-                    font: { size: 14, weight: '600' },
-                    padding: { bottom: 10 }
+                    color: colors.textPrimary,
+                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    padding: { bottom: 15 }
                 },
                 tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: colors.textPrimary,
+                    bodyColor: colors.textSecondary,
+                    borderColor: 'rgba(148, 163, 184, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
                             const label = context.dataset.label || '';
@@ -282,19 +344,21 @@ function initializeCharts() {
             scales: {
                 x: {
                     stacked: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
                         maxRotation: 45,
-                        minRotation: 45
+                        minRotation: 45,
+                        font: { family: "'DM Sans', sans-serif" }
                     }
                 },
                 y: {
                     stacked: true,
                     beginAtZero: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
+                        font: { family: "'DM Sans', sans-serif" },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -423,7 +487,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     // Update stacked category chart - expenses by category per month
     const expenseCategoryList = ['food', 'groceries', 'transport', 'travel', 'entertainment',
         'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
     // Build a map: { month: { category: totalAmount } }
     const categoryMonthlyData = {};
@@ -620,7 +684,7 @@ function updateSummary(entriesToShow) {
     expensesEl.style.color = '#ef4444';
 
     netEl.textContent = `$${netBalance.toFixed(2)}`;
-    netEl.style.color = netBalance >= 0 ? '#2563eb' : '#ef4444';
+    netEl.style.color = netBalance >= 0 ? '#f59e0b' : '#ef4444';
 }
 
 // --- Bulk PDF Upload Modal Logic ---
@@ -654,7 +718,7 @@ closeBulkUploadModalBtn.addEventListener('click', () => {
 });
 
 // Category options for dropdowns
-const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
 function generateCategorySelect(selectedTag, index) {
     const options = categoryOptions.map(cat =>

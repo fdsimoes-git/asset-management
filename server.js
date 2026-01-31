@@ -874,7 +874,7 @@ app.post('/api/process-pdf', requireAuth, upload.single('pdfFile'), async (req, 
                                 type: Type.STRING,
                                 enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
                                        'healthcare', 'education', 'shopping', 'subscription', 'housing',
-                                       'salary', 'freelance', 'investment', 'transfer', 'other'],
+                                       'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
                                 description: 'Category tag for the transaction'
                             },
                             type: {
