@@ -962,11 +962,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             // Wait for all entries to be saved
             const savedEntries = await Promise.all(savePromises);
 
-            // Update local entries array with server-saved entries (which have proper IDs)
-            entries.push(...savedEntries);
-
-            // Re-apply current filters instead of showing all entries
-            filterEntries();
+            // Reload entries from server to ensure view mode filtering is applied correctly
+            await loadEntries();
 
             // Close modal and show success message
             bulkUploadModal.style.display = 'none';
@@ -1082,10 +1079,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(entry)
             });
             if (response.ok) {
-                const newEntry = await response.json();
-                entries.push(newEntry);
-                // Re-apply current filters to include the new entry if it matches
-                filterEntries();
+                // Reload entries from server to ensure view mode filtering is applied correctly
+                await loadEntries();
                 newForm.reset();
                 closeModal();
             } else {
@@ -1181,14 +1176,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                const savedEntry = await response.json();
-                // Update local entries array
-                const index = entries.findIndex(entry => entry.id === id);
-                if (index !== -1) {
-                    entries[index] = savedEntry;
-                }
+                // Reload entries from server to ensure view mode filtering is applied correctly
+                await loadEntries();
                 document.getElementById('editEntryModal').style.display = 'none';
-                filterEntries();
             } else {
                 alert('Failed to update entry.');
             }
