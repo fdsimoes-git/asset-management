@@ -574,16 +574,21 @@ function displayEntries(entriesToShow) {
             `<span class="tag tag-${t}">${t}</span>`
         ).join(' ');
         const coupleBadge = entry.isCoupleExpense ? '<span class="couple-badge">Couple</span>' : '';
+
+        // In combined view, only show Edit/Delete for user's own entries
+        const isOwnEntry = !currentUser || entry.userId === currentUser.id;
+        const actionButtons = isOwnEntry
+            ? `<button class="edit-btn" data-id="${entry.id}">Edit</button>
+               <button class="delete-btn" data-id="${entry.id}">Delete</button>`
+            : '<span style="color: var(--text-secondary); font-size: 0.75rem;">Partner\'s entry</span>';
+
         row.innerHTML = `
             <td>${entry.month}</td>
             <td><span class="entry-type entry-type-${entry.type}">${entry.type}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
             <td>${coupleBadge}${entry.description}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
-            <td>
-                <button class="edit-btn" data-id="${entry.id}">Edit</button>
-                <button class="delete-btn" data-id="${entry.id}">Delete</button>
-            </td>
+            <td>${actionButtons}</td>
         `;
         tbody.appendChild(row);
     });
@@ -1313,10 +1318,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/entries?viewMode=${currentViewMode}`);
             if (response.ok) {
                 entries = await response.json();
-                currentFilteredEntries = entries;
-                displayEntries(entries);
-                updateSummary(entries);
-                updateCharts(entries, true);
+                // Re-apply any active filters so the UI stays consistent
+                filterEntries();
             }
         } catch (error) {
             console.error('Error loading entries:', error);

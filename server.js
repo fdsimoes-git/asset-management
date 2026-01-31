@@ -421,14 +421,17 @@ app.get('/api/user', requireAuth, (req, res) => {
         id: req.user.id,
         username: req.user.username,
         role: req.user.role,
-        partnerId: req.user.partnerId || null,
-        partnerLinkedAt: req.user.partnerLinkedAt || null
+        partnerId: null,
+        partnerLinkedAt: null,
+        partnerUsername: null
     };
 
-    // Include partner username if linked
+    // Include partner info only if partner exists and is mutually linked
     if (req.user.partnerId) {
         const partner = findUserById(req.user.partnerId);
-        if (partner) {
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            response.partnerId = req.user.partnerId;
+            response.partnerLinkedAt = req.user.partnerLinkedAt;
             response.partnerUsername = partner.username;
         }
     }
@@ -447,11 +450,21 @@ app.get('/api/entries', requireAuth, (req, res) => {
     const viewMode = req.query.viewMode || 'individual';
     let userEntries;
 
+    // Validate partner relationship for combined view
+    let validPartner = null;
     if (viewMode === 'combined' && req.user.partnerId) {
+        const partner = findUserById(req.user.partnerId);
+        // Only enable combined view if partner exists, is active, and mutually linked
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+
+    if (validPartner) {
         // Combined view: Get couple-flagged entries from both user and partner
         userEntries = entries.filter(entry =>
             entry.isCoupleExpense === true &&
-            (entry.userId === req.user.id || entry.userId === req.user.partnerId)
+            (entry.userId === req.user.id || entry.userId === validPartner.id)
         );
     } else {
         // Individual view: Only non-couple expenses from current user
@@ -535,6 +548,18 @@ app.delete('/api/entries/:id', requireAuth, (req, res) => {
 
 // Get all users (admin only)
 app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
+    // Precompute entries count by userId for O(1) lookup
+    const entriesCountByUserId = {};
+    entries.forEach(e => {
+        entriesCountByUserId[e.userId] = (entriesCountByUserId[e.userId] || 0) + 1;
+    });
+
+    // Precompute users by ID for O(1) partner lookup
+    const usersById = {};
+    users.forEach(u => {
+        usersById[u.id] = u;
+    });
+
     const sanitizedUsers = users.map(u => {
         const userData = {
             id: u.id,
@@ -543,13 +568,13 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
             createdAt: u.createdAt,
             updatedAt: u.updatedAt,
             isActive: u.isActive,
-            entriesCount: entries.filter(e => e.userId === u.id).length,
+            entriesCount: entriesCountByUserId[u.id] || 0,
             partnerId: u.partnerId || null
         };
 
         // Include partner username if linked
         if (u.partnerId) {
-            const partner = findUserById(u.partnerId);
+            const partner = usersById[u.partnerId];
             if (partner) {
                 userData.partnerUsername = partner.username;
             }
