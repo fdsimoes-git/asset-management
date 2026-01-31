@@ -642,6 +642,11 @@ openBulkUploadModalBtn.addEventListener('click', () => {
     loadingIndicator.style.display = 'none';
     bulkPdfUploadInput.value = '';
     bulkExtractedEntries = [];
+    // Show/hide Couple column header based on partner status
+    const bulkCoupleHeader = document.getElementById('bulkCoupleHeader');
+    if (bulkCoupleHeader) {
+        bulkCoupleHeader.style.display = hasPartner ? '' : 'none';
+    }
 });
 
 closeBulkUploadModalBtn.addEventListener('click', () => {
@@ -690,7 +695,8 @@ processBulkPdfBtn.addEventListener('click', async () => {
             bulkExtractedEntries = validEntries.map(exp => ({
                 ...exp,
                 type: exp.type || 'expense',
-                tags: exp.tags || []
+                tags: exp.tags || [],
+                isCoupleExpense: false
             }));
             // Preview in table with editable dropdowns
             renderBulkPreviewTable();
@@ -786,6 +792,13 @@ function renderBulkPreviewTable() {
             const escapedType = escapeHtml(currentType);
             const escapedTag = escapeHtml(currentTag);
 
+            // Couple checkbox cell (only shown if user has partner)
+            const coupleCell = hasPartner
+                ? `<td><input type="checkbox" class="bulk-couple-check" data-index="${index}" ${entry.isCoupleExpense ? 'checked' : ''}></td>`
+                : '';
+            // Empty cell for couple column in edit mode
+            const coupleCellEdit = hasPartner ? '<td></td>' : '';
+
             if (entry.isEditing) {
                 // Editing mode - show input fields with type/category as read-only
                 row.innerHTML = `
@@ -794,6 +807,7 @@ function renderBulkPreviewTable() {
                     <td><input type="number" class="bulk-edit-input bulk-edit-input--amount bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" min="0.01" aria-label="Amount for entry ${index + 1}"></td>
                     <td><input type="text" class="bulk-edit-input bulk-edit-description" value="${escapedDescription}" aria-label="Description for entry ${index + 1}"></td>
                     <td>${escapedTag}</td>
+                    ${coupleCellEdit}
                     <td>
                         <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">Save</button>
                         <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">Cancel</button>
@@ -807,6 +821,7 @@ function renderBulkPreviewTable() {
                     <td>$${parseFloat(entry.amount).toFixed(2)}</td>
                     <td>${escapedDescription}</td>
                     <td>${generateCategorySelect(currentTag, index)}</td>
+                    ${coupleCell}
                     <td>
                         <button class="bulk-action-btn bulk-action-btn--edit bulk-edit-btn" data-index="${index}" aria-label="Edit entry: ${escapedDescription}">Edit</button>
                         <button class="bulk-action-btn bulk-action-btn--delete bulk-delete-btn" data-index="${index}" aria-label="Delete entry: ${escapedDescription}">Delete</button>
@@ -828,6 +843,14 @@ function renderBulkPreviewTable() {
             select.addEventListener('change', (e) => {
                 const index = parseInt(e.target.dataset.index);
                 bulkExtractedEntries[index].type = e.target.value;
+            });
+        });
+
+        // Add event listeners for couple checkboxes (only if user has partner)
+        document.querySelectorAll('.bulk-couple-check').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].isCoupleExpense = e.target.checked;
             });
         });
 
@@ -903,7 +926,8 @@ function renderBulkPreviewTable() {
 
         confirmBulkEntriesBtn.style.display = 'inline-block';
     } else {
-        bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="6">No valid entries found in PDF.</td></tr>';
+        const colspan = hasPartner ? 7 : 6;
+        bulkExtractedEntriesTbody.innerHTML = `<tr><td colspan="${colspan}">No valid entries found in PDF.</td></tr>`;
         confirmBulkEntriesBtn.style.display = 'none';
     }
 }
@@ -923,7 +947,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                         type: entry.type || 'expense',
                         amount: entry.amount,
                         description: entry.description,
-                        tags: entry.tags || []
+                        tags: entry.tags || [],
+                        isCoupleExpense: entry.isCoupleExpense || false
                     })
                 });
 
