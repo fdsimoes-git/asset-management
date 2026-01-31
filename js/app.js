@@ -12,6 +12,10 @@ let currentUser = null;
 let currentSortColumn = null;
 let currentSortDirection = 'asc';
 
+// Couple feature state
+let currentViewMode = 'individual';
+let hasPartner = false;
+
 // Initialize charts
 function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
@@ -19,38 +23,67 @@ function initializeCharts() {
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
     const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
-    // Common chart options for better visibility
+    // Dark theme colors
+    const colors = {
+        textPrimary: '#f8fafc',
+        textSecondary: '#94a3b8',
+        textMuted: '#64748b',
+        gridColor: 'rgba(148, 163, 184, 0.1)',
+        accent: '#f59e0b',
+        accentGlow: 'rgba(245, 158, 11, 0.2)',
+        success: '#10b981',
+        danger: '#ef4444'
+    };
+
+    // Common chart options for dark theme
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
             legend: {
                 labels: {
-                    color: '#1e293b',
+                    color: colors.textSecondary,
                     font: {
-                        size: 12
-                    }
+                        size: 12,
+                        family: "'DM Sans', sans-serif"
+                    },
+                    padding: 15
                 }
+            },
+            tooltip: {
+                backgroundColor: '#1e293b',
+                titleColor: colors.textPrimary,
+                bodyColor: colors.textSecondary,
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
+                titleFont: { family: "'DM Sans', sans-serif", weight: '600' },
+                bodyFont: { family: "'DM Sans', sans-serif" }
             }
         },
         scales: {
             y: {
                 beginAtZero: true,
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569'
+                    color: colors.textMuted,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             },
             x: {
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
                     maxRotation: 45,
-                    minRotation: 45
+                    minRotation: 45,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             }
         }
@@ -63,13 +96,22 @@ function initializeCharts() {
         plugins: {
             legend: {
                 labels: {
-                    color: '#1e293b',
+                    color: colors.textSecondary,
                     font: {
-                        size: 12
-                    }
+                        size: 12,
+                        family: "'DM Sans', sans-serif"
+                    },
+                    padding: 15
                 }
             },
             tooltip: {
+                backgroundColor: '#1e293b',
+                titleColor: colors.textPrimary,
+                bodyColor: colors.textSecondary,
+                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
                 callbacks: {
                     label: function(context) {
                         const label = context.dataset.label || '';
@@ -83,10 +125,12 @@ function initializeCharts() {
             y: {
                 beginAtZero: true,
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
+                    font: { family: "'DM Sans', sans-serif" },
                     callback: function(value) {
                         return '$' + value.toFixed(0);
                     }
@@ -94,12 +138,14 @@ function initializeCharts() {
             },
             x: {
                 grid: {
-                    color: '#e2e8f0'
+                    color: colors.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
-                    color: '#475569',
+                    color: colors.textMuted,
                     maxRotation: 45,
-                    minRotation: 45
+                    minRotation: 45,
+                    font: { family: "'DM Sans', sans-serif" }
                 }
             }
         }
@@ -112,15 +158,16 @@ function initializeCharts() {
             datasets: [{
                 label: 'Monthly Balance',
                 data: [],
-                borderColor: '#2563eb',
-                backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                tension: 0.3,
+                borderColor: colors.accent,
+                backgroundColor: colors.accentGlow,
+                tension: 0.4,
                 fill: true,
-                pointBackgroundColor: '#2563eb',
-                pointBorderColor: '#fff',
+                pointBackgroundColor: colors.accent,
+                pointBorderColor: '#0f172a',
                 pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                borderWidth: 3
             }]
         },
         options: commonOptions
@@ -134,18 +181,20 @@ function initializeCharts() {
                 {
                     label: 'Income',
                     data: [],
-                    backgroundColor: '#10b981',
-                    borderColor: '#059669',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: colors.success,
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    hoverBackgroundColor: colors.success
                 },
                 {
                     label: 'Expenses',
                     data: [],
-                    backgroundColor: '#ef4444',
-                    borderColor: '#dc2626',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                    borderColor: colors.danger,
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    hoverBackgroundColor: colors.danger
                 }
             ]
         },
@@ -154,10 +203,10 @@ function initializeCharts() {
 
     // Category distribution chart (horizontal bar)
     const categoryColors = [
-        '#f59e0b', '#3b82f6', '#8b5cf6', '#6366f1',
+        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
         '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#a855f7', '#0ea5e9',
-        '#ef4444', '#737373'
+        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
+        '#ef4444', '#64748b'
     ];
 
     categoryChart = new Chart(categoryCtx, {
@@ -167,10 +216,11 @@ function initializeCharts() {
             datasets: [{
                 label: 'Amount',
                 data: [],
-                backgroundColor: categoryColors,
-                borderColor: categoryColors.map(c => c),
-                borderWidth: 1,
-                borderRadius: 4
+                backgroundColor: categoryColors.map(c => c + 'cc'),
+                borderColor: categoryColors,
+                borderWidth: 2,
+                borderRadius: 6,
+                hoverBackgroundColor: categoryColors
             }]
         },
         options: {
@@ -184,11 +234,18 @@ function initializeCharts() {
                 title: {
                     display: true,
                     text: 'Expenses by Category',
-                    color: '#1e293b',
-                    font: { size: 14, weight: '600' },
-                    padding: { bottom: 15 }
+                    color: colors.textPrimary,
+                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    padding: { bottom: 20 }
                 },
                 tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: colors.textPrimary,
+                    bodyColor: colors.textSecondary,
+                    borderColor: 'rgba(148, 163, 184, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
                             return `$${context.parsed.x.toFixed(2)}`;
@@ -199,9 +256,10 @@ function initializeCharts() {
             scales: {
                 x: {
                     beginAtZero: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
+                        font: { family: "'DM Sans', sans-serif" },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -210,8 +268,8 @@ function initializeCharts() {
                 y: {
                     grid: { display: false },
                     ticks: {
-                        color: '#1e293b',
-                        font: { size: 12, weight: '500' }
+                        color: colors.textSecondary,
+                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
                     }
                 }
             }
@@ -220,23 +278,24 @@ function initializeCharts() {
 
     // Stacked bar chart for expense categories by month
     const stackedCategoryColors = [
-        '#f59e0b', '#3b82f6', '#8b5cf6', '#6366f1',
+        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
         '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#a855f7', '#0ea5e9',
-        '#ef4444', '#737373', '#06b6d4', '#84cc16'
+        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
+        '#ef4444', '#64748b', '#06b6d4', '#84cc16'
     ];
 
     const expenseCategories = ['food', 'groceries', 'transport', 'travel', 'entertainment',
         'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
     const stackedDatasets = expenseCategories.map((category, index) => ({
         label: category.charAt(0).toUpperCase() + category.slice(1),
         data: [],
-        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length],
+        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length] + 'cc',
         borderColor: stackedCategoryColors[index % stackedCategoryColors.length],
         borderWidth: 1,
-        borderRadius: 2
+        borderRadius: 3,
+        hoverBackgroundColor: stackedCategoryColors[index % stackedCategoryColors.length]
     }));
 
     categoryStackedChart = new Chart(categoryStackedCtx, {
@@ -252,20 +311,27 @@ function initializeCharts() {
                 legend: {
                     position: 'bottom',
                     labels: {
-                        color: '#1e293b',
-                        font: { size: 10 },
+                        color: colors.textSecondary,
+                        font: { size: 10, family: "'DM Sans', sans-serif" },
                         boxWidth: 12,
-                        padding: 8
+                        padding: 10
                     }
                 },
                 title: {
                     display: true,
                     text: 'Expense Categories by Month',
-                    color: '#1e293b',
-                    font: { size: 14, weight: '600' },
-                    padding: { bottom: 10 }
+                    color: colors.textPrimary,
+                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    padding: { bottom: 15 }
                 },
                 tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: colors.textPrimary,
+                    bodyColor: colors.textSecondary,
+                    borderColor: 'rgba(148, 163, 184, 0.2)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
                     callbacks: {
                         label: function(context) {
                             const label = context.dataset.label || '';
@@ -278,19 +344,21 @@ function initializeCharts() {
             scales: {
                 x: {
                     stacked: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
                         maxRotation: 45,
-                        minRotation: 45
+                        minRotation: 45,
+                        font: { family: "'DM Sans', sans-serif" }
                     }
                 },
                 y: {
                     stacked: true,
                     beginAtZero: true,
-                    grid: { color: '#e2e8f0' },
+                    grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
-                        color: '#475569',
+                        color: colors.textMuted,
+                        font: { family: "'DM Sans', sans-serif" },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -419,7 +487,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     // Update stacked category chart - expenses by category per month
     const expenseCategoryList = ['food', 'groceries', 'transport', 'travel', 'entertainment',
         'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
     // Build a map: { month: { category: totalAmount } }
     const categoryMonthlyData = {};
@@ -569,16 +637,22 @@ function displayEntries(entriesToShow) {
         const tags = (entry.tags || []).map(t =>
             `<span class="tag tag-${t}">${t}</span>`
         ).join(' ');
+        const coupleBadge = entry.isCoupleExpense ? '<span class="couple-badge">Couple</span>' : '';
+
+        // In combined view, only show Edit/Delete for user's own entries
+        const isOwnEntry = !currentUser || entry.userId === currentUser.id;
+        const actionButtons = isOwnEntry
+            ? `<button class="edit-btn" data-id="${entry.id}">Edit</button>
+               <button class="delete-btn" data-id="${entry.id}">Delete</button>`
+            : '<span style="color: var(--text-secondary); font-size: 0.75rem;">Partner\'s entry</span>';
+
         row.innerHTML = `
             <td>${entry.month}</td>
             <td><span class="entry-type entry-type-${entry.type}">${entry.type}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-            <td>${entry.description}</td>
+            <td>${coupleBadge}${entry.description}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
-            <td>
-                <button class="edit-btn" data-id="${entry.id}">Edit</button>
-                <button class="delete-btn" data-id="${entry.id}">Delete</button>
-            </td>
+            <td>${actionButtons}</td>
         `;
         tbody.appendChild(row);
     });
@@ -610,7 +684,7 @@ function updateSummary(entriesToShow) {
     expensesEl.style.color = '#ef4444';
 
     netEl.textContent = `$${netBalance.toFixed(2)}`;
-    netEl.style.color = netBalance >= 0 ? '#2563eb' : '#ef4444';
+    netEl.style.color = netBalance >= 0 ? '#f59e0b' : '#ef4444';
 }
 
 // --- Bulk PDF Upload Modal Logic ---
@@ -632,6 +706,11 @@ openBulkUploadModalBtn.addEventListener('click', () => {
     loadingIndicator.style.display = 'none';
     bulkPdfUploadInput.value = '';
     bulkExtractedEntries = [];
+    // Show/hide Couple column header based on partner status
+    const bulkCoupleHeader = document.getElementById('bulkCoupleHeader');
+    if (bulkCoupleHeader) {
+        bulkCoupleHeader.style.display = hasPartner ? '' : 'none';
+    }
 });
 
 closeBulkUploadModalBtn.addEventListener('click', () => {
@@ -639,7 +718,7 @@ closeBulkUploadModalBtn.addEventListener('click', () => {
 });
 
 // Category options for dropdowns
-const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'other'];
+const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
 function generateCategorySelect(selectedTag, index) {
     const options = categoryOptions.map(cat =>
@@ -680,7 +759,8 @@ processBulkPdfBtn.addEventListener('click', async () => {
             bulkExtractedEntries = validEntries.map(exp => ({
                 ...exp,
                 type: exp.type || 'expense',
-                tags: exp.tags || []
+                tags: exp.tags || [],
+                isCoupleExpense: false
             }));
             // Preview in table with editable dropdowns
             renderBulkPreviewTable();
@@ -776,6 +856,13 @@ function renderBulkPreviewTable() {
             const escapedType = escapeHtml(currentType);
             const escapedTag = escapeHtml(currentTag);
 
+            // Couple checkbox cell (only shown if user has partner)
+            const coupleCell = hasPartner
+                ? `<td><input type="checkbox" class="bulk-couple-check" data-index="${index}" ${entry.isCoupleExpense ? 'checked' : ''}></td>`
+                : '';
+            // Empty cell for couple column in edit mode
+            const coupleCellEdit = hasPartner ? '<td></td>' : '';
+
             if (entry.isEditing) {
                 // Editing mode - show input fields with type/category as read-only
                 row.innerHTML = `
@@ -784,6 +871,7 @@ function renderBulkPreviewTable() {
                     <td><input type="number" class="bulk-edit-input bulk-edit-input--amount bulk-edit-amount" value="${parseFloat(entry.amount).toFixed(2)}" step="0.01" min="0.01" aria-label="Amount for entry ${index + 1}"></td>
                     <td><input type="text" class="bulk-edit-input bulk-edit-description" value="${escapedDescription}" aria-label="Description for entry ${index + 1}"></td>
                     <td>${escapedTag}</td>
+                    ${coupleCellEdit}
                     <td>
                         <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">Save</button>
                         <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">Cancel</button>
@@ -797,6 +885,7 @@ function renderBulkPreviewTable() {
                     <td>$${parseFloat(entry.amount).toFixed(2)}</td>
                     <td>${escapedDescription}</td>
                     <td>${generateCategorySelect(currentTag, index)}</td>
+                    ${coupleCell}
                     <td>
                         <button class="bulk-action-btn bulk-action-btn--edit bulk-edit-btn" data-index="${index}" aria-label="Edit entry: ${escapedDescription}">Edit</button>
                         <button class="bulk-action-btn bulk-action-btn--delete bulk-delete-btn" data-index="${index}" aria-label="Delete entry: ${escapedDescription}">Delete</button>
@@ -818,6 +907,14 @@ function renderBulkPreviewTable() {
             select.addEventListener('change', (e) => {
                 const index = parseInt(e.target.dataset.index);
                 bulkExtractedEntries[index].type = e.target.value;
+            });
+        });
+
+        // Add event listeners for couple checkboxes (only if user has partner)
+        document.querySelectorAll('.bulk-couple-check').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                bulkExtractedEntries[index].isCoupleExpense = e.target.checked;
             });
         });
 
@@ -893,7 +990,8 @@ function renderBulkPreviewTable() {
 
         confirmBulkEntriesBtn.style.display = 'inline-block';
     } else {
-        bulkExtractedEntriesTbody.innerHTML = '<tr><td colspan="6">No valid entries found in PDF.</td></tr>';
+        const colspan = hasPartner ? 7 : 6;
+        bulkExtractedEntriesTbody.innerHTML = `<tr><td colspan="${colspan}">No valid entries found in PDF.</td></tr>`;
         confirmBulkEntriesBtn.style.display = 'none';
     }
 }
@@ -913,7 +1011,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                         type: entry.type || 'expense',
                         amount: entry.amount,
                         description: entry.description,
-                        tags: entry.tags || []
+                        tags: entry.tags || [],
+                        isCoupleExpense: entry.isCoupleExpense || false
                     })
                 });
 
@@ -927,11 +1026,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             // Wait for all entries to be saved
             const savedEntries = await Promise.all(savePromises);
 
-            // Update local entries array with server-saved entries (which have proper IDs)
-            entries.push(...savedEntries);
-
-            // Re-apply current filters instead of showing all entries
-            filterEntries();
+            // Reload entries from server to ensure view mode filtering is applied correctly
+            await loadEntries();
 
             // Close modal and show success message
             bulkUploadModal.style.display = 'none';
@@ -961,6 +1057,11 @@ function openModal() {
     const modal = document.getElementById('entryModal');
     const form = document.getElementById('entryForm');
     form.reset();
+    // Reset couple expense checkbox
+    const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
+    if (isCoupleExpenseCheckbox) {
+        isCoupleExpenseCheckbox.checked = false;
+    }
     modal.style.display = 'block';
     // Focus first input
     setTimeout(() => {
@@ -1016,13 +1117,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tagsInput = document.getElementById('tags').value;
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
+        const isCoupleExpense = isCoupleExpenseCheckbox ? isCoupleExpenseCheckbox.checked : false;
 
         const entry = {
             month: document.getElementById('month').value,
             type: document.getElementById('type').value,
             amount: amountValue,
             description: document.getElementById('description').value,
-            tags: tags
+            tags: tags,
+            isCoupleExpense: isCoupleExpense
         };
         if (!entry.month || !entry.type || !entry.amount) {
             alert('Please fill in Month, Type, and Amount for manual entry.');
@@ -1039,10 +1143,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(entry)
             });
             if (response.ok) {
-                const newEntry = await response.json();
-                entries.push(newEntry);
-                // Re-apply current filters to include the new entry if it matches
-                filterEntries();
+                // Reload entries from server to ensure view mode filtering is applied correctly
+                await loadEntries();
                 newForm.reset();
                 closeModal();
             } else {
@@ -1103,6 +1205,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('editAmount').value = entry.amount;
                 document.getElementById('editDescription').value = entry.description;
                 document.getElementById('editTags').value = (entry.tags || []).join(', ');
+                const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
+                if (editIsCoupleExpense) {
+                    editIsCoupleExpense.checked = entry.isCoupleExpense || false;
+                }
                 document.getElementById('editEntryModal').style.display = 'block';
             }
         }
@@ -1114,13 +1220,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = parseInt(document.getElementById('editEntryId').value);
         const tagsInput = document.getElementById('editTags').value;
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
+        const isCoupleExpense = editIsCoupleExpense ? editIsCoupleExpense.checked : false;
 
         const updatedEntry = {
             month: document.getElementById('editMonth').value,
             type: document.getElementById('editType').value,
             amount: parseFloat(document.getElementById('editAmount').value),
             description: document.getElementById('editDescription').value,
-            tags: tags
+            tags: tags,
+            isCoupleExpense: isCoupleExpense
         };
 
         try {
@@ -1131,14 +1240,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                const savedEntry = await response.json();
-                // Update local entries array
-                const index = entries.findIndex(entry => entry.id === id);
-                if (index !== -1) {
-                    entries[index] = savedEntry;
-                }
+                // Reload entries from server to ensure view mode filtering is applied correctly
+                await loadEntries();
                 document.getElementById('editEntryModal').style.display = 'none';
-                filterEntries();
             } else {
                 alert('Failed to update entry.');
             }
@@ -1235,7 +1339,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/user');
             if (response.ok) {
                 currentUser = await response.json();
+                hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
+                updateUIForPartner();
             }
         } catch (error) {
             console.error('Error fetching user:', error);
@@ -1249,6 +1355,53 @@ document.addEventListener('DOMContentLoaded', () => {
             adminBtn.style.display = 'inline-flex';
         } else {
             adminBtn.style.display = 'none';
+        }
+    }
+
+    // Update UI for couple features
+    function updateUIForPartner() {
+        const viewModeContainer = document.getElementById('viewModeContainer');
+        const coupleExpenseToggle = document.getElementById('coupleExpenseToggle');
+        const editCoupleExpenseToggle = document.getElementById('editCoupleExpenseToggle');
+        const partnerInfo = document.getElementById('partnerInfo');
+
+        if (hasPartner) {
+            viewModeContainer.style.display = 'flex';
+            if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'block';
+            if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'block';
+            if (partnerInfo && currentUser.partnerUsername) {
+                partnerInfo.textContent = `Partner: ${currentUser.partnerUsername}`;
+            }
+        } else {
+            viewModeContainer.style.display = 'none';
+            if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'none';
+            if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'none';
+        }
+    }
+
+    // Set view mode and reload entries
+    function setViewMode(mode) {
+        currentViewMode = mode;
+
+        // Update button states
+        document.getElementById('individualViewBtn').classList.toggle('active', mode === 'individual');
+        document.getElementById('combinedViewBtn').classList.toggle('active', mode === 'combined');
+
+        // Reload entries with new view mode
+        loadEntries();
+    }
+
+    // Load entries from server with viewMode
+    async function loadEntries() {
+        try {
+            const response = await fetch(`/api/entries?viewMode=${currentViewMode}`);
+            if (response.ok) {
+                entries = await response.json();
+                // Re-apply any active filters so the UI stays consistent
+                filterEntries();
+            }
+        } catch (error) {
+            console.error('Error loading entries:', error);
         }
     }
 
@@ -1272,10 +1425,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         users.forEach(user => {
             const row = document.createElement('tr');
+            const partnerDisplay = user.partnerUsername
+                ? `<span class="partner-badge">${user.partnerUsername}</span>`
+                : '-';
             row.innerHTML = `
                 <td>${user.id}</td>
                 <td>${user.username}</td>
                 <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+                <td>${partnerDisplay}</td>
                 <td><span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">
                     ${user.isActive ? 'Active' : 'Inactive'}</span></td>
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
@@ -1365,6 +1522,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('adminPanelBtn').addEventListener('click', () => {
         document.getElementById('adminModal').style.display = 'block';
         loadUsersForAdmin();
+        loadCouplesForAdmin();
+        populateCoupleDropdowns();
     });
 
     document.getElementById('closeAdminModal').addEventListener('click', () => {
@@ -1377,6 +1536,149 @@ document.addEventListener('DOMContentLoaded', () => {
         if (event.target === adminModal) {
             adminModal.style.display = 'none';
         }
+    });
+
+    // ============ COUPLE MANAGEMENT FUNCTIONALITY ============
+
+    // Load couples for admin
+    async function loadCouplesForAdmin() {
+        try {
+            const response = await fetch('/api/admin/couples');
+            if (response.ok) {
+                const data = await response.json();
+                displayCouplesTable(data.couples);
+            }
+        } catch (error) {
+            console.error('Error loading couples:', error);
+        }
+    }
+
+    // Display couples in admin table
+    function displayCouplesTable(couples) {
+        const tbody = document.getElementById('couplesTableBody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (couples.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No couples linked yet</td></tr>';
+            return;
+        }
+
+        couples.forEach(couple => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${couple.user1.username}</td>
+                <td>${couple.user2.username}</td>
+                <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
+                <td>
+                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">Unlink</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    // Populate couple dropdowns with unlinked users
+    async function populateCoupleDropdowns() {
+        try {
+            const response = await fetch('/api/admin/users');
+            if (response.ok) {
+                const users = await response.json();
+                const unlinkedUsers = users.filter(u => !u.partnerId && u.isActive);
+
+                const select1 = document.getElementById('coupleUser1');
+                const select2 = document.getElementById('coupleUser2');
+
+                if (!select1 || !select2) return;
+
+                [select1, select2].forEach(select => {
+                    select.innerHTML = '<option value="">Select user...</option>';
+                    unlinkedUsers.forEach(user => {
+                        select.innerHTML += `<option value="${user.id}">${user.username}</option>`;
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Error populating couple dropdowns:', error);
+        }
+    }
+
+    // Link couple form submission
+    const linkCoupleForm = document.getElementById('linkCoupleForm');
+    if (linkCoupleForm) {
+        linkCoupleForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId1 = parseInt(document.getElementById('coupleUser1').value);
+            const userId2 = parseInt(document.getElementById('coupleUser2').value);
+
+            if (!userId1 || !userId2) {
+                alert('Please select both users');
+                return;
+            }
+
+            if (userId1 === userId2) {
+                alert('Please select two different users');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/couples/link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId1, userId2 })
+                });
+
+                if (response.ok) {
+                    alert('Users linked as couple successfully');
+                    loadCouplesForAdmin();
+                    populateCoupleDropdowns();
+                    loadUsersForAdmin();
+                    e.target.reset();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed to link users');
+                }
+            } catch (error) {
+                alert('Error linking users');
+            }
+        });
+    }
+
+    // Unlink couple
+    window.unlinkCouple = async function(userId) {
+        if (!confirm('Are you sure you want to unlink this couple?')) return;
+
+        try {
+            const response = await fetch('/api/admin/couples/unlink', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId })
+            });
+
+            if (response.ok) {
+                alert('Couple unlinked successfully');
+                loadCouplesForAdmin();
+                populateCoupleDropdowns();
+                loadUsersForAdmin();
+            } else {
+                const data = await response.json();
+                alert(data.message || 'Failed to unlink couple');
+            }
+        } catch (error) {
+            alert('Error unlinking couple');
+        }
+    };
+
+    // ============ VIEW MODE TOGGLE EVENT LISTENERS ============
+
+    document.getElementById('individualViewBtn').addEventListener('click', () => {
+        setViewMode('individual');
+    });
+
+    document.getElementById('combinedViewBtn').addEventListener('click', () => {
+        setViewMode('combined');
     });
 
     // Fetch current user on load

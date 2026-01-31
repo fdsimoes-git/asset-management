@@ -4,22 +4,82 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register - Asset Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <style>
-        /* Modern Professional Login Styling */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-8px); }
+            40% { transform: translateX(8px); }
+            60% { transform: translateX(-6px); }
+            80% { transform: translateX(6px); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 60px rgba(245, 158, 11, 0.2); }
+            50% { box-shadow: 0 0 100px rgba(245, 158, 11, 0.35); }
+        }
+
+        @keyframes checkmark {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
         :root {
-            --primary-color: #2563eb;
-            --primary-dark: #1d4ed8;
-            --secondary-color: #64748b;
-            --success-color: #10b981;
-            --danger-color: #ef4444;
-            --background-color: #f8fafc;
-            --surface-color: #ffffff;
-            --border-color: #e2e8f0;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --font-display: 'Fraunces', Georgia, serif;
+            --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+            --color-bg-deep: #0a0f1a;
+            --color-bg-base: #0f172a;
+            --color-bg-elevated: #1e293b;
+            --color-bg-surface: #334155;
+
+            --color-accent-primary: #f59e0b;
+            --color-accent-secondary: #fbbf24;
+            --color-accent-tertiary: #d97706;
+
+            --color-success: #10b981;
+            --color-success-muted: rgba(16, 185, 129, 0.15);
+            --color-danger: #ef4444;
+            --color-danger-muted: rgba(239, 68, 68, 0.15);
+
+            --color-text-primary: #f8fafc;
+            --color-text-secondary: #94a3b8;
+            --color-text-muted: #64748b;
+
+            --color-border: rgba(148, 163, 184, 0.15);
+
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+
+            --transition-fast: 0.15s ease;
+            --transition-base: 0.25s ease;
         }
 
         * {
@@ -27,42 +87,110 @@
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--font-body);
+            background: var(--color-bg-deep);
             margin: 0;
             padding: 0;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            overflow: hidden;
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Ambient background orbs */
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%);
+            top: -150px;
+            left: -100px;
+            animation: float 15s ease-in-out infinite;
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, transparent 70%);
+            bottom: -100px;
+            right: -100px;
+            animation: float 18s ease-in-out infinite reverse;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+            top: 60%;
+            left: 30%;
+            animation: float 12s ease-in-out infinite;
         }
 
         .container {
             width: 100%;
-            max-width: 400px;
+            max-width: 460px;
             padding: 2rem;
+            position: relative;
+            z-index: 1;
         }
 
         .register-form {
-            background: var(--surface-color);
-            padding: 3rem 2rem;
-            border-radius: 1.5rem;
+            background: var(--color-bg-elevated);
+            padding: 3rem 2.5rem;
+            border-radius: var(--radius-xl);
             box-shadow: var(--shadow-lg);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--color-border);
             text-align: center;
+            animation: fadeInUp 0.8s ease backwards, pulse-glow 4s ease-in-out infinite;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .register-form::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--color-success) 0%, var(--color-accent-primary) 50%, var(--color-accent-secondary) 100%);
         }
 
         .register-form h1 {
-            margin: 0 0 2rem 0;
+            margin: 0 0 0.5rem 0;
+            font-family: var(--font-display);
             font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            background: linear-gradient(135deg, var(--primary-color) 0%, #7c3aed 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            letter-spacing: -0.02em;
+        }
+
+        .register-form .subtitle {
+            color: var(--color-text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 2.5rem;
         }
 
         .form-group {
@@ -72,53 +200,65 @@
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
+            margin-bottom: 0.6rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
 
         .form-group input {
             width: 100%;
-            padding: 1rem;
-            border: 2px solid var(--border-color);
-            border-radius: 0.75rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 1rem;
-            transition: all 0.2s ease;
-            background: var(--background-color);
+            font-family: var(--font-body);
+            transition: all var(--transition-base);
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
+        }
+
+        .form-group input::placeholder {
+            color: var(--color-text-muted);
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
-            background: var(--surface-color);
+            border-color: var(--color-accent-primary);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+            background: var(--color-bg-deep);
         }
 
         .form-group small {
             display: block;
-            margin-top: 0.25rem;
-            color: var(--text-secondary);
+            margin-top: 0.5rem;
+            color: var(--color-text-muted);
             font-size: 0.75rem;
         }
 
         button {
             width: 100%;
-            padding: 1rem;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-            color: white;
+            padding: 1.1rem;
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
             border: none;
-            border-radius: 0.75rem;
-            font-size: 1rem;
-            font-weight: 600;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            font-family: var(--font-body);
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s ease;
-            margin-top: 1rem;
+            transition: all var(--transition-base);
+            margin-top: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            box-shadow: 0 4px 24px rgba(245, 158, 11, 0.3);
         }
 
         button:hover {
             transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+            box-shadow: 0 8px 32px rgba(245, 158, 11, 0.4);
         }
 
         button:active {
@@ -126,124 +266,223 @@
         }
 
         .error-message {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 0.5rem;
-            color: var(--danger-color);
+            margin-top: 1.5rem;
+            padding: 1rem 1.25rem;
+            background: var(--color-danger-muted);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius-md);
+            color: var(--color-danger);
             font-size: 0.875rem;
             display: none;
+            text-align: left;
         }
 
         .error-message.show {
             display: block;
-            animation: shake 0.5s ease-in-out;
+            animation: shake 0.5s ease-in-out, fadeInUp 0.3s ease;
         }
 
         .success-message {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: #ecfdf5;
-            border: 1px solid #a7f3d0;
-            border-radius: 0.5rem;
-            color: var(--success-color);
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: var(--color-success-muted);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-md);
+            color: var(--color-success);
             font-size: 0.875rem;
             display: none;
+            text-align: center;
         }
 
         .success-message.show {
             display: block;
+            animation: fadeInUp 0.4s ease;
         }
 
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
+        .success-message .checkmark {
+            display: inline-block;
+            width: 48px;
+            height: 48px;
+            background: var(--color-success);
+            border-radius: 50%;
+            margin-bottom: 1rem;
+            position: relative;
+            animation: checkmark 0.5s ease 0.2s backwards;
+        }
+
+        .success-message .checkmark::after {
+            content: '';
+            position: absolute;
+            left: 17px;
+            top: 11px;
+            width: 12px;
+            height: 22px;
+            border: solid white;
+            border-width: 0 3px 3px 0;
+            transform: rotate(45deg);
         }
 
         /* Loading state */
         button.loading {
-            background: var(--secondary-color);
+            background: var(--color-bg-surface);
             cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
 
         button.loading::after {
             content: '';
             display: inline-block;
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border: 2px solid transparent;
-            border-top: 2px solid white;
+            border-top: 2px solid var(--color-text-primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-left: 0.5rem;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            margin-left: 0.75rem;
+            vertical-align: middle;
         }
 
         .login-link {
-            margin-top: 1.5rem;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
+            margin-top: 2rem;
+            font-size: 0.9rem;
+            color: var(--color-text-secondary);
         }
 
         .login-link a {
-            color: var(--primary-color);
+            color: var(--color-accent-primary);
             text-decoration: none;
             font-weight: 600;
+            transition: color var(--transition-fast);
         }
 
         .login-link a:hover {
+            color: var(--color-accent-secondary);
             text-decoration: underline;
         }
+
+        /* Decorative elements */
+        .decorative-line {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 2rem 0;
+            color: var(--color-text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .decorative-line::before,
+        .decorative-line::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+        }
+
+        /* Password strength indicator */
+        .password-strength {
+            margin-top: 0.5rem;
+            height: 4px;
+            background: var(--color-bg-surface);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .password-strength-bar {
+            height: 100%;
+            width: 0;
+            transition: all var(--transition-base);
+            border-radius: 2px;
+        }
+
+        .password-strength-bar.weak { width: 33%; background: var(--color-danger); }
+        .password-strength-bar.medium { width: 66%; background: var(--color-accent-primary); }
+        .password-strength-bar.strong { width: 100%; background: var(--color-success); }
 
         /* Responsive Design */
         @media (max-width: 480px) {
             .container {
-                padding: 1rem;
+                padding: 1.25rem;
             }
 
             .register-form {
-                padding: 2rem 1.5rem;
+                padding: 2.5rem 1.75rem;
             }
 
             .register-form h1 {
                 font-size: 1.75rem;
             }
+
+            .orb-1, .orb-2 {
+                opacity: 0.5;
+            }
         }
     </style>
 </head>
 <body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
     <div class="container">
         <div class="register-form">
             <h1>Create Account</h1>
+            <p class="subtitle">Start managing your assets today</p>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Username</label>
                     <input type="text" id="username" required minlength="3" maxlength="30"
-                           pattern="[a-zA-Z0-9_]+" title="Letters, numbers, and underscores only">
-                    <small>3-30 characters, letters, numbers, and underscores only</small>
+                           pattern="[a-zA-Z0-9_]+" title="Letters, numbers, and underscores only"
+                           placeholder="Choose a username">
+                    <small>3-30 characters, letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password:</label>
-                    <input type="password" id="password" required minlength="8">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required minlength="8"
+                           placeholder="Create a strong password">
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="passwordStrength"></div>
+                    </div>
                     <small>Minimum 8 characters</small>
                 </div>
                 <div class="form-group">
-                    <label for="confirmPassword">Confirm Password:</label>
-                    <input type="password" id="confirmPassword" required>
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input type="password" id="confirmPassword" required
+                           placeholder="Re-enter your password">
                 </div>
-                <button type="submit">Register</button>
+                <button type="submit">Create Account</button>
             </form>
-            <p class="login-link">Already have an account? <a href="/login.html">Login</a></p>
+            <div class="decorative-line">or</div>
+            <p class="login-link">Already have an account? <a href="/login.html">Sign in</a></p>
             <div id="error-message" class="error-message"></div>
-            <div id="success-message" class="success-message"></div>
+            <div id="success-message" class="success-message">
+                <div class="checkmark"></div>
+                <p style="margin: 0; font-weight: 600;">Account Created Successfully!</p>
+                <p style="margin: 0.5rem 0 0; opacity: 0.8;">Redirecting to login...</p>
+            </div>
         </div>
     </div>
     <script src="/js/register.js"></script>
+    <script>
+        // Password strength indicator
+        document.getElementById('password').addEventListener('input', function() {
+            const password = this.value;
+            const strengthBar = document.getElementById('passwordStrength');
+
+            strengthBar.className = 'password-strength-bar';
+
+            if (password.length === 0) {
+                strengthBar.style.width = '0';
+            } else if (password.length < 8) {
+                strengthBar.classList.add('weak');
+            } else if (password.length < 12 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+                strengthBar.classList.add('medium');
+            } else {
+                strengthBar.classList.add('strong');
+            }
+        });
+    </script>
 </body>
 </html>

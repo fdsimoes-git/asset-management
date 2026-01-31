@@ -4,400 +4,649 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Asset Management Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        :root {
-            --primary-color: #2563eb;
-            --primary-dark: #1d4ed8;
-            --secondary-color: #64748b;
-            --success-color: #10b981;
-            --danger-color: #ef4444;
-            --background-color: #f8fafc;
-            --surface-color: #ffffff;
-            --border-color: #e2e8f0;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.1); }
+            50% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.2); }
+        }
+
+        :root {
+            --font-display: 'Fraunces', Georgia, serif;
+            --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+            --color-bg-deep: #0a0f1a;
+            --color-bg-base: #0f172a;
+            --color-bg-elevated: #1e293b;
+            --color-bg-surface: #334155;
+
+            --color-accent-primary: #f59e0b;
+            --color-accent-secondary: #fbbf24;
+            --color-accent-tertiary: #d97706;
+
+            --color-success: #10b981;
+            --color-success-muted: rgba(16, 185, 129, 0.15);
+            --color-danger: #ef4444;
+            --color-danger-muted: rgba(239, 68, 68, 0.15);
+            --color-info: #3b82f6;
+
+            --color-text-primary: #f8fafc;
+            --color-text-secondary: #94a3b8;
+            --color-text-muted: #64748b;
+
+            --color-border: rgba(148, 163, 184, 0.1);
+            --color-border-subtle: rgba(148, 163, 184, 0.05);
+
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 40px rgba(245, 158, 11, 0.15);
+
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+
+            --transition-fast: 0.15s ease;
+            --transition-base: 0.25s ease;
+            --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--font-body);
+            background: var(--color-bg-deep);
             margin: 0;
             padding: 0;
             min-height: 100vh;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
+
+        /* Noise texture overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 0;
-            background: var(--background-color);
+            background: var(--color-bg-base);
             min-height: 100vh;
-            box-shadow: var(--shadow-lg);
+            position: relative;
         }
+
+        /* Ambient glow effect */
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -200px;
+            right: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(245, 158, 11, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
         header {
-            background: var(--surface-color);
-            padding: 1.5rem 2rem;
-            border-bottom: 1px solid var(--border-color);
-            box-shadow: var(--shadow-sm);
+            background: linear-gradient(180deg, var(--color-bg-elevated) 0%, var(--color-bg-base) 100%);
+            padding: 1.5rem 2.5rem;
+            border-bottom: 1px solid var(--color-border);
             position: sticky;
             top: 0;
             z-index: 100;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
+
         header h1 {
             margin: 0;
-            font-size: 1.875rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            display: inline-block;
+            font-family: var(--font-display);
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            letter-spacing: -0.02em;
         }
+
+        header h1::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--color-accent-primary);
+            border-radius: 50%;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
         .header-buttons {
             float: right;
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
             align-items: center;
         }
+
         button {
-            padding: 0.75rem 1.5rem;
+            padding: 0.7rem 1.25rem;
             border: none;
-            border-radius: 0.5rem;
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
             font-weight: 600;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all var(--transition-base);
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .add-entry-btn {
-            background: var(--primary-color);
-            color: white;
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
+            box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
         }
+
         .add-entry-btn:hover {
-            background: var(--primary-dark);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(245, 158, 11, 0.4);
         }
+
         .bulk-upload-btn {
-            background: var(--success-color);
-            color: white;
+            background: var(--color-bg-surface);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-border);
         }
+
         .bulk-upload-btn:hover {
-            background: #059669;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
+            background: var(--color-bg-elevated);
+            border-color: var(--color-success);
+            color: var(--color-success);
         }
-        /* Bulk preview table action buttons */
+
         .bulk-action-btn {
-            padding: 2px 8px;
-            font-size: 0.75rem;
+            padding: 4px 10px;
+            font-size: 0.7rem;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
             margin-right: 4px;
-            transition: opacity 0.2s ease;
+            transition: all var(--transition-fast);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
+
         .bulk-action-btn:hover {
-            opacity: 0.9;
+            transform: translateY(-1px);
         }
+
         .bulk-action-btn:focus {
-            outline: 2px solid var(--primary-color);
+            outline: 2px solid var(--color-accent-primary);
             outline-offset: 2px;
         }
+
         .bulk-action-btn:last-child {
             margin-right: 0;
         }
+
         .bulk-action-btn--edit {
-            background: #3b82f6;
+            background: var(--color-info);
         }
+
         .bulk-action-btn--delete {
-            background: #ef4444;
+            background: var(--color-danger);
         }
+
         .bulk-action-btn--save {
-            background: #10b981;
+            background: var(--color-success);
         }
+
         .bulk-action-btn--cancel {
-            background: #64748b;
+            background: var(--color-text-muted);
         }
+
         .bulk-edit-input {
             width: 100%;
-            padding: 4px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 0.875rem;
+            padding: 6px 8px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
         }
+
+        .bulk-edit-input:focus {
+            outline: none;
+            border-color: var(--color-accent-primary);
+        }
+
         .bulk-edit-input--amount {
-            width: 80px;
+            width: 90px;
         }
+
         .logout-btn {
-            background: var(--danger-color);
-            color: white;
+            background: transparent;
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
         }
+
         .logout-btn:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
+            background: var(--color-danger-muted);
+            border-color: var(--color-danger);
+            color: var(--color-danger);
         }
+
         .admin-btn {
-            background: #7c3aed;
-            color: white;
+            background: var(--color-bg-surface);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-border);
         }
+
         .admin-btn:hover {
-            background: #6d28d9;
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
+            background: var(--color-bg-elevated);
+            border-color: var(--color-accent-primary);
+            color: var(--color-accent-primary);
         }
+
         main {
-            padding: 2rem;
+            padding: 2.5rem;
         }
+
         section {
-            background: var(--surface-color);
-            border-radius: 1rem;
+            background: var(--color-bg-elevated);
+            border-radius: var(--radius-lg);
             padding: 2rem;
             margin-bottom: 2rem;
             box-shadow: var(--shadow-md);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--color-border);
+            animation: fadeInUp 0.6s ease backwards;
         }
+
+        section:nth-child(1) { animation-delay: 0.1s; }
+        section:nth-child(2) { animation-delay: 0.2s; }
+        section:nth-child(3) { animation-delay: 0.3s; }
+
         section h2 {
             margin: 0 0 1.5rem 0;
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            border-bottom: 2px solid var(--primary-color);
-            padding-bottom: 0.5rem;
+            font-family: var(--font-display);
+            font-size: 1.35rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            letter-spacing: -0.01em;
         }
+
+        section h2::before {
+            content: '';
+            width: 4px;
+            height: 24px;
+            background: linear-gradient(180deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            border-radius: 2px;
+        }
+
         .filters-section {
-            background: linear-gradient(135deg, var(--surface-color) 0%, #f1f5f9 100%);
+            background: linear-gradient(135deg, var(--color-bg-elevated) 0%, rgba(30, 41, 59, 0.8) 100%);
         }
+
         .filters {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.25rem;
             align-items: end;
         }
+
         .form-group {
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
         }
+
         .form-group label {
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
+
         .form-group input,
         .form-group select {
-            padding: 0.75rem;
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
             font-size: 0.875rem;
-            transition: border-color 0.2s ease;
+            font-family: var(--font-body);
+            transition: all var(--transition-fast);
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
         }
+
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgb(37 99 235 / 0.1);
+            border-color: var(--color-accent-primary);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
         }
+
         .form-group select[multiple] {
-            min-height: 120px;
-            padding: 0.25rem;
+            min-height: 140px;
+            padding: 0.5rem;
         }
+
         .form-group select[multiple] option {
-            padding: 0.4rem 0.6rem;
-            border-radius: 0.25rem;
-            margin: 1px 0;
+            padding: 0.5rem 0.75rem;
+            border-radius: var(--radius-sm);
+            margin: 2px 0;
+            transition: all var(--transition-fast);
         }
+
         .form-group select[multiple] option:checked {
-            background: var(--primary-color);
-            color: white;
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
         }
+
         .filter-btn {
-            background: var(--secondary-color);
-            color: white;
-            padding: 0.75rem 1.5rem;
+            background: var(--color-bg-surface);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
         }
+
         .filter-btn:hover {
-            background: #475569;
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
         }
+
         .charts-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
         }
+
         .chart-wrapper {
-            background: var(--surface-color);
-            border-radius: 0.75rem;
+            background: var(--color-bg-base);
+            border-radius: var(--radius-lg);
             padding: 1.5rem;
-            border: 1px solid var(--border-color);
-            box-shadow: var(--shadow-sm);
-            height: 400px;
+            border: 1px solid var(--color-border);
+            height: 380px;
             position: relative;
+            transition: all var(--transition-base);
         }
+
+        .chart-wrapper:hover {
+            border-color: var(--color-accent-primary);
+            box-shadow: var(--shadow-glow);
+        }
+
         canvas {
             display: block;
         }
+
         .summary {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
             margin-bottom: 2rem;
         }
+
         .summary-item {
-            background: linear-gradient(135deg, var(--surface-color) 0%, #f8fafc 100%);
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            border: 1px solid var(--border-color);
-            box-shadow: var(--shadow-sm);
-            text-align: center;
+            background: var(--color-bg-base);
+            padding: 1.75rem;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border);
+            position: relative;
+            overflow: hidden;
+            transition: all var(--transition-base);
         }
+
+        .summary-item:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .summary-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%);
+            opacity: 0;
+            transition: opacity var(--transition-base);
+        }
+
+        .summary-item:hover::before {
+            opacity: 1;
+        }
+
         .summary-item span:first-child {
             display: block;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
+            font-size: 0.7rem;
+            color: var(--color-text-muted);
             font-weight: 500;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
         }
+
         .summary-item span:last-child {
             display: block;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text-primary);
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            letter-spacing: -0.02em;
         }
+
         .entries-table {
             overflow-x: auto;
-            border-radius: 0.75rem;
-            border: 1px solid var(--border-color);
-            box-shadow: var(--shadow-sm);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border);
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            background: var(--surface-color);
+            background: var(--color-bg-base);
         }
+
         th {
-            background: #f8fafc;
-            padding: 1rem;
+            background: var(--color-bg-surface);
+            padding: 1rem 1.25rem;
             text-align: left;
             font-weight: 600;
-            color: var(--text-secondary);
-            border-bottom: 2px solid var(--border-color);
-            font-size: 0.875rem;
+            color: var(--color-text-secondary);
+            border-bottom: 1px solid var(--color-border);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
+
         td {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-            color: var(--text-primary);
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--color-border-subtle);
+            color: var(--color-text-primary);
+            font-size: 0.9rem;
         }
+
         tr:hover {
-            background: #f8fafc;
+            background: rgba(245, 158, 11, 0.03);
         }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
         .sortable {
             cursor: pointer;
             user-select: none;
             position: relative;
+            transition: color var(--transition-fast);
         }
+
         .sortable:hover {
-            background: #e2e8f0 !important;
+            color: var(--color-accent-primary);
         }
+
         .sortable.asc::after {
             content: " \2191";
-            color: var(--success-color);
+            color: var(--color-success);
             font-weight: bold;
         }
+
         .sortable.desc::after {
             content: " \2193";
-            color: var(--danger-color);
+            color: var(--color-danger);
             font-weight: bold;
         }
+
         .sortable::after {
             content: " \2195";
-            color: var(--text-secondary);
+            color: var(--color-text-muted);
+            opacity: 0.5;
         }
+
         .edit-btn {
-            background: var(--primary-color);
-            color: white;
-            padding: 0.5rem 1rem;
-            font-size: 0.75rem;
-            border-radius: 0.375rem;
+            background: transparent;
+            color: var(--color-text-secondary);
+            padding: 0.4rem 0.8rem;
+            font-size: 0.7rem;
+            border-radius: var(--radius-sm);
             margin-right: 0.5rem;
+            border: 1px solid var(--color-border);
         }
+
         .edit-btn:hover {
-            background: #1d4ed8;
-        }
-        .delete-btn {
-            background: var(--danger-color);
+            background: var(--color-info);
+            border-color: var(--color-info);
             color: white;
-            padding: 0.5rem 1rem;
-            font-size: 0.75rem;
-            border-radius: 0.375rem;
         }
+
+        .delete-btn {
+            background: transparent;
+            color: var(--color-text-secondary);
+            padding: 0.4rem 0.8rem;
+            font-size: 0.7rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border);
+        }
+
         .delete-btn:hover {
-            background: #dc2626;
+            background: var(--color-danger);
+            border-color: var(--color-danger);
+            color: white;
         }
+
         /* Tag badge styles */
         .tag {
             display: inline-block;
-            padding: 0.15rem 0.5rem;
+            padding: 0.25rem 0.6rem;
             border-radius: 9999px;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             font-weight: 600;
             margin: 0.1rem;
-            text-transform: capitalize;
-            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid transparent;
         }
-        .tag-food { background: #fef3c7; color: #92400e; }
-        .tag-transport { background: #dbeafe; color: #1e40af; }
-        .tag-entertainment { background: #ede9fe; color: #5b21b6; }
-        .tag-utilities { background: #e0e7ff; color: #3730a3; }
-        .tag-healthcare { background: #fce7f3; color: #9d174d; }
-        .tag-education { background: #d1fae5; color: #065f46; }
-        .tag-shopping { background: #fff7ed; color: #9a3412; }
-        .tag-subscription { background: #f0fdf4; color: #166534; }
-        .tag-housing { background: #f1f5f9; color: #475569; }
-        .tag-salary { background: #dcfce7; color: #15803d; }
-        .tag-freelance { background: #ccfbf1; color: #0f766e; }
-        .tag-investment { background: #faf5ff; color: #7e22ce; }
-        .tag-transfer { background: #f0f9ff; color: #0369a1; }
-        .tag-other { background: #f5f5f5; color: #737373; }
+
+        .tag-food { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
+        .tag-groceries { background: rgba(34, 197, 94, 0.15); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
+        .tag-transport { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
+        .tag-travel { background: rgba(6, 182, 212, 0.15); color: #06b6d4; border-color: rgba(6, 182, 212, 0.3); }
+        .tag-entertainment { background: rgba(168, 85, 247, 0.15); color: #a855f7; border-color: rgba(168, 85, 247, 0.3); }
+        .tag-utilities { background: rgba(99, 102, 241, 0.15); color: #6366f1; border-color: rgba(99, 102, 241, 0.3); }
+        .tag-healthcare { background: rgba(236, 72, 153, 0.15); color: #ec4899; border-color: rgba(236, 72, 153, 0.3); }
+        .tag-education { background: rgba(20, 184, 166, 0.15); color: #14b8a6; border-color: rgba(20, 184, 166, 0.3); }
+        .tag-shopping { background: rgba(249, 115, 22, 0.15); color: #f97316; border-color: rgba(249, 115, 22, 0.3); }
+        .tag-subscription { background: rgba(132, 204, 22, 0.15); color: #84cc16; border-color: rgba(132, 204, 22, 0.3); }
+        .tag-housing { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border-color: rgba(148, 163, 184, 0.3); }
+        .tag-salary { background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
+        .tag-freelance { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; border-color: rgba(45, 212, 191, 0.3); }
+        .tag-investment { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
+        .tag-transfer { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
+        .tag-wedding { background: rgba(244, 114, 182, 0.15); color: #f472b6; border-color: rgba(244, 114, 182, 0.3); }
+        .tag-other { background: rgba(100, 116, 139, 0.15); color: #64748b; border-color: rgba(100, 116, 139, 0.3); }
+
         /* Preview table selects */
         .preview-select {
-            padding: 0.35rem 0.5rem;
-            border: 1px solid var(--border-color);
-            border-radius: 0.375rem;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
             font-size: 0.75rem;
-            background: var(--surface-color);
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
             cursor: pointer;
         }
+
         .preview-select:focus {
             outline: none;
-            border-color: var(--primary-color);
+            border-color: var(--color-accent-primary);
         }
+
         /* Entry type badges */
         .entry-type {
             display: inline-block;
-            padding: 0.2rem 0.6rem;
-            border-radius: 0.375rem;
-            font-size: 0.75rem;
+            padding: 0.3rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
             font-weight: 600;
-            text-transform: capitalize;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .entry-type-income {
-            background: #dcfce7;
-            color: #15803d;
+            background: var(--color-success-muted);
+            color: var(--color-success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
         }
+
         .entry-type-expense {
-            background: #fee2e2;
-            color: #991b1b;
+            background: var(--color-danger-muted);
+            color: var(--color-danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
+
         .modal {
             display: none;
             position: fixed;
@@ -406,20 +655,32 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
+            background: rgba(10, 15, 26, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
+
         .modal-content {
-            background: var(--surface-color);
-            margin: 5% auto;
-            padding: 2rem;
-            border-radius: 1rem;
+            background: var(--color-bg-elevated);
+            margin: 4% auto;
+            padding: 2.5rem;
+            border-radius: var(--radius-xl);
             width: 90%;
             max-width: 600px;
             box-shadow: var(--shadow-lg);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--color-border);
             position: relative;
+            animation: fadeInUp 0.3s ease;
         }
+
+        .modal-content h2 {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 500;
+            margin: 0 0 2rem 0;
+            color: var(--color-text-primary);
+        }
+
         .close {
             position: absolute;
             right: 1.5rem;
@@ -427,138 +688,366 @@
             font-size: 1.5rem;
             font-weight: bold;
             cursor: pointer;
-            color: var(--text-secondary);
-            transition: color 0.2s ease;
+            color: var(--color-text-muted);
+            transition: color var(--transition-fast);
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
         }
+
         .close:hover {
-            color: var(--danger-color);
+            color: var(--color-danger);
+            background: var(--color-danger-muted);
         }
+
         @media (max-width: 768px) {
             .header-buttons {
                 float: none;
                 margin-top: 1rem;
                 justify-content: center;
+                flex-wrap: wrap;
             }
+
             .filters {
                 grid-template-columns: 1fr;
             }
+
             .charts-container {
                 grid-template-columns: 1fr;
             }
+
             .summary {
                 grid-template-columns: 1fr;
             }
+
             main {
-                padding: 1rem;
+                padding: 1.25rem;
             }
+
             section {
                 padding: 1.5rem;
             }
+
+            header {
+                padding: 1.25rem;
+            }
+
+            header h1 {
+                font-size: 1.35rem;
+            }
         }
+
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
+            height: 8px;
         }
+
         ::-webkit-scrollbar-track {
-            background: #f1f5f9;
+            background: var(--color-bg-base);
         }
+
         ::-webkit-scrollbar-thumb {
-            background: var(--secondary-color);
+            background: var(--color-bg-surface);
             border-radius: 4px;
         }
+
         ::-webkit-scrollbar-thumb:hover {
-            background: #475569;
+            background: var(--color-text-muted);
         }
+
         /* Admin Panel Styles */
         .admin-modal .modal-content {
-            max-width: 900px;
+            max-width: 1000px;
         }
+
         .admin-create-user {
-            background: #f8fafc;
+            background: var(--color-bg-base);
             padding: 1.5rem;
-            border-radius: 0.75rem;
+            border-radius: var(--radius-lg);
             margin-bottom: 1.5rem;
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--color-border);
         }
+
         .admin-create-user h3 {
             margin: 0 0 1rem 0;
+            font-family: var(--font-display);
             font-size: 1rem;
-            color: var(--text-primary);
+            font-weight: 500;
+            color: var(--color-text-primary);
         }
+
         .admin-form-row {
             display: flex;
             gap: 1rem;
             align-items: flex-end;
             flex-wrap: wrap;
         }
+
         .admin-form-row .form-group {
             flex: 1;
             min-width: 150px;
             margin-bottom: 0;
         }
+
         .users-table {
             overflow-x: auto;
         }
+
         .users-table table {
             width: 100%;
             border-collapse: collapse;
         }
+
         .users-table th,
         .users-table td {
-            padding: 0.75rem;
+            padding: 0.85rem 1rem;
             text-align: left;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--color-border-subtle);
         }
+
         .users-table th {
-            background: #f8fafc;
+            background: var(--color-bg-surface);
             font-weight: 600;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            color: var(--text-secondary);
+            letter-spacing: 0.06em;
+            color: var(--color-text-muted);
         }
+
         .role-badge {
             display: inline-block;
-            padding: 0.2rem 0.6rem;
+            padding: 0.25rem 0.6rem;
             border-radius: 9999px;
-            font-size: 0.75rem;
+            font-size: 0.65rem;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .role-admin {
-            background: #ede9fe;
-            color: #6d28d9;
+            background: rgba(168, 85, 247, 0.15);
+            color: #a855f7;
+            border: 1px solid rgba(168, 85, 247, 0.3);
         }
+
         .role-user {
-            background: #dbeafe;
-            color: #1d4ed8;
+            background: rgba(59, 130, 246, 0.15);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
         }
+
         .status-badge {
             display: inline-block;
-            padding: 0.2rem 0.6rem;
+            padding: 0.25rem 0.6rem;
             border-radius: 9999px;
-            font-size: 0.75rem;
+            font-size: 0.65rem;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+
         .status-active {
-            background: #dcfce7;
-            color: #15803d;
+            background: var(--color-success-muted);
+            color: var(--color-success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
         }
+
         .status-inactive {
-            background: #fee2e2;
-            color: #991b1b;
+            background: var(--color-danger-muted);
+            color: var(--color-danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
+
         .user-actions {
             display: flex;
             gap: 0.5rem;
         }
+
         .user-actions button {
-            padding: 0.25rem 0.5rem;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.7rem;
+        }
+
+        /* Couple Feature Styles */
+        .view-mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            padding: 1rem 1.5rem;
+            background: var(--color-bg-elevated);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--color-border);
+            margin-bottom: 1.5rem;
+            animation: fadeInUp 0.5s ease backwards;
+        }
+
+        .view-mode-toggle label {
+            font-weight: 500;
+            color: var(--color-text-secondary);
             font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .toggle-buttons {
+            display: flex;
+            gap: 0.5rem;
+            background: var(--color-bg-base);
+            padding: 4px;
+            border-radius: var(--radius-md);
+        }
+
+        .view-btn {
+            padding: 0.6rem 1.25rem;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-weight: 500;
+            font-size: 0.8rem;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .view-btn.active {
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
+            box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
+        }
+
+        .view-btn:hover:not(.active) {
+            color: var(--color-text-primary);
+            background: var(--color-bg-surface);
+        }
+
+        .couple-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--color-accent-primary);
+            border-radius: 9999px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .couple-expense-toggle {
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .couple-expense-toggle .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+
+        .couple-expense-toggle .checkbox-label input[type="checkbox"] {
+            width: 1.25rem;
+            height: 1.25rem;
+            cursor: pointer;
+            accent-color: var(--color-accent-primary);
+        }
+
+        .couple-expense-toggle .help-text {
+            display: block;
+            margin-top: 0.75rem;
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+        }
+
+        .admin-couples-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--color-border);
+        }
+
+        .admin-couples-section h3 {
+            margin: 0 0 1.25rem 0;
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+
+        .admin-link-couple {
+            background: var(--color-bg-base);
+            padding: 1.5rem;
+            border-radius: var(--radius-lg);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--color-border);
+        }
+
+        .admin-link-couple h4 {
+            margin: 0 0 1rem 0;
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+
+        .couples-table {
+            margin-top: 1.25rem;
+        }
+
+        .couples-table h4 {
+            margin: 0 0 1rem 0;
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+
+        .partner-badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--color-accent-primary);
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        /* Form button in modal */
+        form button[type="submit"] {
+            width: 100%;
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+        }
+
+        form button[type="submit"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(245, 158, 11, 0.4);
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Asset Management Dashboard</h1>
+            <h1>Asset Management</h1>
             <div class="header-buttons">
                 <button id="addEntryBtn" class="add-entry-btn">Add New Entry</button>
                 <button id="openBulkUploadModal" class="bulk-upload-btn">Bulk PDF Upload</button>
@@ -574,27 +1063,34 @@
                     <h2>Add New Entry</h2>
                     <form id="entryForm">
                         <div class="form-group">
-                            <label for="month">Month:</label>
+                            <label for="month">Month</label>
                             <input type="month" id="month" required>
                         </div>
                         <div class="form-group">
-                            <label for="type">Type:</label>
+                            <label for="type">Type</label>
                             <select id="type" required>
                                 <option value="income">Income</option>
                                 <option value="expense">Expense</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="amount">Amount:</label>
+                            <label for="amount">Amount</label>
                             <input type="number" id="amount" step="0.01" required>
                         </div>
                         <div class="form-group">
-                            <label for="description">Description:</label>
+                            <label for="description">Description</label>
                             <input type="text" id="description" required>
                         </div>
                         <div class="form-group">
-                            <label for="tags">Tags (comma-separated):</label>
+                            <label for="tags">Tags (comma-separated)</label>
                             <input type="text" id="tags" placeholder="e.g. food, subscription">
+                        </div>
+                        <div class="couple-expense-toggle" id="coupleExpenseToggle" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="isCoupleExpense">
+                                <span>This is a couple expense</span>
+                            </label>
+                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
                         </div>
                         <button type="submit">Add Entry</button>
                     </form>
@@ -608,27 +1104,34 @@
                     <form id="editEntryForm">
                         <input type="hidden" id="editEntryId">
                         <div class="form-group">
-                            <label for="editMonth">Month:</label>
+                            <label for="editMonth">Month</label>
                             <input type="month" id="editMonth" required>
                         </div>
                         <div class="form-group">
-                            <label for="editType">Type:</label>
+                            <label for="editType">Type</label>
                             <select id="editType" required>
                                 <option value="income">Income</option>
                                 <option value="expense">Expense</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="editAmount">Amount:</label>
+                            <label for="editAmount">Amount</label>
                             <input type="number" id="editAmount" step="0.01" required>
                         </div>
                         <div class="form-group">
-                            <label for="editDescription">Description:</label>
+                            <label for="editDescription">Description</label>
                             <input type="text" id="editDescription" required>
                         </div>
                         <div class="form-group">
-                            <label for="editTags">Tags (comma-separated):</label>
+                            <label for="editTags">Tags (comma-separated)</label>
                             <input type="text" id="editTags" placeholder="e.g. food, subscription">
+                        </div>
+                        <div class="couple-expense-toggle" id="editCoupleExpenseToggle" style="display: none;">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="editIsCoupleExpense">
+                                <span>This is a couple expense</span>
+                            </label>
+                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
                         </div>
                         <button type="submit">Save Changes</button>
                     </form>
@@ -638,23 +1141,26 @@
             <div id="bulkUploadModal" class="modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close" id="closeBulkUploadModal">&times;</span>
-                    <h2>Bulk Upload Expenses from PDF</h2>
-                    <input type="file" id="bulkPdfUpload" accept="application/pdf" />
-                    <button id="processBulkPdfBtn">Upload and Process</button>
-                    <div id="loadingIndicator" style="display:none; text-align: center; margin: 20px 0;">
-                        <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                        <p style="margin-top: 10px; color: var(--text-secondary);">Analyzing PDF with AI...</p>
+                    <h2>Bulk Upload from PDF</h2>
+                    <div class="form-group">
+                        <label for="bulkPdfUpload">Select PDF File</label>
+                        <input type="file" id="bulkPdfUpload" accept="application/pdf" />
                     </div>
-                    <h3>Preview Extracted Entries</h3>
-                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); margin-bottom: 10px; border-radius: 0.5rem;">
+                    <button id="processBulkPdfBtn" class="bulk-upload-btn" style="width: 100%; margin: 1rem 0;">Upload and Process</button>
+                    <div id="loadingIndicator" style="display:none; text-align: center; margin: 20px 0;">
+                        <div style="display: inline-block; width: 40px; height: 40px; border: 3px solid var(--color-border); border-top: 3px solid var(--color-accent-primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <p style="margin-top: 12px; color: var(--color-text-secondary); font-size: 0.875rem;">Analyzing PDF with AI...</p>
+                    </div>
+                    <h3 style="font-family: var(--font-display); font-size: 1rem; font-weight: 500; margin: 1.5rem 0 1rem;">Preview Extracted Entries</h3>
+                    <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--color-border); margin-bottom: 1rem; border-radius: var(--radius-md);">
                         <table style="width:100%;">
                             <thead>
-                                <tr><th>Month</th><th>Type</th><th>Amount</th><th>Description</th><th>Category</th><th>Actions</th></tr>
+                                <tr><th>Month</th><th>Type</th><th>Amount</th><th>Description</th><th>Category</th><th id="bulkCoupleHeader" style="display: none;">Couple</th><th>Actions</th></tr>
                             </thead>
                             <tbody id="bulkExtractedEntries"></tbody>
                         </table>
                     </div>
-                    <button id="confirmBulkEntriesBtn" style="display:none;">Confirm and Add Entries</button>
+                    <button id="confirmBulkEntriesBtn" style="display:none; width: 100%;">Confirm and Add Entries</button>
                 </div>
             </div>
             <!-- Admin Panel Modal -->
@@ -669,15 +1175,15 @@
                         <form id="createUserForm">
                             <div class="admin-form-row">
                                 <div class="form-group">
-                                    <label for="newUsername">Username:</label>
+                                    <label for="newUsername">Username</label>
                                     <input type="text" id="newUsername" required minlength="3" maxlength="30">
                                 </div>
                                 <div class="form-group">
-                                    <label for="newPassword">Password:</label>
+                                    <label for="newPassword">Password</label>
                                     <input type="password" id="newPassword" required minlength="8">
                                 </div>
                                 <div class="form-group">
-                                    <label for="newRole">Role:</label>
+                                    <label for="newRole">Role</label>
                                     <select id="newRole">
                                         <option value="user">User</option>
                                         <option value="admin">Admin</option>
@@ -696,6 +1202,7 @@
                                     <th>ID</th>
                                     <th>Username</th>
                                     <th>Role</th>
+                                    <th>Partner</th>
                                     <th>Status</th>
                                     <th>Created</th>
                                     <th>Entries</th>
@@ -705,21 +1212,73 @@
                             <tbody id="usersTableBody"></tbody>
                         </table>
                     </div>
+
+                    <!-- Couple Management Section -->
+                    <div class="admin-couples-section">
+                        <h3>Couple Management</h3>
+
+                        <!-- Link Couple Form -->
+                        <div class="admin-link-couple">
+                            <h4>Link Users as Couple</h4>
+                            <form id="linkCoupleForm">
+                                <div class="admin-form-row">
+                                    <div class="form-group">
+                                        <label for="coupleUser1">User 1</label>
+                                        <select id="coupleUser1" required>
+                                            <option value="">Select user...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="coupleUser2">User 2</label>
+                                        <select id="coupleUser2" required>
+                                            <option value="">Select user...</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="add-entry-btn">Link as Couple</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Existing Couples List -->
+                        <div class="couples-table">
+                            <h4>Linked Couples</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>User 1</th>
+                                        <th>User 2</th>
+                                        <th>Linked Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="couplesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <!-- View Mode Toggle (visible only for users with partners) -->
+            <div id="viewModeContainer" class="view-mode-toggle" style="display: none;">
+                <label>View Mode</label>
+                <div class="toggle-buttons">
+                    <button type="button" id="individualViewBtn" class="view-btn active">Individual</button>
+                    <button type="button" id="combinedViewBtn" class="view-btn">Combined (Couple)</button>
+                </div>
+                <span id="partnerInfo" style="font-size: 0.8rem; color: var(--color-text-muted);"></span>
             </div>
             <section class="filters-section">
                 <h2>Filters</h2>
                 <div class="filters">
                     <div class="form-group">
-                        <label for="monthFilterStart">Start Month:</label>
+                        <label for="monthFilterStart">Start Month</label>
                         <input type="month" id="monthFilterStart">
                     </div>
                     <div class="form-group">
-                        <label for="monthFilterEnd">End Month:</label>
+                        <label for="monthFilterEnd">End Month</label>
                         <input type="month" id="monthFilterEnd">
                     </div>
                     <div class="form-group">
-                        <label for="typeFilter">Type:</label>
+                        <label for="typeFilter">Type</label>
                         <select id="typeFilter">
                             <option value="all">All</option>
                             <option value="income">Income</option>
@@ -727,7 +1286,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="categoryFilter">Category:</label>
+                        <label for="categoryFilter">Category</label>
                         <select id="categoryFilter" multiple size="6">
                             <option value="food">Food</option>
                             <option value="groceries">Groceries</option>
@@ -744,6 +1303,7 @@
                             <option value="freelance">Freelance</option>
                             <option value="investment">Investment</option>
                             <option value="transfer">Transfer</option>
+                            <option value="wedding">Wedding</option>
                             <option value="other">Other</option>
                         </select>
                     </div>
@@ -771,15 +1331,15 @@
                 <h2>Monthly Entries</h2>
                 <div class="summary">
                     <div class="summary-item">
-                        <span>Total Income:</span>
+                        <span>Total Income</span>
                         <span id="totalIncome">$0.00</span>
                     </div>
                     <div class="summary-item">
-                        <span>Total Expenses:</span>
+                        <span>Total Expenses</span>
                         <span id="totalExpenses">$0.00</span>
                     </div>
                     <div class="summary-item">
-                        <span>Net Balance:</span>
+                        <span>Net Balance</span>
                         <span id="netBalance">$0.00</span>
                     </div>
                 </div>
