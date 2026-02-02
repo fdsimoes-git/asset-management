@@ -394,15 +394,20 @@ function getMonthLabelsAroundCurrent() {
 // Generate continuous months between start and end dates (inclusive)
 function generateContinuousMonths(startMonth, endMonth) {
     const months = [];
-    const start = new Date(startMonth + '-01');
-    const end = new Date(endMonth + '-01');
+    // Parse year and month directly to avoid timezone issues
+    const [startYear, startMon] = startMonth.split('-').map(Number);
+    const [endYear, endMon] = endMonth.split('-').map(Number);
 
-    const current = new Date(start);
-    while (current <= end) {
-        const year = current.getFullYear();
-        const month = (current.getMonth() + 1).toString().padStart(2, '0');
-        months.push(`${year}-${month}`);
-        current.setMonth(current.getMonth() + 1);
+    let year = startYear;
+    let month = startMon;
+
+    while (year < endYear || (year === endYear && month <= endMon)) {
+        months.push(`${year}-${month.toString().padStart(2, '0')}`);
+        month++;
+        if (month > 12) {
+            month = 1;
+            year++;
+        }
     }
 
     return months;

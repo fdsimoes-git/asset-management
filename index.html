@@ -25,11 +25,6 @@
             }
         }
 
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
-        }
-
         @keyframes pulse-glow {
             0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.1); }
             50% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.2); }
@@ -132,6 +127,9 @@
             z-index: 100;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         header h1 {
@@ -156,7 +154,7 @@
         }
 
         .header-buttons {
-            float: right;
+            margin-left: auto;
             display: flex;
             gap: 0.75rem;
             align-items: center;
@@ -202,8 +200,9 @@
         }
 
         .bulk-action-btn {
-            padding: 4px 10px;
-            font-size: 0.7rem;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            min-height: 32px;
             color: white;
             border: none;
             border-radius: var(--radius-sm);
@@ -244,7 +243,9 @@
         }
 
         .bulk-edit-input {
-            width: 100%;
+            width: auto;
+            min-width: 80px;
+            max-width: 100%;
             padding: 6px 8px;
             border: 1px solid var(--color-border);
             border-radius: var(--radius-sm);
@@ -260,6 +261,8 @@
 
         .bulk-edit-input--amount {
             width: 90px;
+            min-width: 70px;
+            max-width: 120px;
         }
 
         .logout-btn {
@@ -705,10 +708,24 @@
 
         @media (max-width: 768px) {
             .header-buttons {
-                float: none;
+                margin-left: 0;
+                width: 100%;
                 margin-top: 1rem;
                 justify-content: center;
                 flex-wrap: wrap;
+            }
+
+            .view-mode-toggle {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .toggle-buttons {
+                width: 100%;
+            }
+
+            .view-btn {
+                flex: 1;
             }
 
             .filters {
@@ -740,6 +757,47 @@
             }
         }
 
+        @media (max-width: 480px) {
+            header {
+                padding: 1rem;
+            }
+
+            .header-buttons {
+                width: 100%;
+                gap: 0.5rem;
+            }
+
+            .header-buttons button {
+                flex: 1;
+                min-width: 0;
+                padding: 0.6rem 0.75rem;
+                font-size: 0.7rem;
+            }
+
+            main {
+                padding: 0.75rem;
+            }
+
+            section {
+                padding: 1rem;
+                border-radius: var(--radius-md);
+            }
+
+            table {
+                font-size: 0.8rem;
+            }
+
+            th, td {
+                padding: 0.6rem 0.75rem;
+            }
+
+            .modal-content {
+                margin: 2% auto;
+                padding: 1.5rem;
+                width: 95%;
+            }
+        }
+
         /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -761,7 +819,7 @@
 
         /* Admin Panel Styles */
         .admin-modal .modal-content {
-            max-width: 1000px;
+            max-width: min(1000px, 95vw);
         }
 
         .admin-create-user {
@@ -876,6 +934,7 @@
         .view-mode-toggle {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 1.25rem;
             padding: 1rem 1.5rem;
             background: var(--color-bg-elevated);
@@ -1311,7 +1370,7 @@
                 </div>
             </section>
             <section class="charts-section">
-                <h2>Monthly Overview</h2>
+                <h2>Dashboard</h2>
                 <div class="charts-container">
                     <div class="chart-wrapper">
                         <canvas id="monthlyBalanceChart"></canvas>
@@ -1328,7 +1387,7 @@
                 </div>
             </section>
             <section class="entries-section">
-                <h2>Monthly Entries</h2>
+                <h2>Registered Entries</h2>
                 <div class="summary">
                     <div class="summary-item">
                         <span>Total Income</span>
