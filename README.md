@@ -11,6 +11,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Asset Tracking**: Add monthly income and expense entries manually
 - **Data Visualization**: Interactive charts showing asset progression, income vs expenses, and expense categories
 - **Advanced Filtering**: Filter entries by date range, transaction type, and categories
+- **Sortable Columns**: Click table headers to sort by any column
 - **Data Management**: Edit and delete existing entries
 - **Encrypted Storage**: All data encrypted at rest using AES-256-CBC
 
@@ -20,11 +21,27 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Admin Panel**: Admins can create, activate/deactivate, and delete users
 - **Role-Based Access**: Admin and regular user roles
 
+### Couples/Partner Feature
+- **Partner Linking**: Admins can link two users as a couple
+- **View Modes**: Toggle between Individual and Combined (Couple) views
+- **Couple Expenses**: Mark entries as shared couple expenses
+- **Combined Analytics**: View aggregated finances for both partners
+- **Admin Couple Management**: Link/unlink couples from Admin Panel
+
 ### AI-Powered Processing
 - **PDF Analysis**: Upload financial documents for automatic expense extraction using Google Gemini AI
 - **Smart Data Extraction**: Automatically identifies amounts, dates, descriptions, and categories from PDFs
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
-- **Bulk Import**: Process multiple expenses from a single document with preview
+- **Bulk Import**: Process multiple expenses from a single document with preview and editing
+
+#### Bulk Import Workflow
+1. Click "Bulk PDF Upload" in the header
+2. Select a PDF file (bank statement, receipt, etc.)
+3. Click "Upload and Process" to send to Gemini AI
+4. Review extracted entries in the preview table
+5. Edit any entries inline (month, type, amount, description, category)
+6. Use Edit/Delete buttons to modify or remove individual rows
+7. Click "Confirm and Add Entries" to save all entries
 
 ### Data Visualization
 - **Asset Progression**: Line chart showing cumulative total assets over time
@@ -132,7 +149,7 @@ sudo node server.js
 Available expense/income categories:
 - Food, Groceries, Transport, Travel, Entertainment
 - Utilities, Healthcare, Education, Shopping, Subscription
-- Housing, Salary, Freelance, Investment, Transfer, Other
+- Housing, Salary, Freelance, Investment, Transfer, Wedding, Other
 
 ## Security Features
 
@@ -149,8 +166,8 @@ Available expense/income categories:
 - **Users**: `data/users.json` (encrypted)
 - **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive }`
-- **Entry Model**: `{ id, userId, month, type, amount, description, tags }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt }`
+- **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
 
 ## Technical Details
 
@@ -181,6 +198,9 @@ Available expense/income categories:
 - `POST /api/admin/users` - Create user
 - `PUT /api/admin/users/:id` - Update user
 - `DELETE /api/admin/users/:id` - Delete user
+- `GET /api/admin/couples` - List all linked couples
+- `POST /api/admin/couples/link` - Link two users as a couple
+- `POST /api/admin/couples/unlink` - Unlink a couple
 
 ### File Structure
 ```
