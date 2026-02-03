@@ -1032,7 +1032,7 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             const savedEntries = await Promise.all(savePromises);
 
             // Reload entries from server to ensure view mode filtering is applied correctly
-            await loadEntries();
+            await window.loadEntries();
 
             // Close modal and show success message
             bulkUploadModal.style.display = 'none';
@@ -1409,6 +1409,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error loading entries:', error);
         }
     }
+    window.loadEntries = loadEntries;
 
     // Load users for admin panel
     async function loadUsersForAdmin() {
