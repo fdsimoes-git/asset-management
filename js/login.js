@@ -1,9 +1,12 @@
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     const errorMessage = document.getElementById('error-message');
+
+    // Clear any previous error message
+    errorMessage.classList.remove('show');
     
     try {
         const response = await fetch('/api/login', {
@@ -20,9 +23,11 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         if (response.ok) {
             window.location.href = '/index.html';
         } else {
-            errorMessage.textContent = data.message || 'Login failed';
+            errorMessage.textContent = data.message || 'Invalid username or password';
+            errorMessage.classList.add('show');
         }
     } catch (error) {
         errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.classList.add('show');
     }
 }); 
