@@ -20,9 +20,11 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         if (response.ok) {
             window.location.href = '/index.html';
         } else {
-            errorMessage.textContent = data.message || 'Login failed';
+            errorMessage.textContent = data.message || 'Invalid username or password';
+            errorMessage.classList.add('show');
         }
     } catch (error) {
         errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.classList.add('show');
     }
 }); 
