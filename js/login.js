@@ -1,9 +1,12 @@
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     const errorMessage = document.getElementById('error-message');
+
+    // Clear any previous error message
+    errorMessage.classList.remove('show');
     
     try {
         const response = await fetch('/api/login', {

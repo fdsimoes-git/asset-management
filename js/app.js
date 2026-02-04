@@ -477,13 +477,15 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     incomeVsExpenseChart.data.datasets[0].data = incomeValues;
     incomeVsExpenseChart.data.datasets[1].data = expenseValues;
 
-    // Add average lines when 2+ months are selected
+    // Add average lines when 2+ months are selected (only show if average > 0)
     if (months.length >= 2) {
         const avgIncome = incomeValues.reduce((a, b) => a + b, 0) / months.length;
         const avgExpense = expenseValues.reduce((a, b) => a + b, 0) / months.length;
 
-        incomeVsExpenseChart.options.plugins.annotation.annotations = {
-            avgIncomeLine: {
+        const annotations = {};
+
+        if (avgIncome > 0) {
+            annotations.avgIncomeLine = {
                 type: 'line',
                 yMin: avgIncome,
                 yMax: avgIncome,
@@ -499,8 +501,11 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                     font: { size: 11, family: "'DM Sans', sans-serif" },
                     padding: 4
                 }
-            },
-            avgExpenseLine: {
+            };
+        }
+
+        if (avgExpense > 0) {
+            annotations.avgExpenseLine = {
                 type: 'line',
                 yMin: avgExpense,
                 yMax: avgExpense,
@@ -516,8 +521,10 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                     font: { size: 11, family: "'DM Sans', sans-serif" },
                     padding: 4
                 }
-            }
-        };
+            };
+        }
+
+        incomeVsExpenseChart.options.plugins.annotation.annotations = annotations;
     } else {
         // Remove annotations when less than 2 months
         incomeVsExpenseChart.options.plugins.annotation.annotations = {};
@@ -1476,10 +1483,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Store users for lookup (avoids XSS from inline onclick handlers)
+    let adminUsersCache = {};
+
     // Display users in admin table
     function displayUsersTable(users) {
         const tbody = document.getElementById('usersTableBody');
         tbody.innerHTML = '';
+
+        // Cache users for safe lookup
+        adminUsersCache = {};
+        users.forEach(user => {
+            adminUsersCache[user.id] = user;
+        });
 
         users.forEach(user => {
             const row = document.createElement('tr');
@@ -1496,7 +1512,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td>${user.entriesCount || 0}</td>
                 <td class="user-actions">
-                    <button class="edit-btn" onclick="resetUserPassword(${user.id}, '${user.username}')">Reset Password</button>
+                    <button class="edit-btn" onclick="resetUserPassword(${user.id})">Reset Password</button>
                     <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? 'Deactivate' : 'Activate'}</button>
                     ${user.id !== currentUser.id ?
                         `<button class="delete-btn" onclick="deleteUser(${user.id})">Delete</button>` : ''}
@@ -1526,9 +1542,70 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Show password reset modal (returns promise with password or null)
+    function showPasswordResetModal(username) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal';
+            overlay.style.display = 'block';
+            overlay.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <span class="close" id="closePasswordModal">&times;</span>
+                    <h2>Reset Password</h2>
+                    <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
+                        Enter new password for <strong>${username}</strong>
+                    </p>
+                    <div class="form-group">
+                        <label for="resetPasswordInput">New Password</label>
+                        <input type="password" id="resetPasswordInput" placeholder="Minimum 8 characters" required>
+                    </div>
+                    <button type="button" id="confirmPasswordReset" style="width: 100%; margin-top: 1rem;">Reset Password</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const input = overlay.querySelector('#resetPasswordInput');
+            const confirmBtn = overlay.querySelector('#confirmPasswordReset');
+            const closeBtn = overlay.querySelector('#closePasswordModal');
+
+            function cleanup() {
+                document.body.removeChild(overlay);
+            }
+
+            function onConfirm() {
+                const value = input.value;
+                cleanup();
+                resolve(value || null);
+            }
+
+            function onCancel() {
+                cleanup();
+                resolve(null);
+            }
+
+            closeBtn.addEventListener('click', onCancel);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) onCancel();
+            });
+            confirmBtn.addEventListener('click', onConfirm);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') onConfirm();
+                if (e.key === 'Escape') onCancel();
+            });
+
+            input.focus();
+        });
+    }
+
     // Reset user password (admin only)
-    window.resetUserPassword = async function(userId, username) {
-        const newPassword = prompt(`Enter new password for "${username}" (minimum 8 characters):`);
+    window.resetUserPassword = async function(userId) {
+        const user = adminUsersCache[userId];
+        if (!user) {
+            alert('User not found');
+            return;
+        }
+
+        const newPassword = await showPasswordResetModal(user.username);
 
         if (!newPassword) {
             return;
@@ -1547,7 +1624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert(`Password reset successfully for "${username}"`);
+                alert(`Password reset successfully for "${user.username}"`);
             } else {
                 const data = await response.json();
                 alert(data.message || 'Failed to reset password');
