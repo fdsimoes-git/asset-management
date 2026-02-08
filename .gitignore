@@ -129,4 +129,5 @@ Thumbs.db
 *.bak
 
 # Capacitor - placeholder web dir (app loads from remote server)
-www/
+www/*
+!www/.gitkeep
