@@ -632,6 +632,7 @@ function filterEntries() {
     displayEntries(filteredEntries);
     updateSummary(filteredEntries);
     updateCharts(filteredEntries, false, monthFilterStart, monthFilterEnd);
+    updateCoupleShare(filteredEntries);
 }
 
 // Sort entries function
@@ -749,6 +750,80 @@ function updateSummary(entriesToShow) {
 
     netEl.textContent = `$${netBalance.toFixed(2)}`;
     netEl.style.color = netBalance >= 0 ? '#f59e0b' : '#ef4444';
+}
+
+// --- Couple Expense Share Widget ---
+function updateCoupleShare(entriesToShow) {
+    const section = document.getElementById('coupleShareSection');
+    if (!section) return;
+
+    // Only show in combined view with a valid partner
+    if (currentViewMode !== 'combined' || !hasPartner || !currentUser) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    // Calculate totals for each person (expenses only for fair split)
+    const userExpenses = entriesToShow
+        .filter(e => e.type === 'expense' && e.userId === currentUser.id)
+        .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
+    const partnerExpenses = entriesToShow
+        .filter(e => e.type === 'expense' && e.userId === currentUser.partnerId)
+        .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
+    const totalExpenses = userExpenses + partnerExpenses;
+    const userPercent = totalExpenses > 0 ? (userExpenses / totalExpenses) * 100 : 0;
+    const partnerPercent = totalExpenses > 0 ? (partnerExpenses / totalExpenses) * 100 : 0;
+
+    // Update names
+    document.getElementById('coupleShareUserName').textContent = currentUser.username || 'You';
+    document.getElementById('coupleSharePartnerName').textContent = currentUser.partnerUsername || 'Partner';
+
+    // Update amounts
+    document.getElementById('coupleShareUserAmount').textContent = `$${userExpenses.toFixed(2)}`;
+    document.getElementById('coupleSharePartnerAmount').textContent = `$${partnerExpenses.toFixed(2)}`;
+
+    // Update bars
+    const userBar = document.getElementById('coupleShareUserBar');
+    const partnerBar = document.getElementById('coupleSharePartnerBar');
+    userBar.style.width = `${userPercent}%`;
+    userBar.setAttribute('aria-valuenow', Math.round(userPercent));
+    userBar.setAttribute('aria-label', `${currentUser.username || 'Your'} expense share`);
+    partnerBar.style.width = `${partnerPercent}%`;
+    partnerBar.setAttribute('aria-valuenow', Math.round(partnerPercent));
+    partnerBar.setAttribute('aria-label', `${currentUser.partnerUsername || 'Partner'} expense share`);
+
+    // Update percentages
+    document.getElementById('coupleShareUserPercent').textContent = `${userPercent.toFixed(1)}% of total`;
+    document.getElementById('coupleSharePartnerPercent').textContent = `${partnerPercent.toFixed(1)}% of total`;
+
+    // Settlement calculation (50/50 split)
+    const settlementEl = document.getElementById('coupleSettlementAmount');
+    const directionEl = document.getElementById('coupleSettlementDirection');
+
+    if (totalExpenses === 0) {
+        settlementEl.textContent = 'No expenses recorded';
+        settlementEl.className = 'settlement-amount settlement-settled';
+        settlementEl.style.color = '';
+        directionEl.textContent = '';
+    } else if (Math.abs(userExpenses - partnerExpenses) < 0.01) {
+        settlementEl.textContent = 'All settled up!';
+        settlementEl.className = 'settlement-amount settlement-settled';
+        settlementEl.style.color = '';
+        directionEl.textContent = 'Both paid equally';
+    } else {
+        const overpayer = userExpenses > partnerExpenses ? currentUser.username : currentUser.partnerUsername;
+        const underpayer = userExpenses > partnerExpenses ? currentUser.partnerUsername : currentUser.username;
+        const owedAmount = Math.abs(userExpenses - partnerExpenses) / 2;
+
+        settlementEl.textContent = `$${owedAmount.toFixed(2)}`;
+        settlementEl.className = 'settlement-amount';
+        settlementEl.style.color = '#f59e0b';
+        directionEl.textContent = `${underpayer} owes ${overpayer}`;
+    }
 }
 
 // --- Bulk PDF Upload Modal Logic ---
@@ -1148,6 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
             displayEntries(entries);
             updateSummary(entries);
             updateCharts(entries, true);
+            updateCoupleShare(entries);
         })
         .catch(error => console.error('Error loading entries:', error));
 
@@ -1343,6 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayEntries(entries);
         updateSummary(entries);
         updateCharts(entries, true);
+        updateCoupleShare(entries);
     });
 
     // Sorting functionality
