@@ -787,8 +787,14 @@ function updateCoupleShare(entriesToShow) {
     document.getElementById('coupleSharePartnerAmount').textContent = `$${partnerExpenses.toFixed(2)}`;
 
     // Update bars
-    document.getElementById('coupleShareUserBar').style.width = `${userPercent}%`;
-    document.getElementById('coupleSharePartnerBar').style.width = `${partnerPercent}%`;
+    const userBar = document.getElementById('coupleShareUserBar');
+    const partnerBar = document.getElementById('coupleSharePartnerBar');
+    userBar.style.width = `${userPercent}%`;
+    userBar.setAttribute('aria-valuenow', Math.round(userPercent));
+    userBar.setAttribute('aria-label', `${currentUser.username || 'Your'} expense share`);
+    partnerBar.style.width = `${partnerPercent}%`;
+    partnerBar.setAttribute('aria-valuenow', Math.round(partnerPercent));
+    partnerBar.setAttribute('aria-label', `${currentUser.partnerUsername || 'Partner'} expense share`);
 
     // Update percentages
     document.getElementById('coupleShareUserPercent').textContent = `${userPercent.toFixed(1)}% of total`;
@@ -801,10 +807,12 @@ function updateCoupleShare(entriesToShow) {
     if (totalExpenses === 0) {
         settlementEl.textContent = 'No expenses recorded';
         settlementEl.className = 'settlement-amount settlement-settled';
+        settlementEl.style.color = '';
         directionEl.textContent = '';
     } else if (Math.abs(userExpenses - partnerExpenses) < 0.01) {
         settlementEl.textContent = 'All settled up!';
         settlementEl.className = 'settlement-amount settlement-settled';
+        settlementEl.style.color = '';
         directionEl.textContent = 'Both paid equally';
     } else {
         const overpayer = userExpenses > partnerExpenses ? currentUser.username : currentUser.partnerUsername;
