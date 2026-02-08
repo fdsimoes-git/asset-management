@@ -16,6 +16,7 @@ data/
 *.json
 !package.json
 !package-lock.json
+!capacitor.config.json
 
 # SSL certificates (regenerate on deployment)
 ssl/
@@ -125,4 +126,8 @@ Thumbs.db
 
 # Backup files
 *.backup
-*.bak 
+*.bak
+
+# Capacitor - placeholder web dir (app loads from remote server)
+www/*
+!www/.gitkeep

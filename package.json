@@ -10,14 +10,19 @@
     "hash-password": "node -e \"const bcrypt = require('bcryptjs'); const pw = process.argv[1]; bcrypt.hash(pw, 10).then(hash => console.log('ADMIN_PASSWORD_HASH=' + hash));\" "
   },
   "dependencies": {
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.2",
     "@google/genai": "^1.0.0",
-    "node-fetch": "^2.7.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
     "helmet": "^7.1.0",
     "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
     "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.2"
   }
 }
