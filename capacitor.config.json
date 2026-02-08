@@ -3,7 +3,7 @@
   "appName": "AssetManager",
   "webDir": "www",
   "server": {
-    "url": "https://192.168.1.X",
+    "url": "https://192.168.86.198",
     "cleartext": true,
     "allowNavigation": ["192.168.*"]
   }
