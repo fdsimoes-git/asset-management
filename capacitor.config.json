@@ -1,0 +1,10 @@
+{
+  "appId": "com.assetmanager.app",
+  "appName": "AssetManager",
+  "webDir": "www",
+  "server": {
+    "url": "https://192.168.1.X",
+    "cleartext": true,
+    "allowNavigation": ["192.168.*"]
+  }
+}
