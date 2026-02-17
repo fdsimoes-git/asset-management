@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Asset Management Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -106,8 +106,9 @@
             max-width: 1600px;
             margin: 0 auto;
             padding: 0;
+            padding-top: env(safe-area-inset-top, 0px);
             background: var(--color-bg-base);
-            min-height: 100vh;
+            min-height: calc(100vh - env(safe-area-inset-top, 0px));
             position: relative;
         }
 
@@ -128,7 +129,7 @@
             padding: 1.5rem 2.5rem;
             border-bottom: 1px solid var(--color-border);
             position: sticky;
-            top: 0;
+            top: env(safe-area-inset-top, 0px);
             z-index: 100;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -671,6 +672,8 @@
         .modal-content {
             background: var(--color-bg-elevated);
             margin: 4% auto;
+            margin-top: calc(env(safe-area-inset-top, 0px) + 4%);
+            margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 4%);
             padding: 2.5rem;
             border-radius: var(--radius-xl);
             width: 90%;
@@ -679,6 +682,8 @@
             border: 1px solid var(--color-border);
             position: relative;
             animation: fadeInUp 0.3s ease;
+            max-height: 85vh;
+            overflow-y: auto;
         }
 
         .modal-content h2 {
@@ -797,7 +802,6 @@
             }
 
             .modal-content {
-                margin: 2% auto;
                 padding: 1.5rem;
                 width: 95%;
             }
