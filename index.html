@@ -106,6 +106,7 @@
             max-width: 1600px;
             margin: 0 auto;
             padding: 0;
+            padding-top: env(safe-area-inset-top, 0px);
             background: var(--color-bg-base);
             min-height: 100vh;
             position: relative;
@@ -670,7 +671,9 @@
 
         .modal-content {
             background: var(--color-bg-elevated);
-            margin: calc(env(safe-area-inset-top, 0px) + 4%) auto;
+            margin: 4% auto;
+            margin-top: calc(env(safe-area-inset-top, 0px) + 4%);
+            margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 4%);
             padding: 2.5rem;
             border-radius: var(--radius-xl);
             width: 90%;
@@ -712,12 +715,7 @@
         }
 
         @media (max-width: 768px) {
-            .container {
-                padding-top: env(safe-area-inset-top, 1.25rem);
-            }
-
             .modal-content {
-                margin-top: calc(env(safe-area-inset-top, 1.25rem) + 2%);
                 max-height: 85vh;
                 overflow-y: auto;
             }
@@ -773,16 +771,6 @@
         }
 
         @media (max-width: 480px) {
-            .container {
-                padding-top: env(safe-area-inset-top, 1.5rem);
-            }
-
-            .modal-content {
-                margin-top: calc(env(safe-area-inset-top, 1.5rem) + 1%);
-                max-height: 80vh;
-                overflow-y: auto;
-            }
-
             header {
                 padding: 1rem;
             }
@@ -817,9 +805,10 @@
             }
 
             .modal-content {
-                margin: calc(env(safe-area-inset-top, 1.5rem) + 1%) auto 2% auto;
                 padding: 1.5rem;
                 width: 95%;
+                max-height: 80vh;
+                overflow-y: auto;
             }
         }
 
