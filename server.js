@@ -1,7 +1,3 @@
-// Polyfill fetch for Node.js < 18
-if (!globalThis.fetch) {
-    globalThis.fetch = require('node-fetch');
-}
 
 require('dotenv').config();
 const express = require('express');
@@ -296,6 +292,9 @@ app.use(helmet({
 }));
 app.use(express.json());
 app.use(express.static(__dirname)); // Serve files from the current directory
+
+// Trust Nginx proxy
+app.set('trust proxy', 1);
 
 // Session configuration
 app.use(session({
@@ -904,15 +903,25 @@ DOCUMENT:
 ${text}`;
 
         // Call Gemini API with structured output
-        const response = await genAI.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: responseSchema,
-                temperature: 0.2
-            }
-        });
+        console.log('Starting Gemini API call...');
+        console.log('Prompt length:', prompt.length, 'chars');
+        let response;
+        try {
+            response = await genAI.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: responseSchema,
+                    temperature: 0.2
+                }
+            });
+        } catch (geminiError) {
+            console.error('Gemini API error details:', geminiError.message);
+            console.error('Gemini API error cause:', geminiError.cause);
+            console.error('Full error:', JSON.stringify(geminiError, Object.getOwnPropertyNames(geminiError)));
+            throw geminiError;
+        }
 
         const aiResponse = response.text;
 
@@ -997,13 +1006,9 @@ ${text}`;
 });
 
 // HTTPS configuration
-const options = {
-    key: fs.readFileSync(path.join(__dirname, process.env.SSL_KEY_PATH)),
-    cert: fs.readFileSync(path.join(__dirname, process.env.SSL_CERT_PATH))
-};
 
-const PORT = process.env.PORT || 443;
-https.createServer(options, app).listen(PORT, () => {
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on https://localhost:${PORT}`);
 
     // Verify Gemini API configuration
