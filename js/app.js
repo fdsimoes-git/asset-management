@@ -880,6 +880,11 @@ processBulkPdfBtn.addEventListener('click', async () => {
         return;
     }
 
+    if (pdfFile.size > 10 * 1024 * 1024) {
+        alert('File is too large. Maximum size is 10MB.');
+        return;
+    }
+
     // Show loading indicator
     loadingIndicator.style.display = 'block';
     processBulkPdfBtn.disabled = true;
@@ -904,8 +909,12 @@ processBulkPdfBtn.addEventListener('click', async () => {
             // Preview in table with editable dropdowns
             renderBulkPreviewTable();
         } else {
-            const errorData = await response.text();
-            alert(`Error processing PDF: ${response.statusText}. ${errorData}`);
+            let errorMsg = response.statusText;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.message || errorMsg;
+            } catch { /* ignore parse errors */ }
+            alert(`Error processing PDF: ${errorMsg}`);
         }
     } catch (error) {
         alert('Failed to process PDF. Check console for details.');
@@ -1768,6 +1777,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadUsersForAdmin();
         loadCouplesForAdmin();
         populateCoupleDropdowns();
+        loadInviteCodesForAdmin();
+        const display = document.getElementById('generatedCodeDisplay');
+        if (display) display.style.display = 'none';
     });
 
     document.getElementById('closeAdminModal').addEventListener('click', () => {
@@ -1914,6 +1926,130 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Error unlinking couple');
         }
     };
+
+    // ============ INVITE CODE MANAGEMENT ============
+
+    async function loadInviteCodesForAdmin() {
+        try {
+            const response = await fetch('/api/admin/invite-codes');
+            if (response.ok) {
+                const codes = await response.json();
+                displayInviteCodesTable(codes);
+            }
+        } catch (error) {
+            console.error('Error loading invite codes:', error);
+        }
+    }
+
+    function displayInviteCodesTable(codes) {
+        const tbody = document.getElementById('inviteCodesTableBody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (codes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary);">No invite codes generated yet</td></tr>';
+            return;
+        }
+
+        const sortedCodes = [...codes].reverse();
+
+        sortedCodes.forEach(code => {
+            const row = document.createElement('tr');
+
+            const codeCell = document.createElement('td');
+            const codeSpan = document.createElement('span');
+            codeSpan.className = 'code-value';
+            codeSpan.textContent = code.code;
+            codeCell.appendChild(codeSpan);
+            row.appendChild(codeCell);
+
+            const createdByCell = document.createElement('td');
+            createdByCell.textContent = code.createdByUsername || '-';
+            row.appendChild(createdByCell);
+
+            const createdAtCell = document.createElement('td');
+            createdAtCell.textContent = new Date(code.createdAt).toLocaleDateString();
+            row.appendChild(createdAtCell);
+
+            const statusCell = document.createElement('td');
+            const statusSpan = document.createElement('span');
+            statusSpan.classList.add('code-badge');
+            if (code.isUsed) {
+                statusSpan.classList.add('code-used');
+                statusSpan.textContent = 'Used';
+            } else {
+                statusSpan.classList.add('code-active');
+                statusSpan.textContent = 'Active';
+            }
+            statusCell.appendChild(statusSpan);
+            row.appendChild(statusCell);
+
+            const usedByCell = document.createElement('td');
+            usedByCell.textContent = code.usedByUsername
+                ? `${code.usedByUsername} (${new Date(code.usedAt).toLocaleDateString()})`
+                : '-';
+            row.appendChild(usedByCell);
+
+            const deleteCell = document.createElement('td');
+            if (!code.isUsed) {
+                const deleteButton = document.createElement('button');
+                deleteButton.classList.add('delete-btn', 'invite-code-delete-btn');
+                deleteButton.textContent = 'Delete';
+                deleteButton.dataset.code = code.code;
+                deleteCell.appendChild(deleteButton);
+            }
+            row.appendChild(deleteCell);
+
+            tbody.appendChild(row);
+        });
+
+        document.querySelectorAll('.invite-code-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const codeVal = e.target.dataset.code;
+                if (!confirm(`Delete invite code ${codeVal}?`)) return;
+
+                try {
+                    const response = await fetch(`/api/admin/invite-codes/${codeVal}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        loadInviteCodesForAdmin();
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || 'Failed to delete invite code');
+                    }
+                } catch (error) {
+                    alert('Error deleting invite code');
+                }
+            });
+        });
+    }
+
+    const generateInviteCodeBtn = document.getElementById('generateInviteCodeBtn');
+    if (generateInviteCodeBtn) {
+        generateInviteCodeBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/admin/invite-codes', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const display = document.getElementById('generatedCodeDisplay');
+                    const value = document.getElementById('generatedCodeValue');
+                    display.style.display = 'block';
+                    value.textContent = data.code;
+                    loadInviteCodesForAdmin();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'Failed to generate invite code');
+                }
+            } catch (error) {
+                alert('Error generating invite code');
+            }
+        });
+    }
 
     // ============ VIEW MODE TOGGLE EVENT LISTENERS ============
 

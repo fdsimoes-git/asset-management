@@ -1094,6 +1094,35 @@
             border: 1px solid rgba(245, 158, 11, 0.3);
         }
 
+        .code-badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .code-active {
+            background: var(--color-success-muted);
+            color: var(--color-success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .code-used {
+            background: rgba(100, 116, 139, 0.15);
+            color: #64748b;
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+
+        .code-value {
+            font-family: monospace;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            color: var(--color-accent-primary);
+        }
+
         /* Couple Expense Share Widget */
         .couple-share-section {
             display: none;
@@ -1483,6 +1512,39 @@
                                     </tr>
                                 </thead>
                                 <tbody id="couplesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Invite Code Management Section -->
+                    <div class="admin-couples-section">
+                        <h3>Invite Codes</h3>
+
+                        <div class="admin-link-couple">
+                            <h4>Generate New Invite Code</h4>
+                            <div class="admin-form-row">
+                                <button type="button" id="generateInviteCodeBtn" class="add-entry-btn">Generate Code</button>
+                            </div>
+                            <div id="generatedCodeDisplay" style="display:none; margin-top: 1rem; padding: 1rem; background: var(--color-bg-base); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+                                <span style="font-size: 0.7rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">New Code:</span>
+                                <span id="generatedCodeValue" style="font-family: monospace; font-size: 1.5rem; font-weight: 700; color: var(--color-accent-primary); letter-spacing: 0.15em; display: block; margin-top: 0.5rem;"></span>
+                            </div>
+                        </div>
+
+                        <div class="couples-table">
+                            <h4>All Invite Codes</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Created By</th>
+                                        <th>Created</th>
+                                        <th>Status</th>
+                                        <th>Used By</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inviteCodesTableBody"></tbody>
                             </table>
                         </div>
                     </div>

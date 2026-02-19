@@ -3,7 +3,7 @@
 # Backs up data folder and .env to Google Drive via rclone
 
 # Configuration
-SOURCE_DIR="/home/ubuntu/projects/asset-management"
+SOURCE_DIR="$HOME/projects/asset-management"
 REMOTE="gdrive:asset_management_backup_files_internet"
 DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
 BACKUP_DIR="$REMOTE/$DATETIME"

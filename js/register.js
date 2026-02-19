@@ -4,6 +4,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
+    const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
     const errorMessage = document.getElementById('error-message');
     const successMessage = document.getElementById('success-message');
     const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -31,6 +32,12 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
         return;
     }
 
+    if (!inviteCode) {
+        errorMessage.textContent = 'Invite code is required';
+        errorMessage.classList.add('show');
+        return;
+    }
+
     // Show loading state
     submitBtn.classList.add('loading');
     submitBtn.disabled = true;
@@ -41,7 +48,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password, confirmPassword }),
+            body: JSON.stringify({ username, password, confirmPassword, inviteCode }),
             credentials: 'include'
         });
 
