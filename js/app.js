@@ -1492,9 +1492,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
                 updateUIForPartner();
+            } else {
+                window.location.href = '/login.html';
             }
         } catch (error) {
             console.error('Error fetching user:', error);
+            window.location.href = '/login.html';
         }
     }
 
