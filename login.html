@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Asset Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Login - Asset Manager</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
@@ -79,19 +79,23 @@
             box-sizing: border-box;
         }
 
+        html, body {
+            overflow-x: hidden;
+        }
+
         body {
             font-family: var(--font-body);
             background: var(--color-bg-deep);
             margin: 0;
             padding: 0;
-            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0px);
+            min-height: calc(100vh - env(safe-area-inset-top, 0px));
             display: flex;
-            align-items: center;
             justify-content: center;
             color: var(--color-text-primary);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
-            overflow: hidden;
+            overflow-y: auto;
         }
 
         /* Noise texture overlay */
@@ -107,7 +111,7 @@
 
         /* Ambient background orbs */
         .orb {
-            position: absolute;
+            position: fixed;
             border-radius: 50%;
             filter: blur(80px);
             pointer-events: none;
@@ -146,8 +150,19 @@
             width: 100%;
             max-width: 440px;
             padding: 2rem;
+            margin: auto 0;
             position: relative;
             z-index: 1;
+        }
+
+        .app-title {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-accent-primary);
+            text-align: center;
+            margin-bottom: 2rem;
+            letter-spacing: -0.03em;
         }
 
         .login-form {
@@ -172,7 +187,7 @@
             background: linear-gradient(90deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 50%, var(--color-accent-tertiary) 100%);
         }
 
-        .login-form h1 {
+        .login-form h2 {
             margin: 0 0 0.5rem 0;
             font-family: var(--font-display);
             font-size: 2rem;
@@ -338,8 +353,12 @@
                 padding: 2.5rem 1.75rem;
             }
 
-            .login-form h1 {
+            .login-form h2 {
                 font-size: 1.75rem;
+            }
+
+            .app-title {
+                font-size: 2rem;
             }
 
             .orb-1, .orb-2 {
@@ -354,8 +373,9 @@
     <div class="orb orb-3"></div>
 
     <div class="container">
+        <h1 class="app-title">Asset Manager</h1>
         <div class="login-form">
-            <h1>Welcome Back</h1>
+            <h2>Welcome Back</h2>
             <p class="subtitle">Sign in to manage your assets</p>
             <form id="loginForm">
                 <div class="form-group">
