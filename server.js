@@ -415,7 +415,27 @@ app.use(helmet({
     }
 }));
 app.use(express.json());
-app.use(express.static(__dirname)); // Serve files from the current directory
+
+// Block access to sensitive files and directories before static middleware
+app.use((req, res, next) => {
+    const requestPath = decodeURIComponent(req.path).toLowerCase();
+    // Block dotfiles (.env, .git, etc.)
+    if (/\/\./.test(requestPath)) {
+        return res.status(404).end();
+    }
+    // Block sensitive files and directories
+    const blocked = [
+        '/server.js', '/package.json', '/package-lock.json',
+        '/backup.sh', '/deploy.sh', '/capacitor.config.json',
+        '/data', '/ssl', '/node_modules', '/ios', '/www'
+    ];
+    if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
+        return res.status(404).end();
+    }
+    next();
+});
+
+app.use(express.static(__dirname));
 
 // Trust Nginx proxy
 app.set('trust proxy', 1);
