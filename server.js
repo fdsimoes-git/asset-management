@@ -463,7 +463,8 @@ const generalLimiter = rateLimit({
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Too many requests. Please try again later.' }
+    message: { message: 'Too many requests. Please try again later.' },
+    skip: (req) => req.session && req.session.user
 });
 
 app.use('/api/', generalLimiter);
