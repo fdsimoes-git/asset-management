@@ -91,7 +91,8 @@
             background: var(--color-bg-deep);
             margin: 0;
             padding: 0;
-            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0px);
+            min-height: calc(100vh - env(safe-area-inset-top, 0px));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -157,6 +158,16 @@
             z-index: 1;
         }
 
+        .app-title {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-accent-primary);
+            text-align: center;
+            margin-bottom: 2rem;
+            letter-spacing: -0.03em;
+        }
+
         .register-form {
             background: var(--color-bg-elevated);
             padding: 3rem 2.5rem;
@@ -179,7 +190,7 @@
             background: linear-gradient(90deg, var(--color-success) 0%, var(--color-accent-primary) 50%, var(--color-accent-secondary) 100%);
         }
 
-        .register-form h1 {
+        .register-form h2 {
             margin: 0 0 0.5rem 0;
             font-family: var(--font-display);
             font-size: 2rem;
@@ -412,8 +423,12 @@
                 padding: 2.5rem 1.75rem;
             }
 
-            .register-form h1 {
+            .register-form h2 {
                 font-size: 1.75rem;
+            }
+
+            .app-title {
+                font-size: 2rem;
             }
 
             .orb-1, .orb-2 {
@@ -428,8 +443,9 @@
     <div class="orb orb-3"></div>
 
     <div class="container">
+        <h1 class="app-title">Asset Manager</h1>
         <div class="register-form">
-            <h1>Create Account</h1>
+            <h2>Create Account</h2>
             <p class="subtitle">Start managing your assets today</p>
             <form id="registerForm">
                 <div class="form-group">

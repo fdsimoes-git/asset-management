@@ -84,7 +84,8 @@
             background: var(--color-bg-deep);
             margin: 0;
             padding: 0;
-            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0px);
+            min-height: calc(100vh - env(safe-area-inset-top, 0px));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -351,6 +352,10 @@
 
             .login-form h2 {
                 font-size: 1.75rem;
+            }
+
+            .app-title {
+                font-size: 2rem;
             }
 
             .orb-1, .orb-2 {
