@@ -405,7 +405,7 @@ app.use(helmet({
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev"],
+            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net"],
             imgSrc: ["'self'", "data:"],
             objectSrc: ["'none'"],
             frameAncestors: ["'none'"],
