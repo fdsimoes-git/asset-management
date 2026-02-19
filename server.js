@@ -401,11 +401,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is"],
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://cloud.umami.is"],
             imgSrc: ["'self'", "data:"],
             objectSrc: ["'none'"],
             frameAncestors: ["'none'"],
@@ -434,6 +434,27 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// Serve HTML pages with Umami analytics injection (if configured)
+const UMAMI_WEBSITE_ID = process.env.UMAMI_WEBSITE_ID;
+const htmlPages = {
+    '/': 'index.html',
+    '/index.html': 'index.html',
+    '/login.html': 'login.html',
+    '/register.html': 'register.html'
+};
+
+if (UMAMI_WEBSITE_ID) {
+    Object.entries(htmlPages).forEach(([route, file]) => {
+        app.get(route, (req, res) => {
+            const filePath = path.join(__dirname, file);
+            let html = fs.readFileSync(filePath, 'utf8');
+            const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
+            html = html.replace('</head>', `    ${script}\n</head>`);
+            res.type('html').send(html);
+        });
+    });
+}
 
 app.use(express.static(__dirname));
 
