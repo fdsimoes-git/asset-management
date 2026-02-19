@@ -91,7 +91,8 @@
             color: var(--color-text-primary);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         /* Noise texture overlay */
@@ -150,6 +151,16 @@
             z-index: 1;
         }
 
+        .app-title {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-accent-primary);
+            text-align: center;
+            margin-bottom: 2rem;
+            letter-spacing: -0.03em;
+        }
+
         .login-form {
             background: var(--color-bg-elevated);
             padding: 3rem 2.5rem;
@@ -172,7 +183,7 @@
             background: linear-gradient(90deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 50%, var(--color-accent-tertiary) 100%);
         }
 
-        .login-form h1 {
+        .login-form h2 {
             margin: 0 0 0.5rem 0;
             font-family: var(--font-display);
             font-size: 2rem;
@@ -338,7 +349,7 @@
                 padding: 2.5rem 1.75rem;
             }
 
-            .login-form h1 {
+            .login-form h2 {
                 font-size: 1.75rem;
             }
 
@@ -354,8 +365,9 @@
     <div class="orb orb-3"></div>
 
     <div class="container">
+        <h1 class="app-title">Asset Manager</h1>
         <div class="login-form">
-            <h1>Welcome Back</h1>
+            <h2>Welcome Back</h2>
             <p class="subtitle">Sign in to manage your assets</p>
             <form id="loginForm">
                 <div class="form-group">
