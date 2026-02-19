@@ -156,25 +156,33 @@ function getLoginLockStatus(username) {
         return { locked: true };
     }
 
+    // Lockout expired: reset count so user gets a fresh set of attempts
     if (record.lockedUntil && Date.now() >= record.lockedUntil) {
         record.lockedUntil = null;
+        record.count = 0;
     }
     return { locked: false };
 }
 
 function recordFailedLogin(username) {
     const key = username.toLowerCase();
+    const now = Date.now();
     let record = failedLoginAttempts.get(key);
     if (!record) {
-        record = { count: 0, lockedUntil: null };
+        record = { count: 0, lockedUntil: null, lastAttempt: now };
         failedLoginAttempts.set(key, record);
     }
     record.count++;
+    record.lastAttempt = now;
+    // Find the maximum applicable lockout duration
+    let maxDuration = 0;
     for (const threshold of LOCKOUT_THRESHOLDS) {
-        if (record.count >= threshold.attempts) {
-            record.lockedUntil = Date.now() + threshold.duration;
-            break;
+        if (record.count >= threshold.attempts && threshold.duration > maxDuration) {
+            maxDuration = threshold.duration;
         }
+    }
+    if (maxDuration > 0) {
+        record.lockedUntil = now + maxDuration;
     }
 }
 
@@ -182,11 +190,15 @@ function resetFailedLogins(username) {
     failedLoginAttempts.delete(username.toLowerCase());
 }
 
-// Cleanup expired lockout records every 30 minutes
+// Cleanup stale records every 30 minutes
 setInterval(() => {
     const now = Date.now();
+    const STALE_THRESHOLD = 60 * 60 * 1000; // 1 hour
     for (const [key, record] of failedLoginAttempts.entries()) {
+        // Remove expired lockouts and stale records with no lockout
         if (record.lockedUntil && now >= record.lockedUntil) {
+            failedLoginAttempts.delete(key);
+        } else if (!record.lockedUntil && (now - record.lastAttempt) > STALE_THRESHOLD) {
             failedLoginAttempts.delete(key);
         }
     }
@@ -389,7 +401,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             connectSrc: ["'self'"],
@@ -556,6 +568,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     try {
+        // Consume invite code before async bcrypt to prevent race conditions
+        consumeInviteCode(inviteCode, null);
+
         const passwordHash = await bcrypt.hash(password, 10);
         const newUser = {
             id: nextUserId++,
@@ -568,7 +583,11 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         };
 
         users.push(newUser);
-        consumeInviteCode(inviteCode, newUser.id);
+
+        // Update the invite code with the actual user ID
+        const invite = findInviteCode(inviteCode);
+        if (invite) invite.usedBy = newUser.id;
+        saveUsers();
 
         res.status(201).json({
             message: 'Registration successful',

@@ -1956,24 +1956,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortedCodes.forEach(code => {
             const row = document.createElement('tr');
-            const statusBadge = code.isUsed
-                ? '<span class="code-badge code-used">Used</span>'
-                : '<span class="code-badge code-active">Active</span>';
-            const usedByDisplay = code.usedByUsername
+
+            const codeCell = document.createElement('td');
+            const codeSpan = document.createElement('span');
+            codeSpan.className = 'code-value';
+            codeSpan.textContent = code.code;
+            codeCell.appendChild(codeSpan);
+            row.appendChild(codeCell);
+
+            const createdByCell = document.createElement('td');
+            createdByCell.textContent = code.createdByUsername || '-';
+            row.appendChild(createdByCell);
+
+            const createdAtCell = document.createElement('td');
+            createdAtCell.textContent = new Date(code.createdAt).toLocaleDateString();
+            row.appendChild(createdAtCell);
+
+            const statusCell = document.createElement('td');
+            const statusSpan = document.createElement('span');
+            statusSpan.classList.add('code-badge');
+            if (code.isUsed) {
+                statusSpan.classList.add('code-used');
+                statusSpan.textContent = 'Used';
+            } else {
+                statusSpan.classList.add('code-active');
+                statusSpan.textContent = 'Active';
+            }
+            statusCell.appendChild(statusSpan);
+            row.appendChild(statusCell);
+
+            const usedByCell = document.createElement('td');
+            usedByCell.textContent = code.usedByUsername
                 ? `${code.usedByUsername} (${new Date(code.usedAt).toLocaleDateString()})`
                 : '-';
-            const deleteBtn = !code.isUsed
-                ? `<button class="delete-btn invite-code-delete-btn" data-code="${code.code}">Delete</button>`
-                : '';
+            row.appendChild(usedByCell);
 
-            row.innerHTML = `
-                <td><span class="code-value">${code.code}</span></td>
-                <td>${code.createdByUsername}</td>
-                <td>${new Date(code.createdAt).toLocaleDateString()}</td>
-                <td>${statusBadge}</td>
-                <td>${usedByDisplay}</td>
-                <td>${deleteBtn}</td>
-            `;
+            const deleteCell = document.createElement('td');
+            if (!code.isUsed) {
+                const deleteButton = document.createElement('button');
+                deleteButton.classList.add('delete-btn', 'invite-code-delete-btn');
+                deleteButton.textContent = 'Delete';
+                deleteButton.dataset.code = code.code;
+                deleteCell.appendChild(deleteButton);
+            }
+            row.appendChild(deleteCell);
+
             tbody.appendChild(row);
         });
 
