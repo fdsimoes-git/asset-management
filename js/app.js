@@ -2031,8 +2031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         generateInviteCodeBtn.addEventListener('click', async () => {
             try {
                 const response = await fetch('/api/admin/invite-codes', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    method: 'POST'
                 });
 
                 if (response.ok) {

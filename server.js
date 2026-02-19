@@ -1005,8 +1005,13 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // Generate a new invite code (admin only)
 app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
-    const inviteCode = createInviteCode(req.user.id);
-    res.status(201).json({ code: inviteCode.code, createdAt: inviteCode.createdAt });
+    try {
+        const inviteCode = createInviteCode(req.user.id);
+        res.status(201).json({ code: inviteCode.code, createdAt: inviteCode.createdAt });
+    } catch (error) {
+        console.error('Error generating invite code:', error);
+        res.status(500).json({ message: 'Failed to generate invite code' });
+    }
 });
 
 // List all invite codes (admin only)
