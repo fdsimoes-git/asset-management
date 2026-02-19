@@ -569,8 +569,11 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     try {
-        // Consume invite code before async bcrypt to prevent race conditions
-        consumeInviteCode(inviteCode, null);
+        // Consume invite code atomically before async bcrypt to prevent race conditions
+        const inviteConsumed = consumeInviteCode(inviteCode, null);
+        if (!inviteConsumed) {
+            return res.status(409).json({ message: 'Invalid or already used invite code' });
+        }
 
         const passwordHash = await bcrypt.hash(password, 10);
         const newUser = {
@@ -586,8 +589,8 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         users.push(newUser);
 
         // Update the invite code with the actual user ID
-        const invite = findInviteCode(inviteCode);
-        if (invite) invite.usedBy = newUser.id;
+        const usedInvite = findInviteCode(inviteCode);
+        if (usedInvite) usedInvite.usedBy = newUser.id;
         saveUsers();
 
         res.status(201).json({
@@ -599,6 +602,13 @@ app.post('/api/register', registerLimiter, async (req, res) => {
             }
         });
     } catch (error) {
+        // Rollback: unconsume the invite code if registration failed after consumption
+        const burnedInvite = findInviteCode(inviteCode);
+        if (burnedInvite && burnedInvite.isUsed && burnedInvite.usedBy === null) {
+            burnedInvite.isUsed = false;
+            burnedInvite.usedAt = null;
+            saveUsers();
+        }
         console.error('Registration error:', error);
         res.status(500).json({ message: 'Registration failed' });
     }
