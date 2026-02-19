@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer'); // For handling file uploads
+const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
 
@@ -91,6 +92,7 @@ const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 // Initialize users storage
 let users = [];
 let nextUserId = 1;
+let inviteCodes = [];
 
 // Load users from file
 function loadUsers() {
@@ -102,11 +104,13 @@ function loadUsers() {
                 const decrypted = decryptData(parsed.encryptedData, parsed.iv);
                 users = decrypted.users || [];
                 nextUserId = decrypted.nextUserId || 1;
+                inviteCodes = decrypted.inviteCodes || [];
             }
         }
     } catch (error) {
         console.error('Error loading users:', error);
         users = [];
+        inviteCodes = [];
     }
 }
 
@@ -117,7 +121,7 @@ function saveUsers() {
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
-        const encrypted = encryptData({ users, nextUserId });
+        const encrypted = encryptData({ users, nextUserId, inviteCodes });
         fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
     } catch (error) {
         console.error('Error saving users:', error);
@@ -132,6 +136,100 @@ function findUserByUsername(username) {
 // Find user by ID
 function findUserById(id) {
     return users.find(u => u.id === id);
+}
+
+// ============ BRUTE-FORCE PROTECTION ============
+
+const failedLoginAttempts = new Map();
+
+const LOCKOUT_THRESHOLDS = [
+    { attempts: 10, duration: 60 * 60 * 1000 },    // 10 failures -> 1 hour
+    { attempts: 5,  duration: 15 * 60 * 1000 }      // 5 failures -> 15 minutes
+];
+
+function getLoginLockStatus(username) {
+    const key = username.toLowerCase();
+    const record = failedLoginAttempts.get(key);
+    if (!record) return { locked: false };
+
+    if (record.lockedUntil && Date.now() < record.lockedUntil) {
+        return { locked: true };
+    }
+
+    if (record.lockedUntil && Date.now() >= record.lockedUntil) {
+        record.lockedUntil = null;
+    }
+    return { locked: false };
+}
+
+function recordFailedLogin(username) {
+    const key = username.toLowerCase();
+    let record = failedLoginAttempts.get(key);
+    if (!record) {
+        record = { count: 0, lockedUntil: null };
+        failedLoginAttempts.set(key, record);
+    }
+    record.count++;
+    for (const threshold of LOCKOUT_THRESHOLDS) {
+        if (record.count >= threshold.attempts) {
+            record.lockedUntil = Date.now() + threshold.duration;
+            break;
+        }
+    }
+}
+
+function resetFailedLogins(username) {
+    failedLoginAttempts.delete(username.toLowerCase());
+}
+
+// Cleanup expired lockout records every 30 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of failedLoginAttempts.entries()) {
+        if (record.lockedUntil && now >= record.lockedUntil) {
+            failedLoginAttempts.delete(key);
+        }
+    }
+}, 30 * 60 * 1000);
+
+// ============ INVITE CODE SYSTEM ============
+
+function generateInviteCode() {
+    return crypto.randomBytes(6).toString('base64url').substring(0, 8).toUpperCase();
+}
+
+function findInviteCode(code) {
+    return inviteCodes.find(ic => ic.code === code.toUpperCase());
+}
+
+function createInviteCode(adminUserId) {
+    let code;
+    do {
+        code = generateInviteCode();
+    } while (findInviteCode(code));
+
+    const inviteCode = {
+        code,
+        createdAt: new Date().toISOString(),
+        createdBy: adminUserId,
+        isUsed: false,
+        usedAt: null,
+        usedBy: null
+    };
+
+    inviteCodes.push(inviteCode);
+    saveUsers();
+    return inviteCode;
+}
+
+function consumeInviteCode(code, userId) {
+    const invite = findInviteCode(code);
+    if (!invite || invite.isUsed) return false;
+    invite.isUsed = true;
+    invite.usedAt = new Date().toISOString();
+    invite.usedBy = userId;
+    saveUsers();
+    return true;
 }
 
 // Migration: Create initial admin user from env vars if no users exist
@@ -288,7 +386,20 @@ migrateEntriesForCouples();
 
 // Security middleware
 app.use(helmet({
-    contentSecurityPolicy: false // Disable CSP for development
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            connectSrc: ["'self'"],
+            imgSrc: ["'self'", "data:"],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"]
+        }
+    }
 }));
 app.use(express.json());
 app.use(express.static(__dirname)); // Serve files from the current directory
@@ -307,6 +418,42 @@ app.use(session({
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
+
+// Rate limiting
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many login attempts. Please try again later.' }
+});
+
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many registration attempts. Please try again later.' }
+});
+
+const pdfUploadLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many upload attempts. Please try again later.' },
+    keyGenerator: (req) => req.session?.user?.id?.toString() || req.ip
+});
+
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many requests. Please try again later.' }
+});
+
+app.use('/api/', generalLimiter);
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -331,41 +478,59 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Login endpoint
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
+    // Check brute-force lockout before any password check
+    const lockStatus = getLoginLockStatus(username);
+    if (lockStatus.locked) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
     const user = findUserByUsername(username);
 
     if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
-        req.session.user = {
-            id: user.id,
-            username: user.username,
-            role: user.role
-        };
-        res.json({
-            message: 'Login successful',
-            user: {
-                id: user.id,
-                username: user.username,
-                role: user.role
+        resetFailedLogins(username);
+        const userData = { id: user.id, username: user.username, role: user.role };
+
+        // Session fixation prevention: regenerate session ID on login
+        req.session.regenerate((err) => {
+            if (err) {
+                console.error('Session regeneration error:', err);
+                return res.status(500).json({ message: 'Login failed' });
             }
+            req.session.user = userData;
+            req.session.save((err) => {
+                if (err) {
+                    console.error('Session save error:', err);
+                    return res.status(500).json({ message: 'Login failed' });
+                }
+                res.json({ message: 'Login successful', user: userData });
+            });
         });
     } else {
+        recordFailedLogin(username);
         res.status(401).json({ message: 'Invalid credentials' });
     }
 });
 
 // Registration endpoint
-app.post('/api/register', async (req, res) => {
-    const { username, password, confirmPassword } = req.body;
+app.post('/api/register', registerLimiter, async (req, res) => {
+    const { username, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
-    if (!username || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword || !inviteCode) {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Validate invite code before expensive operations
+    const invite = findInviteCode(inviteCode);
+    if (!invite || invite.isUsed) {
+        return res.status(400).json({ message: 'Invalid or expired invite code' });
     }
 
     if (password !== confirmPassword) {
@@ -403,7 +568,7 @@ app.post('/api/register', async (req, res) => {
         };
 
         users.push(newUser);
-        saveUsers();
+        consumeInviteCode(inviteCode, newUser.id);
 
         res.status(201).json({
             message: 'Registration successful',
@@ -817,16 +982,86 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
     }
 });
 
+// ============ INVITE CODE ENDPOINTS ============
+
+// Generate a new invite code (admin only)
+app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
+    const inviteCode = createInviteCode(req.user.id);
+    res.status(201).json({ code: inviteCode.code, createdAt: inviteCode.createdAt });
+});
+
+// List all invite codes (admin only)
+app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
+    const codesWithDetails = inviteCodes.map(ic => {
+        const creator = findUserById(ic.createdBy);
+        const consumer = ic.usedBy ? findUserById(ic.usedBy) : null;
+        return {
+            code: ic.code,
+            createdAt: ic.createdAt,
+            createdByUsername: creator ? creator.username : 'Unknown',
+            isUsed: ic.isUsed,
+            usedAt: ic.usedAt,
+            usedByUsername: consumer ? consumer.username : null
+        };
+    });
+    res.json(codesWithDetails);
+});
+
+// Delete an unused invite code (admin only)
+app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, (req, res) => {
+    const code = req.params.code.toUpperCase();
+    const index = inviteCodes.findIndex(ic => ic.code === code);
+
+    if (index === -1) {
+        return res.status(404).json({ message: 'Invite code not found' });
+    }
+    if (inviteCodes[index].isUsed) {
+        return res.status(400).json({ message: 'Cannot delete a used invite code' });
+    }
+
+    inviteCodes.splice(index, 1);
+    saveUsers();
+    res.json({ message: 'Invite code deleted' });
+});
+
 // Serve the main application
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 // Set up multer for file uploads (store in memory)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10 MB
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype !== 'application/pdf') {
+            return cb(new Error('Only PDF files are allowed'), false);
+        }
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext !== '.pdf') {
+            return cb(new Error('Only PDF files are allowed'), false);
+        }
+        cb(null, true);
+    }
+});
 
 // PDF processing endpoint with Gemini AI (for web interface)
-app.post('/api/process-pdf', requireAuth, upload.single('pdfFile'), async (req, res) => {
+app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => {
+    upload.single('pdfFile')(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(413).json({ message: 'File too large. Maximum size is 10MB.' });
+            }
+            return res.status(400).json({ message: err.message });
+        }
+        if (err) {
+            return res.status(400).json({ message: err.message });
+        }
+        next();
+    });
+}, async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No PDF file uploaded.' });
     }
