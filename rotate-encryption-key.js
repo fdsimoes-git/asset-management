@@ -70,6 +70,21 @@ function pause(prompt) {
     return new Promise(resolve => rl.question(prompt, () => { rl.close(); resolve(); }));
 }
 
+function rollback() {
+    console.error('Attempting automatic rollback from .bak files...');
+    for (const filePath of [ENTRIES_FILE, USERS_FILE]) {
+        const bakPath = filePath + '.bak';
+        if (fs.existsSync(bakPath)) {
+            try {
+                fs.copyFileSync(bakPath, filePath);
+                console.error(`  Restored ${path.basename(filePath)} from ${path.basename(bakPath)}`);
+            } catch (copyErr) {
+                console.error(`  Failed to restore ${path.basename(filePath)}: ${copyErr.message}`);
+            }
+        }
+    }
+}
+
 function reEncryptFile(filePath, oldKey, newKey) {
     if (!fs.existsSync(filePath)) {
         console.log(`  Skipping ${path.basename(filePath)} (file does not exist)`);
@@ -87,8 +102,19 @@ function reEncryptFile(filePath, oldKey, newKey) {
         throw new Error(`Failed to decrypt ${path.basename(filePath)} with old key: ${err.message}`);
     }
 
+    // Validate decrypted structure
+    if (filePath === ENTRIES_FILE && !Array.isArray(plaintext)) {
+        throw new Error(`Decrypted ${path.basename(filePath)} is not an array as expected`);
+    }
+    if (filePath === USERS_FILE) {
+        const isObj = plaintext !== null && typeof plaintext === 'object' && !Array.isArray(plaintext);
+        if (!isObj || !plaintext.users || !plaintext.nextUserId || !plaintext.inviteCodes) {
+            throw new Error(`Decrypted ${path.basename(filePath)} does not have the expected users/nextUserId/inviteCodes structure`);
+        }
+    }
+
     // Re-encrypt API keys inside entries (entries.json only)
-    if (filePath === ENTRIES_FILE && Array.isArray(plaintext)) {
+    if (filePath === ENTRIES_FILE) {
         for (const entry of plaintext) {
             if (entry.geminiApiKey && entry.geminiApiKey.encryptedData) {
                 const apiKey = decryptString(oldKey, entry.geminiApiKey.encryptedData, entry.geminiApiKey.iv);
@@ -97,8 +123,13 @@ function reEncryptFile(filePath, oldKey, newKey) {
         }
     }
 
-    // Create .bak before writing
-    const bakPath = filePath + '.bak';
+    // Create .bak before writing (timestamped if one already exists)
+    let bakPath = filePath + '.bak';
+    if (fs.existsSync(bakPath)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        bakPath = path.join(DATA_DIR, `${path.basename(filePath)}.${timestamp}.bak`);
+        console.log(`  Warning: .bak already exists, using ${path.basename(bakPath)}`);
+    }
     fs.copyFileSync(filePath, bakPath);
     console.log(`  Created backup: ${path.basename(bakPath)}`);
 
@@ -112,6 +143,13 @@ function reEncryptFile(filePath, oldKey, newKey) {
 async function main() {
     const NEW_KEY = crypto.randomBytes(32);
     const NEW_KEY_HEX = NEW_KEY.toString('hex');
+
+    // Check backup.sh exists before starting
+    if (!fs.existsSync(BACKUP_SCRIPT)) {
+        console.error(`backup.sh not found at: ${BACKUP_SCRIPT}`);
+        console.error('Aborting — cannot proceed without backup capability.');
+        process.exit(1);
+    }
 
     console.log('');
     console.log('=== ENCRYPTION KEY ROTATION ===');
@@ -146,9 +184,7 @@ async function main() {
         console.error('');
         console.error(`ERROR: ${err.message}`);
         console.error('');
-        console.error('Rollback: restore from .bak files:');
-        console.error(`  cp ${ENTRIES_FILE}.bak ${ENTRIES_FILE}`);
-        console.error(`  cp ${USERS_FILE}.bak ${USERS_FILE}`);
+        rollback();
         process.exit(1);
     }
     console.log('--- Done ---');
@@ -164,6 +200,8 @@ async function main() {
     console.log(`  # Set ENCRYPTION_KEY to: ${NEW_KEY_HEX}`);
     console.log('  sudo systemctl daemon-reload');
     console.log('  sudo systemctl restart asset-management');
+    console.log('');
+    console.log('Remember to clear your terminal history after updating the key.');
     console.log('');
 }
 
