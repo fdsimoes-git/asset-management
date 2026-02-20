@@ -39,10 +39,12 @@ fi
 echo "Deployment setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Edit .env with your actual configuration values"
-echo "2. Ensure Ollama is running: ollama serve"
-echo "3. Pull the AI model: ollama pull llama3.2"
-echo "4. Start the server: npm run start:prod"
+if [ -f ".env" ]; then
+    echo "1. Edit .env with your actual configuration values"
+else
+    echo "1. Set required env vars (ENCRYPTION_KEY, SESSION_SECRET) via systemd or .env"
+fi
+echo "2. Start the server: npm run start:prod"
 echo ""
 echo "Access your application at:"
 echo "   https://asset-manager.local"
