@@ -17,15 +17,12 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const readline = require('readline');
 
 // ── Paths ───────────────────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, 'data');
 const ENTRIES_FILE = path.join(DATA_DIR, 'entries.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const BACKUP_SCRIPT = path.join(__dirname, 'backup.sh');
-
 const ALGORITHM = 'aes-256-cbc';
 
 // ── Load current key via config.js (validates format & presence) ────
@@ -144,13 +141,6 @@ async function main() {
     const NEW_KEY = crypto.randomBytes(32);
     const NEW_KEY_HEX = NEW_KEY.toString('hex');
 
-    // Check backup.sh exists before starting
-    if (!fs.existsSync(BACKUP_SCRIPT)) {
-        console.error(`backup.sh not found at: ${BACKUP_SCRIPT}`);
-        console.error('Aborting — cannot proceed without backup capability.');
-        process.exit(1);
-    }
-
     console.log('');
     console.log('=== ENCRYPTION KEY ROTATION ===');
     console.log('');
@@ -161,19 +151,6 @@ async function main() {
     console.log('');
 
     await pause('Press Enter after you have saved the old key...');
-
-    // Run backup.sh
-    console.log('');
-    console.log('--- Running backup.sh (Google Drive snapshot) ---');
-    try {
-        execSync(`bash "${BACKUP_SCRIPT}"`, { stdio: 'inherit' });
-    } catch (err) {
-        console.error('');
-        console.error('backup.sh failed. Aborting rotation — no files were modified.');
-        process.exit(1);
-    }
-    console.log('--- Backup complete ---');
-    console.log('');
 
     // Re-encrypt data files
     console.log('--- Re-encrypting data files ---');

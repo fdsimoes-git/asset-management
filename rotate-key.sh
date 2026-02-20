@@ -19,22 +19,24 @@ if [ ! -r "$ROTATE_SCRIPT" ]; then
     exit 1
 fi
 
-# Export all environment variables from systemd service (config.js needs SESSION_SECRET too)
-ENV_LINE=$(systemctl show asset-management -p Environment --value 2>/dev/null || true)
+# Load environment variables from systemd override file directly
+# (safer than parsing `systemctl show` which can mangle special characters)
+OVERRIDE_FILE="/etc/systemd/system/asset-management.service.d/override.conf"
 
-if [ -z "$ENV_LINE" ]; then
-    echo "Could not read environment from systemd."
-    echo "Make sure the asset-management service is configured."
+if [ ! -r "$OVERRIDE_FILE" ]; then
+    echo "Systemd override not found: $OVERRIDE_FILE"
+    echo "Make sure the asset-management service is configured via 'systemctl edit'."
     exit 1
 fi
 
-# Parse and export each KEY=VALUE pair
-while IFS='=' read -r key value; do
-    export "$key=$value"
-done < <(echo "$ENV_LINE" | grep -oP '[A-Z_]+=\S+')
+# Each line in the override is: Environment=KEY=value
+while IFS= read -r line; do
+    assignment="${line#Environment=}"
+    export "$assignment"
+done < <(grep '^Environment=' "$OVERRIDE_FILE")
 
 if [ -z "$ENCRYPTION_KEY" ]; then
-    echo "ENCRYPTION_KEY not found in systemd environment."
+    echo "ENCRYPTION_KEY not found in systemd override."
     exit 1
 fi
 
@@ -46,6 +48,12 @@ fi
 
 echo "Stopping asset-management service..."
 systemctl stop asset-management
+
+# Run backup as the original user so rclone can find its config
+echo ""
+REAL_USER="${SUDO_USER:-$(logname)}"
+echo "Running backup.sh as $REAL_USER..."
+sudo -u "$REAL_USER" bash "$SCRIPT_DIR/backup.sh"
 
 echo ""
 node "$ROTATE_SCRIPT"
