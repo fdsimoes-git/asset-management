@@ -25,9 +25,9 @@ npm install
 echo "Checking configuration..."
 
 if [ ! -f ".env" ]; then
-    echo ".env file not found. Please create it from .env.example:"
-    echo "   cp .env.example .env"
-    echo "   Then edit .env with your actual values."
+    echo "Note: No .env file found."
+    echo "  Production: secrets should be set as system environment variables (e.g. via systemd)."
+    echo "  Local dev:  cp .env.example .env  and fill in your values."
 fi
 
 # Generate SSL certificates if they don't exist

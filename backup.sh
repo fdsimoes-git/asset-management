@@ -21,7 +21,7 @@ if [ -f "$SOURCE_DIR/.env" ]; then
     rclone copy "$SOURCE_DIR/.env" "$BACKUP_DIR/"
     echo "Backed up: .env file"
 else
-    echo "Warning: .env file not found"
+    echo "Info: No .env file found (expected in production — secrets are in system env vars)"
 fi
 
 echo "Backup completed: $BACKUP_DIR at $(date)"
