@@ -21,7 +21,8 @@ fi
 
 # Load environment variables from the systemd service configuration
 # Uses `systemctl cat` which works regardless of where the config lives
-ENV_LINES=$(systemctl cat asset-management 2>/dev/null | grep '^Environment=' || true)
+# Handles indented lines and quoted values: Environment="KEY=value"
+ENV_LINES=$(systemctl cat asset-management 2>/dev/null | sed -n 's/^[[:space:]]*Environment=//p' || true)
 
 if [ -z "$ENV_LINES" ]; then
     echo "No Environment= lines found in asset-management service."
@@ -30,8 +31,10 @@ if [ -z "$ENV_LINES" ]; then
 fi
 
 while IFS= read -r line; do
-    assignment="${line#Environment=}"
-    export "$assignment"
+    # Strip surrounding quotes if present
+    line="${line#\"}"
+    line="${line%\"}"
+    export "$line"
 done <<< "$ENV_LINES"
 
 if [ -z "$ENCRYPTION_KEY" ]; then
