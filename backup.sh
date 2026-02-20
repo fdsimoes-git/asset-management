@@ -2,6 +2,8 @@
 # Asset Management Backup Script
 # Backs up data folder (and .env if present) to Google Drive via rclone
 
+set -e
+
 # Configuration
 SOURCE_DIR="$HOME/projects/asset-management"
 REMOTE="gdrive:asset_management_backup_files_internet"

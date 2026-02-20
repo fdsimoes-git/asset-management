@@ -439,7 +439,7 @@ app.use((req, res, next) => {
     // Block sensitive files and directories
     const blocked = [
         '/server.js', '/config.js', '/package.json', '/package-lock.json',
-        '/backup.sh', '/deploy.sh', '/capacitor.config.json',
+        '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js', '/capacitor.config.json',
         '/data', '/ssl', '/node_modules', '/ios', '/www'
     ];
     if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
