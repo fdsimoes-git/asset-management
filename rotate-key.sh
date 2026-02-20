@@ -48,14 +48,14 @@ if ! [[ "$ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
     exit 1
 fi
 
-echo "Stopping asset-management service..."
-systemctl stop asset-management
-
-# Run backup as the original user so rclone can find its config
-echo ""
+# Run backup before stopping the service — if it fails, nothing is disrupted
 REAL_USER="${SUDO_USER:-$(logname)}"
 echo "Running backup.sh as $REAL_USER..."
 sudo -u "$REAL_USER" bash "$SCRIPT_DIR/backup.sh"
+
+echo ""
+echo "Stopping asset-management service..."
+systemctl stop asset-management
 
 echo ""
 node "$ROTATE_SCRIPT"

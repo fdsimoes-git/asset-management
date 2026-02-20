@@ -120,6 +120,16 @@ function reEncryptFile(filePath, oldKey, newKey) {
         }
     }
 
+    // Re-encrypt API keys inside user objects (users.json only)
+    if (filePath === USERS_FILE && Array.isArray(plaintext.users)) {
+        for (const user of plaintext.users) {
+            if (user.geminiApiKey && user.geminiApiKey.encryptedData) {
+                const apiKey = decryptString(oldKey, user.geminiApiKey.encryptedData, user.geminiApiKey.iv);
+                user.geminiApiKey = encryptString(newKey, apiKey);
+            }
+        }
+    }
+
     // Create .bak before writing (timestamped if one already exists)
     let bakPath = filePath + '.bak';
     if (fs.existsSync(bakPath)) {
