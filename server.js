@@ -509,7 +509,7 @@ const pdfUploadLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
-    keyGenerator: (req) => req.session?.user?.id?.toString() || req.ip
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
 const generalLimiter = rateLimit({
