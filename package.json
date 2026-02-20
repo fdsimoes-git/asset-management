@@ -1,6 +1,6 @@
 {
   "name": "asset-management",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Secure Asset Management System",
   "main": "server.js",
   "scripts": {

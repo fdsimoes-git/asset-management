@@ -33,15 +33,19 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Smart Data Extraction**: Automatically identifies amounts, dates, descriptions, and categories from PDFs
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
 - **Bulk Import**: Process multiple expenses from a single document with preview and editing
+- **Per-User API Keys**: Each user can store their own encrypted Gemini API key or enter one manually per session
+- **Key Priority Chain**: Manual input > user's stored key > global `.env` fallback
 
 #### Bulk Import Workflow
 1. Click "Bulk PDF Upload" in the header
-2. Select a PDF file (bank statement, receipt, etc.)
-3. Click "Upload and Process" to send to Gemini AI
-4. Review extracted entries in the preview table
-5. Edit any entries inline (month, type, amount, description, category)
-6. Use Edit/Delete buttons to modify or remove individual rows
-7. Click "Confirm and Add Entries" to save all entries
+2. Enter your Gemini API key (or use a previously saved key)
+3. Optionally check "Save this key for future use" to store it encrypted
+4. Select a PDF file (bank statement, receipt, etc.)
+5. Click "Upload and Process" to send to Gemini AI
+6. Review extracted entries in the preview table
+7. Edit any entries inline (month, type, amount, description, category)
+8. Use Edit/Delete buttons to modify or remove individual rows
+9. Click "Confirm and Add Entries" to save all entries
 
 ### Data Visualization
 - **Asset Progression**: Line chart showing cumulative total assets over time
@@ -62,7 +66,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Node.js** 18.x or higher
 - **npm** (Node Package Manager)
 - **Modern web browser** with JavaScript enabled
-- **Google Gemini API Key** (for PDF processing)
+- **Google Gemini API Key** (optional globally; users can provide their own)
 
 ## Installation
 
@@ -86,7 +90,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    SSL_KEY_PATH=ssl/server.key
    SSL_CERT_PATH=ssl/server.crt
    PORT=443
-   GEMINI_API_KEY=your-gemini-api-key
+   GEMINI_API_KEY=your-gemini-api-key          # Optional: global fallback for all users
    ENCRYPTION_KEY=your-32-byte-hex-encryption-key
    ```
 
@@ -157,6 +161,7 @@ Available expense/income categories:
 - **Password Hashing**: bcrypt with 10 salt rounds
 - **Session Security**: HTTP-only, secure cookies (24-hour expiration)
 - **Data Encryption**: AES-256-CBC for stored data
+- **API Key Encryption**: Per-user Gemini keys double-encrypted (field-level + file-level AES-256-CBC)
 - **Input Validation**: Server-side validation for all inputs
 - **Data Isolation**: Users can only access their own entries
 - **Role-Based Access**: Admin-only endpoints protected
@@ -166,7 +171,7 @@ Available expense/income categories:
 - **Users**: `data/users.json` (encrypted)
 - **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey? }`
 - **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
 
 ## Technical Details
@@ -184,14 +189,18 @@ Available expense/income categories:
 - `POST /api/login` - User authentication
 - `POST /api/register` - User registration
 - `POST /api/logout` - End session
-- `GET /api/user` - Get current user info
+- `GET /api/user` - Get current user info (includes `hasGeminiApiKey` flag)
+
+#### User Settings (requires authentication)
+- `POST /api/user/gemini-key` - Save encrypted Gemini API key
+- `DELETE /api/user/gemini-key` - Remove saved Gemini API key
 
 #### Entries (requires authentication)
 - `GET /api/entries` - Retrieve user's entries
 - `POST /api/entries` - Add new entry
 - `PUT /api/entries/:id` - Update entry
 - `DELETE /api/entries/:id` - Delete entry
-- `POST /api/process-pdf` - Process PDF with AI
+- `POST /api/process-pdf` - Process PDF with AI (accepts optional `geminiApiKey` field)
 
 #### Admin (requires admin role)
 - `GET /api/admin/users` - List all users
@@ -239,7 +248,7 @@ When upgrading from single-user to multi-user:
 
 ### Common Issues
 1. **Certificate Errors**: Regenerate SSL certificates or accept self-signed
-2. **Gemini API Errors**: Verify `GEMINI_API_KEY` is valid
+2. **Gemini API Errors**: Verify your API key is valid (per-user key, or global `GEMINI_API_KEY` in `.env`)
 3. **DNS Issues**: Verify hosts file or router DNS configuration
 4. **Permission Errors**: Run server with `sudo` for port 443
 5. **Login Issues**: Ensure user account is active
