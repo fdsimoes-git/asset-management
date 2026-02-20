@@ -19,13 +19,22 @@ if [ ! -r "$ROTATE_SCRIPT" ]; then
     exit 1
 fi
 
-# Extract current ENCRYPTION_KEY from systemd override
+# Export all environment variables from systemd service (config.js needs SESSION_SECRET too)
 ENV_LINE=$(systemctl show asset-management -p Environment --value 2>/dev/null || true)
-ENCRYPTION_KEY=$(echo "$ENV_LINE" | grep -oP 'ENCRYPTION_KEY=\K[0-9a-fA-F]{64}' || true)
+
+if [ -z "$ENV_LINE" ]; then
+    echo "Could not read environment from systemd."
+    echo "Make sure the asset-management service is configured."
+    exit 1
+fi
+
+# Parse and export each KEY=VALUE pair
+while IFS='=' read -r key value; do
+    export "$key=$value"
+done < <(echo "$ENV_LINE" | grep -oP '[A-Z_]+=\S+')
 
 if [ -z "$ENCRYPTION_KEY" ]; then
-    echo "Could not read ENCRYPTION_KEY from systemd."
-    echo "Make sure the asset-management service is configured."
+    echo "ENCRYPTION_KEY not found in systemd environment."
     exit 1
 fi
 
@@ -39,7 +48,6 @@ echo "Stopping asset-management service..."
 systemctl stop asset-management
 
 echo ""
-export ENCRYPTION_KEY
 node "$ROTATE_SCRIPT"
 STATUS=$?
 
