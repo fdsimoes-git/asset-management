@@ -19,21 +19,20 @@ if [ ! -r "$ROTATE_SCRIPT" ]; then
     exit 1
 fi
 
-# Load environment variables from systemd override file directly
-# (safer than parsing `systemctl show` which can mangle special characters)
-OVERRIDE_FILE="/etc/systemd/system/asset-management.service.d/override.conf"
+# Load environment variables from the systemd service configuration
+# Uses `systemctl cat` which works regardless of where the config lives
+ENV_LINES=$(systemctl cat asset-management 2>/dev/null | grep '^Environment=' || true)
 
-if [ ! -r "$OVERRIDE_FILE" ]; then
-    echo "Systemd override not found: $OVERRIDE_FILE"
-    echo "Make sure the asset-management service is configured via 'systemctl edit'."
+if [ -z "$ENV_LINES" ]; then
+    echo "No Environment= lines found in asset-management service."
+    echo "Make sure the service has environment variables configured."
     exit 1
 fi
 
-# Each line in the override is: Environment=KEY=value
 while IFS= read -r line; do
     assignment="${line#Environment=}"
     export "$assignment"
-done < <(grep '^Environment=' "$OVERRIDE_FILE")
+done <<< "$ENV_LINES"
 
 if [ -z "$ENCRYPTION_KEY" ]; then
     echo "ENCRYPTION_KEY not found in systemd override."
