@@ -1,5 +1,5 @@
 
-require('dotenv').config();
+const config = require('./config');
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
@@ -21,10 +21,7 @@ const GEMINI_MODEL = 'gemini-3-flash-preview';
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
 
-// Encryption key (in production, use a secure key management system)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
-  ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
-  : crypto.randomBytes(32);
+const ENCRYPTION_KEY = config.encryptionKey;
 const ALGORITHM = 'aes-256-cbc';
 
 // Function to encrypt data
@@ -263,8 +260,8 @@ function consumeInviteCode(code, userId) {
 // Migration: Create initial admin user from env vars if no users exist
 async function migrateInitialAdmin() {
     if (users.length === 0) {
-        const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-        const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+        const adminUsername = config.adminUsername;
+        const adminPasswordHash = config.adminPasswordHash;
 
         if (adminPasswordHash) {
             users.push({
@@ -441,7 +438,7 @@ app.use((req, res, next) => {
     }
     // Block sensitive files and directories
     const blocked = [
-        '/server.js', '/package.json', '/package-lock.json',
+        '/server.js', '/config.js', '/package.json', '/package-lock.json',
         '/backup.sh', '/deploy.sh', '/capacitor.config.json',
         '/data', '/ssl', '/node_modules', '/ios', '/www'
     ];
@@ -452,7 +449,7 @@ app.use((req, res, next) => {
 });
 
 // Serve HTML pages with Umami analytics injection (if configured)
-const UMAMI_WEBSITE_ID = process.env.UMAMI_WEBSITE_ID;
+const UMAMI_WEBSITE_ID = config.umamiWebsiteId;
 const htmlPages = {
     '/': 'index.html',
     '/index.html': 'index.html',
@@ -479,7 +476,7 @@ app.set('trust proxy', 1);
 
 // Session configuration
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -512,7 +509,7 @@ const pdfUploadLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
-    keyGenerator: (req) => req.session?.user?.id?.toString() || req.ip
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
 const generalLimiter = rateLimit({
@@ -1201,7 +1198,7 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         }
     }
     if (!apiKey) {
-        apiKey = process.env.GEMINI_API_KEY;
+        apiKey = config.geminiApiKey;
     }
     if (!apiKey) {
         return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in the bulk upload dialog.' });
@@ -1381,14 +1378,14 @@ ${text}`;
 
 // HTTPS configuration
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on https://localhost:${PORT}`);
 
     // Verify Gemini API configuration
-    if (process.env.GEMINI_API_KEY) {
+    if (config.geminiApiKey) {
         console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
-        const startupGenAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const startupGenAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
         startupGenAI.models.generateContent({
             model: GEMINI_MODEL,
             contents: 'Hello'

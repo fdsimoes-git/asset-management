@@ -25,9 +25,9 @@ npm install
 echo "Checking configuration..."
 
 if [ ! -f ".env" ]; then
-    echo ".env file not found. Please create it from .env.example:"
-    echo "   cp .env.example .env"
-    echo "   Then edit .env with your actual values."
+    echo "Note: No .env file found."
+    echo "  Production: secrets should be set as system environment variables (e.g. via systemd)."
+    echo "  Local dev:  cp .env.example .env  and fill in your values."
 fi
 
 # Generate SSL certificates if they don't exist
@@ -39,10 +39,12 @@ fi
 echo "Deployment setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Edit .env with your actual configuration values"
-echo "2. Ensure Ollama is running: ollama serve"
-echo "3. Pull the AI model: ollama pull llama3.2"
-echo "4. Start the server: npm run start:prod"
+if [ -f ".env" ]; then
+    echo "1. Edit .env with your actual configuration values"
+else
+    echo "1. Set required env vars (ENCRYPTION_KEY, SESSION_SECRET) via systemd or .env"
+fi
+echo "2. Start the server: npm run start:prod"
 echo ""
 echo "Access your application at:"
 echo "   https://asset-manager.local"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Asset Management Backup Script
-# Backs up data folder and .env to Google Drive via rclone
+# Backs up data folder (and .env if present) to Google Drive via rclone
 
 # Configuration
 SOURCE_DIR="$HOME/projects/asset-management"
@@ -21,7 +21,7 @@ if [ -f "$SOURCE_DIR/.env" ]; then
     rclone copy "$SOURCE_DIR/.env" "$BACKUP_DIR/"
     echo "Backed up: .env file"
 else
-    echo "Warning: .env file not found"
+    echo "Info: No .env file found (expected in production — secrets are in system env vars)"
 fi
 
 echo "Backup completed: $BACKUP_DIR at $(date)"
