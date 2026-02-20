@@ -839,7 +839,10 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 let bulkExtractedEntries = [];
 
 // --- Gemini API Key UI Management ---
+let geminiKeyOverrideMode = false;
+
 function updateGeminiKeyUI() {
+    geminiKeyOverrideMode = false;
     const storedDiv = document.getElementById('geminiKeyStored');
     const inputDiv = document.getElementById('geminiKeyInput');
     const noneDiv = document.getElementById('geminiKeyNone');
@@ -866,6 +869,7 @@ function updateGeminiKeyUI() {
 
 // "Use different key" button
 document.getElementById('geminiKeyUseDifferent')?.addEventListener('click', () => {
+    geminiKeyOverrideMode = true;
     document.getElementById('geminiKeyStored').style.display = 'none';
     document.getElementById('geminiKeyInput').style.display = 'block';
     document.getElementById('geminiKeyNone').style.display = 'none';
@@ -948,6 +952,13 @@ processBulkPdfBtn.addEventListener('click', async () => {
     const manualKey = manualKeyInput ? manualKeyInput.value.trim() : '';
     const saveCheckbox = document.getElementById('geminiKeySaveCheckbox');
     const hasStoredKey = currentUser && currentUser.hasGeminiApiKey;
+
+    // If overriding stored key, require a manual key
+    if (geminiKeyOverrideMode && !manualKey) {
+        alert('Please enter a Gemini API key or click Cancel to use your saved key.');
+        if (manualKeyInput) manualKeyInput.focus();
+        return;
+    }
 
     // If no stored key and no manual key entered, prompt user
     if (!hasStoredKey && !manualKey) {

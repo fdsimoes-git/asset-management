@@ -681,7 +681,7 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerId: null,
         partnerLinkedAt: null,
         partnerUsername: null,
-        hasGeminiApiKey: !!req.user.geminiApiKey
+        hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData)
     };
 
     // Include partner info only if partner exists and is mutually linked
@@ -1398,6 +1398,6 @@ app.listen(PORT, '0.0.0.0', () => {
             console.warn('Warning: Gemini API key may be invalid:', error.message);
         });
     } else {
-        console.log('No global GEMINI_API_KEY configured. Users must provide their own API keys for PDF processing.');
+        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys or manually provided keys.');
     }
 });
