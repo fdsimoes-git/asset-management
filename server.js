@@ -15,8 +15,7 @@ const { GoogleGenAI, Type } = require('@google/genai');
 
 const app = express();
 
-// Initialize Gemini AI
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Gemini AI model name (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 
 // Data file path
@@ -43,6 +42,23 @@ function decryptData(encryptedData, iv) {
     let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return JSON.parse(decrypted);
+}
+
+// Function to encrypt a raw string (for API keys)
+function encryptString(value) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(value, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return { iv: iv.toString('hex'), encryptedData: encrypted };
+}
+
+// Function to decrypt a raw string (for API keys)
+function decryptString(encryptedData, iv) {
+    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, Buffer.from(iv, 'hex'));
+    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
 }
 
 // Initialize entries from file or create empty array
@@ -664,7 +680,8 @@ app.get('/api/user', requireAuth, (req, res) => {
         role: req.user.role,
         partnerId: null,
         partnerLinkedAt: null,
-        partnerUsername: null
+        partnerUsername: null,
+        hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData)
     };
 
     // Include partner info only if partner exists and is mutually linked
@@ -678,6 +695,35 @@ app.get('/api/user', requireAuth, (req, res) => {
     }
 
     res.json(response);
+});
+
+// Save Gemini API key (encrypted)
+app.post('/api/user/gemini-key', requireAuth, (req, res) => {
+    const { geminiApiKey } = req.body;
+
+    if (!geminiApiKey || typeof geminiApiKey !== 'string') {
+        return res.status(400).json({ message: 'API key is required.' });
+    }
+
+    const trimmed = geminiApiKey.trim();
+    if (trimmed.length < 30 || trimmed.length > 60) {
+        return res.status(400).json({ message: 'API key must be between 30 and 60 characters.' });
+    }
+
+    req.user.geminiApiKey = encryptString(trimmed);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true });
+});
+
+// Remove saved Gemini API key
+app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
+    delete req.user.geminiApiKey;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false });
 });
 
 // Logout endpoint
@@ -1143,9 +1189,25 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         return res.status(400).json({ message: 'No PDF file uploaded.' });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ message: 'Gemini API key not configured.' });
+    // Resolve API key: manual > stored > .env fallback
+    let apiKey = null;
+    if (req.body.geminiApiKey && req.body.geminiApiKey.trim()) {
+        apiKey = req.body.geminiApiKey.trim();
+    } else if (req.user.geminiApiKey) {
+        try {
+            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+        } catch (e) {
+            console.error('Failed to decrypt stored Gemini API key:', e.message);
+        }
     }
+    if (!apiKey) {
+        apiKey = process.env.GEMINI_API_KEY;
+    }
+    if (!apiKey) {
+        return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in the bulk upload dialog.' });
+    }
+
+    const requestGenAI = new GoogleGenAI({ apiKey });
 
     try {
         // Parse the PDF buffer
@@ -1219,7 +1281,7 @@ ${text}`;
         console.log('Prompt length:', prompt.length, 'chars');
         let response;
         try {
-            response = await genAI.models.generateContent({
+            response = await requestGenAI.models.generateContent({
                 model: GEMINI_MODEL,
                 contents: prompt,
                 config: {
@@ -1304,9 +1366,9 @@ ${text}`;
         console.error('Error processing PDF with Gemini:', error);
 
         // Provide more specific error messages
-        let errorMessage = 'Failed to process PDF with AI.';
+        let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
         if (error.message?.includes('API key')) {
-            errorMessage = 'Invalid Gemini API key. Please check your configuration.';
+            errorMessage = 'Invalid Gemini API key. Please check your API key and try again.';
         } else if (error.message?.includes('quota')) {
             errorMessage = 'Gemini API quota exceeded. Please try again later.';
         } else if (error.message?.includes('safety')) {
@@ -1326,8 +1388,8 @@ app.listen(PORT, '0.0.0.0', () => {
     // Verify Gemini API configuration
     if (process.env.GEMINI_API_KEY) {
         console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
-        // Make a test API call to verify the key is valid
-        genAI.models.generateContent({
+        const startupGenAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        startupGenAI.models.generateContent({
             model: GEMINI_MODEL,
             contents: 'Hello'
         }).then(() => {
@@ -1336,6 +1398,6 @@ app.listen(PORT, '0.0.0.0', () => {
             console.warn('Warning: Gemini API key may be invalid:', error.message);
         });
     } else {
-        console.warn('Warning: GEMINI_API_KEY not configured. PDF processing will not work.');
+        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys or manually provided keys.');
     }
 });

@@ -1428,6 +1428,39 @@
                         <label for="bulkPdfUpload">Select PDF File</label>
                         <input type="file" id="bulkPdfUpload" accept="application/pdf" />
                     </div>
+
+                    <!-- Gemini API Key: Stored key indicator -->
+                    <div id="geminiKeyStored" style="display: none; padding: 1rem; background: var(--color-success-muted); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md); margin: 1rem 0;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                            <span style="color: var(--color-success); font-size: 1.1rem;">&#10003;</span>
+                            <span style="color: var(--color-success); font-weight: 600; font-size: 0.85rem;">Saved API key will be used</span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="geminiKeyUseDifferent" class="bulk-upload-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Use different key</button>
+                            <button type="button" id="geminiKeyRemove" class="delete-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Remove saved key</button>
+                        </div>
+                    </div>
+
+                    <!-- Gemini API Key: Manual input -->
+                    <div id="geminiKeyInput" style="display: none; padding: 1rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin: 1rem 0;">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label for="geminiApiKeyInput">Gemini API Key</label>
+                            <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key" autocomplete="off" />
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem; color: var(--color-text-secondary);">
+                                <input type="checkbox" id="geminiKeySaveCheckbox" style="accent-color: var(--color-accent-primary);">
+                                Save this key for future use
+                            </label>
+                            <button type="button" id="geminiKeyCancel" class="bulk-upload-btn" style="display: none; padding: 0.4rem 0.8rem; font-size: 0.75rem; margin-left: auto;">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Gemini API Key: No key hint -->
+                    <div id="geminiKeyNone" style="display: none; padding: 0.75rem 1rem; color: var(--color-text-muted); font-size: 0.8rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); margin: 1rem 0;">
+                        A Gemini API key is required to process PDFs with AI. Enter your key above.
+                    </div>
+
                     <button id="processBulkPdfBtn" class="bulk-upload-btn" style="width: 100%; margin: 1rem 0;">Upload and Process</button>
                     <div id="loadingIndicator" style="display:none; text-align: center; margin: 20px 0;">
                         <div style="display: inline-block; width: 40px; height: 40px; border: 3px solid var(--color-border); border-top: 3px solid var(--color-accent-primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
