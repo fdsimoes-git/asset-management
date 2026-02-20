@@ -34,7 +34,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
 - **Bulk Import**: Process multiple expenses from a single document with preview and editing
 - **Per-User API Keys**: Each user can store their own encrypted Gemini API key or enter one manually per session
-- **Key Priority Chain**: Manual input > user's stored key > global `.env` fallback
+- **Key Priority Chain**: Manual input > user's stored key > global env var fallback
 
 #### Bulk Import Workflow
 1. Click "Bulk PDF Upload" in the header
@@ -82,17 +82,27 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    npm run ssl
    ```
 
-5. **Configure environment variables** by creating `.env`:
-   ```env
-   SESSION_SECRET=your-secure-session-secret
-   ADMIN_USERNAME=admin
-   ADMIN_PASSWORD_HASH=your-bcrypt-hashed-password
-   SSL_KEY_PATH=ssl/server.key
-   SSL_CERT_PATH=ssl/server.crt
-   PORT=443
-   GEMINI_API_KEY=your-gemini-api-key          # Optional: global fallback for all users
-   ENCRYPTION_KEY=your-32-byte-hex-encryption-key
+5. **Configure environment variables**:
+
+   **Local dev** — copy the example and fill in your values:
+   ```bash
+   cp .env.example .env
    ```
+
+   **Production** — set secrets as system environment variables (e.g. via systemd `Environment=` directives). No `.env` file should exist on the server.
+
+   Required variables:
+   ```env
+   ENCRYPTION_KEY=your-64-char-hex-key          # Required — generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   SESSION_SECRET=your-secure-session-secret     # Required
+   ADMIN_USERNAME=admin                          # Optional (defaults to "admin")
+   ADMIN_PASSWORD_HASH=your-bcrypt-hashed-password
+   PORT=443
+   GEMINI_API_KEY=your-gemini-api-key            # Optional: global fallback for all users
+   UMAMI_WEBSITE_ID=your-umami-website-id        # Optional: analytics
+   ```
+
+   The server validates `ENCRYPTION_KEY` and `SESSION_SECRET` at startup and exits with a clear error if either is missing.
 
 6. **Generate admin password hash**:
    ```bash
@@ -104,7 +114,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 ### Initial Admin Setup
 On first run, the system automatically migrates the admin user from environment variables:
 - `ADMIN_USERNAME` (defaults to "admin")
-- `ADMIN_PASSWORD_HASH` (bcrypt hash from `.env`)
+- `ADMIN_PASSWORD_HASH` (bcrypt hash from environment variables)
 
 ### User Registration
 New users can register at `/register.html` with:
@@ -131,8 +141,15 @@ To access via `https://asset-manager.local`:
 ## Usage
 
 ### Starting the Server
+
+**Production** (systemd):
 ```bash
-sudo node server.js
+sudo systemctl start asset-management
+```
+
+**Local dev**:
+```bash
+node server.js
 ```
 
 ### Accessing the Application
@@ -223,11 +240,12 @@ asset-management/
 │   ├── login.js         # Login page logic
 │   └── register.js      # Registration page logic
 ├── server.js            # Main server application
+├── config.js            # Centralized config with startup validation
 ├── index.html           # Main dashboard
 ├── login.html           # Login page
 ├── register.html        # Registration page
 ├── package.json         # Dependencies
-└── .env                 # Configuration (not in repo)
+└── .env.example         # Environment variable template
 ```
 
 ## Migration
@@ -242,13 +260,13 @@ When upgrading from single-user to multi-user:
 - **Logs**: Server logs available in terminal output
 - **Updates**: `npm update` to update dependencies
 - **SSL Renewal**: Regenerate certificates annually
-- **Backup**: Copy `data/` directory for backups
+- **Backup**: Run `./backup.sh` to back up `data/` to Google Drive via rclone
 
 ## Troubleshooting
 
 ### Common Issues
 1. **Certificate Errors**: Regenerate SSL certificates or accept self-signed
-2. **Gemini API Errors**: Verify your API key is valid (per-user key, or global `GEMINI_API_KEY` in `.env`)
+2. **Gemini API Errors**: Verify your API key is valid (per-user key, or global `GEMINI_API_KEY` env var)
 3. **DNS Issues**: Verify hosts file or router DNS configuration
 4. **Permission Errors**: Run server with `sudo` for port 443
 5. **Login Issues**: Ensure user account is active

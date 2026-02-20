@@ -1,6 +1,6 @@
 #!/bin/bash
 # Asset Management Backup Script
-# Backs up data folder and .env to Google Drive via rclone
+# Backs up data folder (and .env if present) to Google Drive via rclone
 
 # Configuration
 SOURCE_DIR="$HOME/projects/asset-management"
