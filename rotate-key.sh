@@ -69,19 +69,19 @@ if [ $STATUS -ne 0 ]; then
 fi
 
 echo ""
-read -p "Open 'sudo systemctl edit asset-management' now to update the key? [Y/n] " ANSWER
+read -p "Open 'sudo systemctl edit --full asset-management' now to update the key? [Y/n] " ANSWER
 
 if [ "$ANSWER" = "n" ] || [ "$ANSWER" = "N" ]; then
     echo ""
     echo "Data files are now encrypted with the NEW key, but systemd still has the old key."
     echo "The service will NOT be restarted. Update the key manually:"
-    echo "  sudo systemctl edit asset-management"
+    echo "  sudo systemctl edit --full asset-management"
     echo "  sudo systemctl daemon-reload"
     echo "  sudo systemctl restart asset-management"
     exit 1
 fi
 
-systemctl edit asset-management
+systemctl edit --full asset-management
 systemctl daemon-reload
 
 # Verify the key was actually changed
@@ -92,7 +92,7 @@ if [ "$NEW_ENCRYPTION_KEY" = "$ENCRYPTION_KEY" ]; then
     echo ""
     echo "WARNING: ENCRYPTION_KEY in systemd was not updated (still the old value)."
     echo "The service will NOT be restarted. Data files use the new key — update systemd:"
-    echo "  sudo systemctl edit asset-management"
+    echo "  sudo systemctl edit --full asset-management"
     echo "  sudo systemctl daemon-reload"
     echo "  sudo systemctl restart asset-management"
     exit 1

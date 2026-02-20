@@ -173,7 +173,7 @@ async function main() {
     console.log('');
     console.log('Update the systemd service with the new key:');
     console.log('');
-    console.log('  sudo systemctl edit asset-management');
+    console.log('  sudo systemctl edit --full asset-management');
     console.log(`  # Set ENCRYPTION_KEY to: ${NEW_KEY_HEX}`);
     console.log('  sudo systemctl daemon-reload');
     console.log('  sudo systemctl restart asset-management');
