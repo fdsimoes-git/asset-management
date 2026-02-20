@@ -262,6 +262,24 @@ When upgrading from single-user to multi-user:
 - **SSL Renewal**: Regenerate certificates annually
 - **Backup**: Run `./backup.sh` to back up `data/` to Google Drive via rclone
 
+### Rotating the Encryption Key
+
+To rotate `ENCRYPTION_KEY` without losing access to encrypted data:
+
+```bash
+sudo bash rotate-key.sh
+```
+
+The script will:
+1. Back up current data to Google Drive
+2. Stop the service
+3. Print the old key — save it to a password manager (needed to decrypt old backups)
+4. Re-encrypt `data/entries.json` and `data/users.json` with a new key
+5. Open `systemctl edit --full` for you to update the key
+6. Verify the key was changed and restart the service
+
+`.bak` files are created before any modification. If anything fails, the script automatically rolls back.
+
 ## Troubleshooting
 
 ### Common Issues
