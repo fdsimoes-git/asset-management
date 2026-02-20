@@ -838,6 +838,63 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 
 let bulkExtractedEntries = [];
 
+// --- Gemini API Key UI Management ---
+function updateGeminiKeyUI() {
+    const storedDiv = document.getElementById('geminiKeyStored');
+    const inputDiv = document.getElementById('geminiKeyInput');
+    const noneDiv = document.getElementById('geminiKeyNone');
+    const cancelBtn = document.getElementById('geminiKeyCancel');
+
+    if (!storedDiv || !inputDiv || !noneDiv) return;
+
+    if (currentUser && currentUser.hasGeminiApiKey) {
+        storedDiv.style.display = 'block';
+        inputDiv.style.display = 'none';
+        noneDiv.style.display = 'none';
+    } else {
+        storedDiv.style.display = 'none';
+        inputDiv.style.display = 'block';
+        noneDiv.style.display = 'block';
+    }
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    // Clear manual input when switching views
+    const keyInput = document.getElementById('geminiApiKeyInput');
+    if (keyInput) keyInput.value = '';
+    const saveCheckbox = document.getElementById('geminiKeySaveCheckbox');
+    if (saveCheckbox) saveCheckbox.checked = false;
+}
+
+// "Use different key" button
+document.getElementById('geminiKeyUseDifferent')?.addEventListener('click', () => {
+    document.getElementById('geminiKeyStored').style.display = 'none';
+    document.getElementById('geminiKeyInput').style.display = 'block';
+    document.getElementById('geminiKeyNone').style.display = 'none';
+    const cancelBtn = document.getElementById('geminiKeyCancel');
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+    document.getElementById('geminiApiKeyInput')?.focus();
+});
+
+// "Cancel" button (return to stored key view)
+document.getElementById('geminiKeyCancel')?.addEventListener('click', () => {
+    updateGeminiKeyUI();
+});
+
+// "Remove saved key" button
+document.getElementById('geminiKeyRemove')?.addEventListener('click', async () => {
+    if (!confirm('Remove your saved Gemini API key?')) return;
+    try {
+        const response = await fetch('/api/user/gemini-key', { method: 'DELETE' });
+        if (response.ok) {
+            currentUser.hasGeminiApiKey = false;
+            updateGeminiKeyUI();
+        } else {
+            alert('Failed to remove API key.');
+        }
+    } catch (error) {
+        alert('Failed to remove API key.');
+    }
+});
+
 openBulkUploadModalBtn.addEventListener('click', () => {
     bulkUploadModal.style.display = 'block';
     bulkExtractedEntriesTbody.innerHTML = '';
@@ -850,6 +907,7 @@ openBulkUploadModalBtn.addEventListener('click', () => {
     if (bulkCoupleHeader) {
         bulkCoupleHeader.style.display = hasPartner ? '' : 'none';
     }
+    updateGeminiKeyUI();
 });
 
 closeBulkUploadModalBtn.addEventListener('click', () => {
@@ -885,6 +943,35 @@ processBulkPdfBtn.addEventListener('click', async () => {
         return;
     }
 
+    // Read manual API key
+    const manualKeyInput = document.getElementById('geminiApiKeyInput');
+    const manualKey = manualKeyInput ? manualKeyInput.value.trim() : '';
+    const saveCheckbox = document.getElementById('geminiKeySaveCheckbox');
+    const hasStoredKey = currentUser && currentUser.hasGeminiApiKey;
+
+    // If no stored key and no manual key entered, prompt user
+    if (!hasStoredKey && !manualKey) {
+        alert('Please enter a Gemini API key to process PDFs.');
+        if (manualKeyInput) manualKeyInput.focus();
+        return;
+    }
+
+    // If "Save" checkbox checked and manual key provided, save it first
+    if (saveCheckbox && saveCheckbox.checked && manualKey) {
+        try {
+            const saveResp = await fetch('/api/user/gemini-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ geminiApiKey: manualKey })
+            });
+            if (saveResp.ok) {
+                currentUser.hasGeminiApiKey = true;
+            }
+        } catch (e) {
+            console.error('Failed to save API key:', e);
+        }
+    }
+
     // Show loading indicator
     loadingIndicator.style.display = 'block';
     processBulkPdfBtn.disabled = true;
@@ -892,6 +979,9 @@ processBulkPdfBtn.addEventListener('click', async () => {
 
     const formData = new FormData();
     formData.append('pdfFile', pdfFile);
+    if (manualKey) {
+        formData.append('geminiApiKey', manualKey);
+    }
     try {
         const response = await fetch('/api/process-pdf', {
             method: 'POST',
