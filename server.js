@@ -792,21 +792,23 @@ app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
     // Always return the same generic message to prevent user enumeration
     const genericMessage = 'If an account with that username exists and has an email on file, a reset code has been sent.';
 
+    // Fire-and-forget: send email in background to prevent timing attacks
+    // (response time is constant regardless of whether user exists)
     const user = findUserByUsername(username);
-    if (!user || !user.isActive || !user.email || !smtpTransport) {
-        return res.json({ message: genericMessage });
-    }
-
-    try {
-        const email = decryptString(user.email.encryptedData, user.email.iv);
-        const code = createResetCode(user.id);
-        await sendEmail(
-            email,
-            'Password Reset Code - Asset Manager',
-            `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.`
-        );
-    } catch (error) {
-        console.error('Error in forgot-password flow:', error.message);
+    if (user && user.isActive && user.email && smtpTransport) {
+        try {
+            const email = decryptString(user.email.encryptedData, user.email.iv);
+            const code = createResetCode(user.id);
+            sendEmail(
+                email,
+                'Password Reset Code - Asset Manager',
+                `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.`
+            ).catch(error => {
+                console.error('Error sending reset email:', error.message);
+            });
+        } catch (error) {
+            console.error('Error in forgot-password flow:', error.message);
+        }
     }
 
     res.json({ message: genericMessage });
@@ -830,10 +832,14 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
 
-    // Verify code's userId matches the username
+    // Verify code's userId matches the username and user is still active
     const user = findUserByUsername(username);
     if (!user || user.id !== userId) {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    if (!user.isActive) {
+        return res.status(403).json({ message: 'User account is inactive' });
     }
 
     try {

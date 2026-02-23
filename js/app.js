@@ -1809,11 +1809,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="close" id="closeEmailModal">&times;</span>
                     <h2>Set Email</h2>
                     <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
-                        Set email for <strong>${user.username}</strong>
+                        Set email for <strong>${escapeHtml(user.username)}</strong>
                     </p>
                     <div class="form-group">
                         <label for="emailInput">Email Address</label>
-                        <input type="email" id="emailInput" placeholder="user@example.com" value="${user.email || ''}">
+                        <input type="email" id="emailInput" placeholder="user@example.com" value="${escapeHtml(user.email || '')}">
                     </div>
                     <small style="color: var(--color-text-muted); display: block; margin-bottom: 1rem;">
                         Used for self-service password resets. Leave empty to remove.
