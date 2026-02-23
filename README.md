@@ -17,8 +17,9 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 
 ### Multi-User System
 - **Public Registration**: New users can create accounts
+- **Self-Service Password Reset**: Users reset their own password via email (one-time code, 15-min expiry)
 - **Data Isolation**: Each user sees only their own entries
-- **Admin Panel**: Admins can create, activate/deactivate, and delete users
+- **Admin Panel**: Admins can create, activate/deactivate, and delete users; set user emails for password reset
 - **Role-Based Access**: Admin and regular user roles
 
 ### Couples/Partner Feature
@@ -100,7 +101,14 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    PORT=443
    GEMINI_API_KEY=your-gemini-api-key            # Optional: global fallback for all users
    UMAMI_WEBSITE_ID=your-umami-website-id        # Optional: analytics
+   SMTP_HOST=smtp.gmail.com                      # Optional: enables self-service password reset
+   SMTP_PORT=587                                 # Optional
+   SMTP_USER=your-email@gmail.com                # Optional
+   SMTP_PASS=your-app-password                   # Optional (Gmail: use App Password)
+   SMTP_FROM=your-email@gmail.com                # Optional
    ```
+
+   > **SMTP is optional.** If not configured, password resets can only be done by an admin. All five `SMTP_*` variables must be set for the feature to activate.
 
    The server validates `ENCRYPTION_KEY` and `SESSION_SECRET` at startup and exits with a clear error if either is missing.
 
@@ -121,9 +129,18 @@ New users can register at `/register.html` with:
 - Username (3-30 characters, alphanumeric and underscores)
 - Password (minimum 8 characters)
 
+### Password Reset
+Users can reset their own password at `/forgot-password.html`:
+1. Enter your username
+2. Receive a one-time code by email (8-char alphanumeric, expires in 15 minutes)
+3. Enter the code and choose a new password
+
+Requires SMTP to be configured and the admin to have set an email for the user.
+
 ### Admin User Management
 Admins can access the Admin Panel to:
 - Create new users with specified roles
+- Set user emails (for self-service password reset)
 - Activate/deactivate user accounts
 - Delete users (and their associated entries)
 - View user statistics
@@ -179,6 +196,9 @@ Available expense/income categories:
 - **Session Security**: HTTP-only, secure cookies (24-hour expiration)
 - **Data Encryption**: AES-256-CBC for stored data
 - **API Key Encryption**: Per-user Gemini keys double-encrypted (field-level + file-level AES-256-CBC)
+- **Email Encryption**: User emails encrypted at rest with AES-256-CBC
+- **Reset Code Security**: Single-use, 15-min expiry, one active per user, code-username binding verified
+- **Anti-Enumeration**: Generic responses on forgot-password; timing-safe (background processing)
 - **Input Validation**: Server-side validation for all inputs
 - **Data Isolation**: Users can only access their own entries
 - **Role-Based Access**: Admin-only endpoints protected
@@ -188,7 +208,7 @@ Available expense/income categories:
 - **Users**: `data/users.json` (encrypted)
 - **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey? }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, email? }`
 - **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
 
 ## Technical Details
@@ -207,6 +227,8 @@ Available expense/income categories:
 - `POST /api/register` - User registration
 - `POST /api/logout` - End session
 - `GET /api/user` - Get current user info (includes `hasGeminiApiKey` flag)
+- `POST /api/forgot-password` - Request password reset code (rate limited: 3/15min)
+- `POST /api/reset-password` - Reset password with code
 
 #### User Settings (requires authentication)
 - `POST /api/user/gemini-key` - Save encrypted Gemini API key
@@ -238,12 +260,14 @@ asset-management/
 ├── js/
 │   ├── app.js           # Main application logic
 │   ├── login.js         # Login page logic
-│   └── register.js      # Registration page logic
+│   ├── register.js      # Registration page logic
+│   └── forgot-password.js # Password reset page logic
 ├── server.js            # Main server application
 ├── config.js            # Centralized config with startup validation
 ├── index.html           # Main dashboard
 ├── login.html           # Login page
 ├── register.html        # Registration page
+├── forgot-password.html # Self-service password reset page
 ├── package.json         # Dependencies
 └── .env.example         # Environment variable template
 ```
