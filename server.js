@@ -482,6 +482,7 @@ app.use(session({
     cookie: {
         secure: true,
         httpOnly: true,
+        sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
@@ -549,7 +550,7 @@ const requireAdmin = (req, res, next) => {
 app.post('/api/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
-    if (!username || !password) {
+    if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
@@ -591,7 +592,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     const { username, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
-    if (!username || !password || !confirmPassword || !inviteCode) {
+    if (!username || !password || !confirmPassword || !inviteCode
+        || typeof username !== 'string' || typeof password !== 'string'
+        || typeof confirmPassword !== 'string' || typeof inviteCode !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -1374,6 +1377,15 @@ ${text}`;
 
         res.status(500).json({ message: errorMessage });
     }
+});
+
+// Global error handler - suppress stack traces in production
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed') {
+        return res.status(400).json({ message: 'Invalid JSON in request body' });
+    }
+    console.error('Unhandled error:', err.message);
+    res.status(err.status || 500).json({ message: 'Internal server error' });
 });
 
 // HTTPS configuration

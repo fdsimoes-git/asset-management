@@ -699,8 +699,9 @@ function displayEntries(entriesToShow) {
 
     sortedEntries.forEach(entry => {
         const row = document.createElement('tr');
+        const escapedDescription = escapeHtml(entry.description);
         const tags = (entry.tags || []).map(t =>
-            `<span class="tag tag-${t}">${t}</span>`
+            `<span class="tag tag-${escapeHtml(t)}">${escapeHtml(t)}</span>`
         ).join(' ');
         const coupleBadge = entry.isCoupleExpense ? '<span class="couple-badge">Couple</span>' : '';
 
@@ -712,10 +713,10 @@ function displayEntries(entriesToShow) {
             : '<span style="color: var(--text-secondary); font-size: 0.75rem;">Partner\'s entry</span>';
 
         row.innerHTML = `
-            <td>${entry.month}</td>
-            <td><span class="entry-type entry-type-${entry.type}">${entry.type}</span></td>
+            <td>${escapeHtml(entry.month)}</td>
+            <td><span class="entry-type entry-type-${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-            <td>${coupleBadge}${entry.description}</td>
+            <td>${coupleBadge}${escapedDescription}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
             <td>${actionButtons}</td>
         `;
