@@ -769,13 +769,32 @@ app.get('/api/entries', requireAuth, (req, res) => {
     res.json(userEntries);
 });
 
+// Entry field validation constants
+const VALID_ENTRY_TYPES = ['income', 'expense'];
+const VALID_TAGS = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 // Add new entry
 app.post('/api/entries', requireAuth, (req, res) => {
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
-    if (!month || !type || !amount || !description) {
+    if (!month || !type || !amount || !description
+        || typeof month !== 'string' || typeof type !== 'string'
+        || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
+
+    if (!MONTH_FORMAT.test(month)) {
+        return res.status(400).json({ message: 'Month must be in YYYY-MM format' });
+    }
+
+    if (!VALID_ENTRY_TYPES.includes(type)) {
+        return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const sanitizedTags = Array.isArray(tags)
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        : [];
 
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
@@ -792,8 +811,8 @@ app.post('/api/entries', requireAuth, (req, res) => {
         month,
         type,
         amount: parseFloat(amount),
-        description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        description: description.trim(),
+        tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     };
 
@@ -813,9 +832,23 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
 
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
-    if (!month || !type || !amount || !description) {
+    if (!month || !type || !amount || !description
+        || typeof month !== 'string' || typeof type !== 'string'
+        || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
+
+    if (!MONTH_FORMAT.test(month)) {
+        return res.status(400).json({ message: 'Month must be in YYYY-MM format' });
+    }
+
+    if (!VALID_ENTRY_TYPES.includes(type)) {
+        return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const sanitizedTags = Array.isArray(tags)
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        : [];
 
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
@@ -831,8 +864,8 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
         month,
         type,
         amount: parseFloat(amount),
-        description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        description: description.trim(),
+        tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     };
 
