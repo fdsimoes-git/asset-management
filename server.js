@@ -255,7 +255,13 @@ const resetCodes = new Map();
 const RESET_CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
 
 function generateResetCode() {
-    return crypto.randomBytes(6).toString('base64url').substring(0, 8).toUpperCase();
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = crypto.randomBytes(8);
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+        code += alphabet[bytes[i] % alphabet.length];
+    }
+    return code;
 }
 
 function createResetCode(userId) {
@@ -792,26 +798,28 @@ app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
     // Always return the same generic message to prevent user enumeration
     const genericMessage = 'If an account with that username exists and has an email on file, a reset code has been sent.';
 
-    // Fire-and-forget: send email in background to prevent timing attacks
-    // (response time is constant regardless of whether user exists)
-    const user = findUserByUsername(username);
-    if (user && user.isActive && user.email && smtpTransport) {
+    // Respond immediately, then do all user-dependent work in background
+    // to prevent timing-based user enumeration
+    res.json({ message: genericMessage });
+
+    setImmediate(() => {
         try {
-            const email = decryptString(user.email.encryptedData, user.email.iv);
-            const code = createResetCode(user.id);
-            sendEmail(
-                email,
-                'Password Reset Code - Asset Manager',
-                `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.`
-            ).catch(error => {
-                console.error('Error sending reset email:', error.message);
-            });
+            const user = findUserByUsername(username);
+            if (user && user.isActive && user.email && smtpTransport) {
+                const email = decryptString(user.email.encryptedData, user.email.iv);
+                const code = createResetCode(user.id);
+                sendEmail(
+                    email,
+                    'Password Reset Code - Asset Manager',
+                    `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.`
+                ).catch(error => {
+                    console.error('Error sending reset email:', error.message);
+                });
+            }
         } catch (error) {
             console.error('Error in forgot-password flow:', error.message);
         }
-    }
-
-    res.json({ message: genericMessage });
+    });
 });
 
 // Reset password endpoint
@@ -827,19 +835,20 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters' });
     }
 
-    const userId = consumeResetCode(code);
-    if (!userId) {
-        return res.status(400).json({ message: 'Invalid or expired reset code' });
-    }
-
-    // Verify code's userId matches the username and user is still active
+    // Validate username and active status before consuming the code
+    // to prevent an attacker from burning valid codes via wrong usernames
     const user = findUserByUsername(username);
-    if (!user || user.id !== userId) {
+    if (!user) {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
 
     if (!user.isActive) {
         return res.status(403).json({ message: 'User account is inactive' });
+    }
+
+    const userId = consumeResetCode(code);
+    if (!userId || user.id !== userId) {
+        return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
 
     try {

@@ -1694,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<span class="partner-badge">${user.partnerUsername}</span>`
                 : '-';
             const emailDisplay = user.hasEmail
-                ? `<span title="${escapeHtml(user.email || '')}" style="color: var(--color-success); cursor: help;">&#10003;</span>`
+                ? '<span class="email-check" style="color: var(--color-success); cursor: help;">&#10003;</span>'
                 : '<span style="color: var(--color-text-muted);">-</span>';
             row.innerHTML = `
                 <td>${user.id}</td>
@@ -1714,6 +1714,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             `;
             tbody.appendChild(row);
+
+            // Set title via DOM to avoid quote-escaping XSS in attribute
+            if (user.hasEmail && user.email) {
+                const checkSpan = row.querySelector('.email-check');
+                if (checkSpan) checkSpan.title = user.email;
+            }
         });
     }
 
@@ -1813,7 +1819,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </p>
                     <div class="form-group">
                         <label for="emailInput">Email Address</label>
-                        <input type="email" id="emailInput" placeholder="user@example.com" value="${escapeHtml(user.email || '')}">
+                        <input type="email" id="emailInput" placeholder="user@example.com">
                     </div>
                     <small style="color: var(--color-text-muted); display: block; margin-bottom: 1rem;">
                         Used for self-service password resets. Leave empty to remove.
@@ -1826,6 +1832,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const input = overlay.querySelector('#emailInput');
             const confirmBtn = overlay.querySelector('#confirmEmailSet');
             const closeBtn = overlay.querySelector('#closeEmailModal');
+
+            // Set value via DOM to avoid quote-escaping XSS in attribute
+            input.value = user.email || '';
 
             function cleanup() {
                 document.body.removeChild(overlay);
