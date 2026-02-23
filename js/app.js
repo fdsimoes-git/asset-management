@@ -1693,10 +1693,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const partnerDisplay = user.partnerUsername
                 ? `<span class="partner-badge">${user.partnerUsername}</span>`
                 : '-';
+            const emailDisplay = user.hasEmail
+                ? '<span class="email-check" style="color: var(--color-success); cursor: help;">&#10003;</span>'
+                : '<span style="color: var(--color-text-muted);">-</span>';
             row.innerHTML = `
                 <td>${user.id}</td>
                 <td>${user.username}</td>
                 <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+                <td>${emailDisplay} <button class="edit-btn" onclick="showEmailModal(${user.id})" style="padding: 0.2rem 0.5rem; font-size: 0.65rem;">Set</button></td>
                 <td>${partnerDisplay}</td>
                 <td><span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">
                     ${user.isActive ? 'Active' : 'Inactive'}</span></td>
@@ -1710,6 +1714,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             `;
             tbody.appendChild(row);
+
+            // Set title via DOM to avoid quote-escaping XSS in attribute
+            if (user.hasEmail && user.email) {
+                const checkSpan = row.querySelector('.email-check');
+                if (checkSpan) checkSpan.title = user.email;
+            }
         });
     }
 
@@ -1787,6 +1797,90 @@ document.addEventListener('DOMContentLoaded', () => {
             input.focus();
         });
     }
+
+    // Show email modal for setting user email
+    function showEmailModal(userId) {
+        const user = adminUsersCache[userId];
+        if (!user) {
+            alert('User not found');
+            return;
+        }
+
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal';
+            overlay.style.display = 'block';
+            overlay.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <span class="close" id="closeEmailModal">&times;</span>
+                    <h2>Set Email</h2>
+                    <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
+                        Set email for <strong>${escapeHtml(user.username)}</strong>
+                    </p>
+                    <div class="form-group">
+                        <label for="emailInput">Email Address</label>
+                        <input type="email" id="emailInput" placeholder="user@example.com">
+                    </div>
+                    <small style="color: var(--color-text-muted); display: block; margin-bottom: 1rem;">
+                        Used for self-service password resets. Leave empty to remove.
+                    </small>
+                    <button type="button" id="confirmEmailSet" style="width: 100%; margin-top: 0.5rem;">Save Email</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const input = overlay.querySelector('#emailInput');
+            const confirmBtn = overlay.querySelector('#confirmEmailSet');
+            const closeBtn = overlay.querySelector('#closeEmailModal');
+
+            // Set value via DOM to avoid quote-escaping XSS in attribute
+            input.value = user.email || '';
+
+            function cleanup() {
+                document.body.removeChild(overlay);
+            }
+
+            async function onConfirm() {
+                const value = input.value.trim();
+                cleanup();
+                try {
+                    const response = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: value || '' })
+                    });
+                    if (response.ok) {
+                        alert(value ? `Email set for "${user.username}"` : `Email removed for "${user.username}"`);
+                        loadUsersForAdmin();
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || 'Failed to set email');
+                    }
+                } catch (error) {
+                    alert('Error setting email');
+                }
+                resolve();
+            }
+
+            function onCancel() {
+                cleanup();
+                resolve();
+            }
+
+            closeBtn.addEventListener('click', onCancel);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) onCancel();
+            });
+            confirmBtn.addEventListener('click', onConfirm);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') onConfirm();
+                if (e.key === 'Escape') onCancel();
+            });
+
+            input.focus();
+        });
+    }
+    window.showEmailModal = showEmailModal;
 
     // Reset user password (admin only)
     window.resetUserPassword = async function(userId) {

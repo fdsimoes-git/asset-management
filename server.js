@@ -12,8 +12,40 @@ const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
+const nodemailer = require('nodemailer');
 
 const app = express();
+
+// ============ SMTP CONFIGURATION ============
+
+let smtpTransport = null;
+if (config.smtpHost && config.smtpPort && config.smtpUser && config.smtpPass && config.smtpFrom) {
+    smtpTransport = nodemailer.createTransport({
+        host: config.smtpHost,
+        port: parseInt(config.smtpPort, 10),
+        secure: parseInt(config.smtpPort, 10) === 465,
+        auth: {
+            user: config.smtpUser,
+            pass: config.smtpPass
+        }
+    });
+}
+
+async function sendEmail(to, subject, text) {
+    if (!smtpTransport) return false;
+    try {
+        await smtpTransport.sendMail({
+            from: config.smtpFrom,
+            to,
+            subject,
+            text
+        });
+        return true;
+    } catch (error) {
+        console.error('Failed to send email:', error.message);
+        return false;
+    }
+}
 
 // Gemini AI model name (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';
@@ -217,6 +249,64 @@ setInterval(() => {
     }
 }, 30 * 60 * 1000);
 
+// ============ PASSWORD RESET CODE SYSTEM ============
+
+const resetCodes = new Map();
+const RESET_CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
+
+function generateResetCode() {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = crypto.randomBytes(8);
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+        code += alphabet[bytes[i] % alphabet.length];
+    }
+    return code;
+}
+
+function createResetCode(userId) {
+    // Invalidate any prior code for this user
+    for (const [code, data] of resetCodes.entries()) {
+        if (data.userId === userId) {
+            resetCodes.delete(code);
+        }
+    }
+
+    let code;
+    do {
+        code = generateResetCode();
+    } while (resetCodes.has(code));
+
+    resetCodes.set(code, {
+        userId,
+        createdAt: Date.now(),
+        used: false
+    });
+    return code;
+}
+
+function consumeResetCode(code) {
+    const data = resetCodes.get(code.toUpperCase());
+    if (!data) return null;
+    if (data.used) return null;
+    if (Date.now() - data.createdAt > RESET_CODE_EXPIRY) {
+        resetCodes.delete(code.toUpperCase());
+        return null;
+    }
+    data.used = true;
+    return data.userId;
+}
+
+// Cleanup expired reset codes every 15 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [code, data] of resetCodes.entries()) {
+        if (now - data.createdAt > RESET_CODE_EXPIRY) {
+            resetCodes.delete(code);
+        }
+    }
+}, 15 * 60 * 1000);
+
 // ============ INVITE CODE SYSTEM ============
 
 function generateInviteCode() {
@@ -409,6 +499,22 @@ migrateExistingEntries();
 migrateUsersForCouples();
 migrateEntriesForCouples();
 
+// Migration: Add email field to existing users
+function migrateUsersForEmail() {
+    let migrated = false;
+    users.forEach(user => {
+        if (user.email === undefined) {
+            user.email = null;
+            migrated = true;
+        }
+    });
+    if (migrated) {
+        saveUsers();
+        console.log('Migrated users for email field');
+    }
+}
+migrateUsersForEmail();
+
 // Security middleware
 app.use(helmet({
     contentSecurityPolicy: {
@@ -454,7 +560,8 @@ const htmlPages = {
     '/': 'index.html',
     '/index.html': 'index.html',
     '/login.html': 'login.html',
-    '/register.html': 'register.html'
+    '/register.html': 'register.html',
+    '/forgot-password.html': 'forgot-password.html'
 };
 
 if (UMAMI_WEBSITE_ID) {
@@ -511,6 +618,14 @@ const pdfUploadLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+const forgotPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many password reset requests. Please try again later.' }
 });
 
 const generalLimiter = rateLimit({
@@ -669,6 +784,85 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         }
         console.error('Registration error:', error);
         res.status(500).json({ message: 'Registration failed' });
+    }
+});
+
+// Forgot password endpoint
+app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
+    const { username } = req.body;
+
+    if (!username || typeof username !== 'string') {
+        return res.json({ message: 'If an account with that username exists and has an email on file, a reset code has been sent.' });
+    }
+
+    // Always return the same generic message to prevent user enumeration
+    const genericMessage = 'If an account with that username exists and has an email on file, a reset code has been sent.';
+
+    // Respond immediately, then do all user-dependent work in background
+    // to prevent timing-based user enumeration
+    res.json({ message: genericMessage });
+
+    setImmediate(() => {
+        try {
+            const user = findUserByUsername(username);
+            if (user && user.isActive && user.email && smtpTransport) {
+                const email = decryptString(user.email.encryptedData, user.email.iv);
+                const code = createResetCode(user.id);
+                sendEmail(
+                    email,
+                    'Password Reset Code - Asset Manager',
+                    `Your password reset code is: ${code}\n\nThis code expires in 15 minutes.\n\nIf you did not request this, you can safely ignore this email.`
+                ).catch(error => {
+                    console.error('Error sending reset email:', error.message);
+                });
+            }
+        } catch (error) {
+            console.error('Error in forgot-password flow:', error.message);
+        }
+    });
+});
+
+// Reset password endpoint
+app.post('/api/reset-password', loginLimiter, async (req, res) => {
+    const { username, code, newPassword } = req.body;
+
+    if (!username || !code || !newPassword
+        || typeof username !== 'string' || typeof code !== 'string' || typeof newPassword !== 'string') {
+        return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (newPassword.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    }
+
+    // Validate username and active status before consuming the code
+    // to prevent an attacker from burning valid codes via wrong usernames
+    const user = findUserByUsername(username);
+    if (!user) {
+        return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    if (!user.isActive) {
+        return res.status(403).json({ message: 'User account is inactive' });
+    }
+
+    const userId = consumeResetCode(code);
+    if (!userId || user.id !== userId) {
+        return res.status(400).json({ message: 'Invalid or expired reset code' });
+    }
+
+    try {
+        user.passwordHash = await bcrypt.hash(newPassword, 10);
+        user.updatedAt = new Date().toISOString();
+        saveUsers();
+
+        // Clear brute-force lockouts since user proved identity via email
+        resetFailedLogins(username);
+
+        res.json({ message: 'Password reset successfully. You can now log in with your new password.' });
+    } catch (error) {
+        console.error('Error resetting password:', error);
+        res.status(500).json({ message: 'Failed to reset password' });
     }
 });
 
@@ -912,8 +1106,20 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
             updatedAt: u.updatedAt,
             isActive: u.isActive,
             entriesCount: entriesCountByUserId[u.id] || 0,
-            partnerId: u.partnerId || null
+            partnerId: u.partnerId || null,
+            hasEmail: !!(u.email && u.email.iv && u.email.encryptedData)
         };
+
+        // Include decrypted email for admin visibility
+        if (u.email && u.email.iv && u.email.encryptedData) {
+            try {
+                userData.email = decryptString(u.email.encryptedData, u.email.iv);
+            } catch (e) {
+                userData.email = null;
+            }
+        } else {
+            userData.email = null;
+        }
 
         // Include partner username if linked
         if (u.partnerId) {
@@ -979,7 +1185,7 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
         return res.status(404).json({ message: 'User not found' });
     }
 
-    const { username, password, role, isActive } = req.body;
+    const { username, password, role, isActive, email } = req.body;
     const user = users[userIndex];
 
     // Prevent admin from demoting themselves
@@ -1013,6 +1219,18 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
 
     if (typeof isActive === 'boolean') {
         user.isActive = isActive;
+    }
+
+    if (email !== undefined) {
+        if (email === '' || email === null) {
+            user.email = null;
+        } else if (typeof email === 'string') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return res.status(400).json({ message: 'Invalid email format' });
+            }
+            user.email = encryptString(email);
+        }
     }
 
     user.updatedAt = new Date().toISOString();
@@ -1426,6 +1644,13 @@ app.use((err, req, res, next) => {
 const PORT = config.port;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on https://localhost:${PORT}`);
+
+    // Verify SMTP configuration
+    if (smtpTransport) {
+        console.log('SMTP configured — self-service password reset is available.');
+    } else {
+        console.log('No SMTP configured — password resets require admin action.');
+    }
 
     // Verify Gemini API configuration
     if (config.geminiApiKey) {
