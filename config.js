@@ -48,4 +48,10 @@ module.exports = {
     smtpUser:          process.env.SMTP_USER,
     smtpPass:          process.env.SMTP_PASS,
     smtpFrom:          process.env.SMTP_FROM,
+    efiClientId:       process.env.EFI_CLIENT_ID,
+    efiClientSecret:   process.env.EFI_CLIENT_SECRET,
+    efiPixKey:         process.env.EFI_PIX_KEY,
+    efiCertificatePath: process.env.EFI_CERTIFICATE_PATH,
+    efiSandbox:        process.env.EFI_SANDBOX !== 'false',
+    inviteCodePrice:   process.env.INVITE_CODE_PRICE || '10.00',
 };

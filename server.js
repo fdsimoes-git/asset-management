@@ -47,6 +47,19 @@ async function sendEmail(to, subject, text) {
     }
 }
 
+// ============ EFI/PIX CONFIGURATION ============
+
+let efiClient = null;
+if (config.efiClientId && config.efiClientSecret && config.efiPixKey && config.efiCertificatePath) {
+    const EfiPay = require('sdk-node-apis-efi');
+    efiClient = new EfiPay({
+        client_id: config.efiClientId,
+        client_secret: config.efiClientSecret,
+        sandbox: config.efiSandbox,
+        certificate: path.resolve(config.efiCertificatePath)
+    });
+}
+
 // Gemini AI model name (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 
@@ -138,6 +151,7 @@ const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 let users = [];
 let nextUserId = 1;
 let inviteCodes = [];
+let pixCharges = [];
 
 // Load users from file
 function loadUsers() {
@@ -150,12 +164,14 @@ function loadUsers() {
                 users = decrypted.users || [];
                 nextUserId = decrypted.nextUserId || 1;
                 inviteCodes = decrypted.inviteCodes || [];
+                pixCharges = decrypted.pixCharges || [];
             }
         }
     } catch (error) {
         console.error('Error loading users:', error);
         users = [];
         inviteCodes = [];
+        pixCharges = [];
     }
 }
 
@@ -166,7 +182,7 @@ function saveUsers() {
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
-        const encrypted = encryptData({ users, nextUserId, inviteCodes });
+        const encrypted = encryptData({ users, nextUserId, inviteCodes, pixCharges });
         fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
     } catch (error) {
         console.error('Error saving users:', error);
@@ -618,6 +634,14 @@ const pdfUploadLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+const pixChargeLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many PIX charge requests. Please try again later.' }
 });
 
 const forgotPasswordLimiter = rateLimit({
@@ -1353,6 +1377,146 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // ============ INVITE CODE ENDPOINTS ============
 
+// ============ PIX PAYMENT ENDPOINTS ============
+
+// PIX status cache to avoid hammering EFI API
+const pixStatusCache = new Map();
+
+// Cleanup expired unpaid PIX charges every 30 minutes
+setInterval(() => {
+    const now = Date.now();
+    const expiry = 30 * 60 * 1000; // 30 minutes
+    const before = pixCharges.length;
+    pixCharges = pixCharges.filter(charge => {
+        if (charge.status === 'CONCLUIDA') return true; // Keep paid charges
+        const createdAt = new Date(charge.createdAt).getTime();
+        return (now - createdAt) < expiry;
+    });
+    if (pixCharges.length !== before) saveUsers();
+}, 30 * 60 * 1000);
+
+// GET /api/pix/config — public, returns whether PIX is enabled and the price
+app.get('/api/pix/config', (req, res) => {
+    res.json({
+        enabled: !!efiClient,
+        price: efiClient ? config.inviteCodePrice : null
+    });
+});
+
+// POST /api/pix/create-charge — public, rate-limited, creates a PIX charge
+app.post('/api/pix/create-charge', pixChargeLimiter, async (req, res) => {
+    if (!efiClient) {
+        return res.status(503).json({ message: 'PIX payments are not configured' });
+    }
+
+    try {
+        const amount = config.inviteCodePrice;
+        const amountCents = Math.round(parseFloat(amount) * 100);
+        if (isNaN(amountCents) || amountCents <= 0) {
+            return res.status(500).json({ message: 'Invalid price configuration' });
+        }
+
+        // Create immediate charge via EFI
+        const chargeResponse = await efiClient.pixCreateImmediateCharge([], {
+            calendario: { expiracao: 1800 }, // 30 minutes
+            valor: { original: parseFloat(amount).toFixed(2) },
+            chave: config.efiPixKey
+        });
+
+        const txid = chargeResponse.txid;
+        const locId = chargeResponse.loc.id;
+
+        // Generate QR code
+        const qrResponse = await efiClient.pixGenerateQRCode({ id: locId });
+
+        const charge = {
+            txid,
+            locId,
+            amount: parseFloat(amount).toFixed(2),
+            status: 'ATIVA',
+            inviteCode: null,
+            createdAt: new Date().toISOString(),
+            confirmedAt: null
+        };
+
+        pixCharges.push(charge);
+        saveUsers();
+
+        res.status(201).json({
+            txid,
+            qrcode: qrResponse.imagemQrcode, // base64 PNG
+            payload: qrResponse.qrcode, // copy-paste payload
+            expiresInSeconds: 1800
+        });
+    } catch (error) {
+        console.error('Error creating PIX charge:', error.message);
+        res.status(500).json({ message: 'Failed to create PIX charge' });
+    }
+});
+
+// GET /api/pix/status/:txid — public, checks charge status with 10s cache
+app.get('/api/pix/status/:txid', async (req, res) => {
+    if (!efiClient) {
+        return res.status(503).json({ message: 'PIX payments are not configured' });
+    }
+
+    const { txid } = req.params;
+
+    // Validate txid format
+    if (!/^[a-zA-Z0-9]{26,35}$/.test(txid)) {
+        return res.status(400).json({ message: 'Invalid txid format' });
+    }
+
+    const charge = pixCharges.find(c => c.txid === txid);
+    if (!charge) {
+        return res.status(404).json({ message: 'Charge not found' });
+    }
+
+    // Already confirmed — return the invite code
+    if (charge.status === 'CONCLUIDA' && charge.inviteCode) {
+        return res.json({ status: 'CONCLUIDA', inviteCode: charge.inviteCode });
+    }
+
+    // Check cache (10 seconds)
+    const cacheKey = `pix_${txid}`;
+    const cached = pixStatusCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 10000) {
+        return res.json({ status: cached.status, inviteCode: cached.inviteCode || null });
+    }
+
+    try {
+        const detail = await efiClient.pixDetailCharge({ txid });
+        const efiStatus = detail.status;
+
+        // Update cache
+        pixStatusCache.set(cacheKey, { status: efiStatus, inviteCode: null, timestamp: Date.now() });
+
+        if (efiStatus === 'CONCLUIDA' && !charge.inviteCode) {
+            // Payment confirmed — generate invite code
+            const newCode = createInviteCode('pix');
+            charge.status = 'CONCLUIDA';
+            charge.inviteCode = newCode.code;
+            charge.confirmedAt = new Date().toISOString();
+            saveUsers();
+
+            // Update cache with invite code
+            pixStatusCache.set(cacheKey, { status: 'CONCLUIDA', inviteCode: newCode.code, timestamp: Date.now() });
+            return res.json({ status: 'CONCLUIDA', inviteCode: newCode.code });
+        }
+
+        // Update stored status
+        if (charge.status !== efiStatus) {
+            charge.status = efiStatus;
+            saveUsers();
+        }
+
+        return res.json({ status: efiStatus, inviteCode: null });
+    } catch (error) {
+        console.error('Error checking PIX status:', error.message);
+        res.status(500).json({ message: 'Failed to check payment status' });
+    }
+});
+
 // Generate a new invite code (admin only)
 app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
     try {
@@ -1367,12 +1531,12 @@ app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
 // List all invite codes (admin only)
 app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
     const codesWithDetails = inviteCodes.map(ic => {
-        const creator = findUserById(ic.createdBy);
+        const creator = ic.createdBy === 'pix' ? null : findUserById(ic.createdBy);
         const consumer = ic.usedBy ? findUserById(ic.usedBy) : null;
         return {
             code: ic.code,
             createdAt: ic.createdAt,
-            createdByUsername: creator ? creator.username : 'Unknown',
+            createdByUsername: ic.createdBy === 'pix' ? 'PIX Purchase' : (creator ? creator.username : 'Unknown'),
             isUsed: ic.isUsed,
             usedAt: ic.usedAt,
             usedByUsername: consumer ? consumer.username : null
@@ -1650,6 +1814,13 @@ app.listen(PORT, '0.0.0.0', () => {
         console.log('SMTP configured — self-service password reset is available.');
     } else {
         console.log('No SMTP configured — password resets require admin action.');
+    }
+
+    // Verify EFI/PIX configuration
+    if (efiClient) {
+        console.log(`EFI/PIX configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
+    } else {
+        console.log('No EFI/PIX configured — invite code purchases disabled.');
     }
 
     // Verify Gemini API configuration
