@@ -482,6 +482,7 @@ app.use(session({
     cookie: {
         secure: true,
         httpOnly: true,
+        sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
@@ -549,7 +550,7 @@ const requireAdmin = (req, res, next) => {
 app.post('/api/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
-    if (!username || !password) {
+    if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
@@ -591,7 +592,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     const { username, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
-    if (!username || !password || !confirmPassword || !inviteCode) {
+    if (!username || !password || !confirmPassword || !inviteCode
+        || typeof username !== 'string' || typeof password !== 'string'
+        || typeof confirmPassword !== 'string' || typeof inviteCode !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -766,13 +769,32 @@ app.get('/api/entries', requireAuth, (req, res) => {
     res.json(userEntries);
 });
 
+// Entry field validation constants
+const VALID_ENTRY_TYPES = ['income', 'expense'];
+const VALID_TAGS = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 // Add new entry
 app.post('/api/entries', requireAuth, (req, res) => {
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
-    if (!month || !type || !amount || !description) {
+    if (!month || !type || !amount || !description
+        || typeof month !== 'string' || typeof type !== 'string'
+        || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
+
+    if (!MONTH_FORMAT.test(month)) {
+        return res.status(400).json({ message: 'Month must be in YYYY-MM format' });
+    }
+
+    if (!VALID_ENTRY_TYPES.includes(type)) {
+        return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const sanitizedTags = Array.isArray(tags)
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        : [];
 
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
@@ -789,8 +811,8 @@ app.post('/api/entries', requireAuth, (req, res) => {
         month,
         type,
         amount: parseFloat(amount),
-        description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        description: description.trim(),
+        tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     };
 
@@ -810,9 +832,23 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
 
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
-    if (!month || !type || !amount || !description) {
+    if (!month || !type || !amount || !description
+        || typeof month !== 'string' || typeof type !== 'string'
+        || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
     }
+
+    if (!MONTH_FORMAT.test(month)) {
+        return res.status(400).json({ message: 'Month must be in YYYY-MM format' });
+    }
+
+    if (!VALID_ENTRY_TYPES.includes(type)) {
+        return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const sanitizedTags = Array.isArray(tags)
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        : [];
 
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
@@ -828,8 +864,8 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
         month,
         type,
         amount: parseFloat(amount),
-        description,
-        tags: Array.isArray(tags) ? tags.map(t => String(t).toLowerCase().trim()) : [],
+        description: description.trim(),
+        tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     };
 
@@ -1374,6 +1410,15 @@ ${text}`;
 
         res.status(500).json({ message: errorMessage });
     }
+});
+
+// Global error handler - suppress stack traces in production
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed') {
+        return res.status(400).json({ message: 'Invalid JSON in request body' });
+    }
+    console.error('Unhandled error:', err.message);
+    res.status(err.status || 500).json({ message: 'Internal server error' });
 });
 
 // HTTPS configuration
