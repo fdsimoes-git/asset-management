@@ -562,7 +562,7 @@ app.use((req, res, next) => {
     const blocked = [
         '/server.js', '/config.js', '/package.json', '/package-lock.json',
         '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js', '/capacitor.config.json',
-        '/data', '/ssl', '/node_modules', '/ios', '/www'
+        '/data', '/ssl', '/certs', '/node_modules', '/ios', '/www'
     ];
     if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
         return res.status(404).end();
@@ -1449,7 +1449,7 @@ app.post('/api/pix/create-charge', pixChargeLimiter, async (req, res) => {
             expiresInSeconds: 1800
         });
     } catch (error) {
-        console.error('Error creating PIX charge:', error.message);
+        console.error('Error creating PIX charge:', error.message || error, JSON.stringify(error, null, 2));
         res.status(500).json({ message: 'Failed to create PIX charge' });
     }
 });

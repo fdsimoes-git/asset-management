@@ -73,7 +73,7 @@
             pixCurrentTxid = data.txid;
 
             // Show QR code
-            document.getElementById('pixQrImage').src = 'data:image/png;base64,' + data.qrcode;
+            document.getElementById('pixQrImage').src = data.qrcode;
             document.getElementById('pixPayload').value = data.payload;
             qrArea.classList.add('visible');
 
