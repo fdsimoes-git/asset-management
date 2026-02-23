@@ -43,4 +43,9 @@ module.exports = {
     umamiWebsiteId:   process.env.UMAMI_WEBSITE_ID,
     geminiApiKey:      process.env.GEMINI_API_KEY,
     port:              process.env.PORT               || 3000,
+    smtpHost:          process.env.SMTP_HOST,
+    smtpPort:          process.env.SMTP_PORT,
+    smtpUser:          process.env.SMTP_USER,
+    smtpPass:          process.env.SMTP_PASS,
+    smtpFrom:          process.env.SMTP_FROM,
 };
