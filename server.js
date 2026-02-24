@@ -1399,6 +1399,18 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // ============ PAYPAL PAYMENT ENDPOINTS ============
 
+// Cleanup abandoned/failed PayPal orders every 30 minutes (keep COMPLETED for audit)
+setInterval(() => {
+    const now = Date.now();
+    const expiry = 24 * 60 * 60 * 1000; // 24 hours
+    const before = paypalOrders.length;
+    paypalOrders = paypalOrders.filter(order => {
+        if (order.status === 'COMPLETED') return true;
+        return (now - new Date(order.createdAt).getTime()) < expiry;
+    });
+    if (paypalOrders.length !== before) saveUsers();
+}, 30 * 60 * 1000);
+
 // GET /api/paypal/config — public, returns whether PayPal is enabled, price, and client ID
 app.get('/api/paypal/config', (req, res) => {
     res.json({
@@ -1524,7 +1536,11 @@ app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
         return {
             code: ic.code,
             createdAt: ic.createdAt,
-            createdByUsername: (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? 'PayPal Purchase' : (creator ? creator.username : 'Unknown'),
+            createdByUsername: ic.createdBy === 'paypal'
+                ? 'PayPal Purchase'
+                : ic.createdBy === 'pix'
+                    ? 'PIX Purchase'
+                    : (creator ? creator.username : 'Unknown'),
             isUsed: ic.isUsed,
             usedAt: ic.usedAt,
             usedByUsername: consumer ? consumer.username : null

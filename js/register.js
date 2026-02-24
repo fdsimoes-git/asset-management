@@ -20,6 +20,7 @@
             toggle.addEventListener('click', () => {
                 toggle.classList.toggle('open');
                 body.classList.toggle('open');
+                toggle.setAttribute('aria-expanded', toggle.classList.contains('open'));
             });
             toggle.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -36,6 +37,13 @@
             };
             script.onerror = function() {
                 console.error('Failed to load PayPal SDK');
+                var errorEl = document.getElementById('paypalError');
+                var containerEl = document.getElementById('paypalButtonContainer');
+                if (containerEl) containerEl.style.display = 'none';
+                if (errorEl) {
+                    errorEl.textContent = 'Unable to load PayPal at the moment. Please try again later.';
+                    errorEl.classList.add('visible');
+                }
             };
             document.head.appendChild(script);
         } catch (err) {
