@@ -52,15 +52,21 @@ async function sendEmail(to, subject, text) {
 let paypalClient = null;
 let ordersController = null;
 if (config.paypalClientId && config.paypalClientSecret) {
-    const { Client, Environment, OrdersController, CheckoutPaymentIntent, ApiError } = require('@paypal/paypal-server-sdk');
-    paypalClient = new Client({
-        clientCredentialsAuthCredentials: {
-            oAuthClientId: config.paypalClientId,
-            oAuthClientSecret: config.paypalClientSecret,
-        },
-        environment: config.paypalSandbox ? Environment.Sandbox : Environment.Production,
-    });
-    ordersController = new OrdersController(paypalClient);
+    try {
+        const { Client, Environment, OrdersController } = require('@paypal/paypal-server-sdk');
+        paypalClient = new Client({
+            clientCredentialsAuthCredentials: {
+                oAuthClientId: config.paypalClientId,
+                oAuthClientSecret: config.paypalClientSecret,
+            },
+            environment: config.paypalSandbox ? Environment.Sandbox : Environment.Production,
+        });
+        ordersController = new OrdersController(paypalClient);
+    } catch (error) {
+        console.error('Warning: Failed to initialize PayPal SDK:', error.message);
+        paypalClient = null;
+        ordersController = null;
+    }
 }
 
 // Gemini AI model name (instances created per-request)
