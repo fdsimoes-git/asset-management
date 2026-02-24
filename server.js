@@ -555,7 +555,7 @@ app.use(helmet({
             imgSrc: ["'self'", "data:", "https://*.paypal.com", "https://*.paypalobjects.com"],
             frameSrc: ["https://*.paypal.com"],
             objectSrc: ["'none'"],
-            frameAncestors: ["'self'", "https://*.paypal.com"],
+            frameAncestors: ["'self'"],
             baseUri: ["'self'"],
             formAction: ["'self'"]
         }
@@ -1425,7 +1425,7 @@ app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
                 intent: 'CAPTURE',
                 purchaseUnits: [{
                     amount: {
-                        currencyCode: 'BRL',
+                        currencyCode: 'BRL', // Intentional: app targets Brazilian market
                         value: amount
                     },
                     description: 'Invite Code Purchase'
@@ -1453,16 +1453,16 @@ app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
     }
 });
 
-// POST /api/paypal/capture-order/:orderId — public, captures a PayPal order after approval
-app.post('/api/paypal/capture-order/:orderId', async (req, res) => {
+// POST /api/paypal/capture-order/:orderId — public, rate-limited, captures a PayPal order after approval
+app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, res) => {
     if (!ordersController) {
         return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
 
     const { orderId } = req.params;
 
-    // Validate orderId format (PayPal order IDs are alphanumeric)
-    if (!/^[A-Z0-9]{10,25}$/.test(orderId)) {
+    // Validate orderId format (PayPal order IDs are alphanumeric, may include hyphens)
+    if (!/^[A-Z0-9\-]{10,25}$/.test(orderId)) {
         return res.status(400).json({ message: 'Invalid order ID format' });
     }
 
@@ -1480,6 +1480,11 @@ app.post('/api/paypal/capture-order/:orderId', async (req, res) => {
         const { result } = await ordersController.captureOrder({ id: orderId });
 
         if (result.status === 'COMPLETED') {
+            // Idempotency: re-check after async capture in case a concurrent request already set it
+            if (order.inviteCode) {
+                return res.json({ inviteCode: order.inviteCode });
+            }
+
             const newCode = createInviteCode('paypal');
             order.status = 'COMPLETED';
             order.inviteCode = newCode.code;
