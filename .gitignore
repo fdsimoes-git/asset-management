@@ -24,6 +24,10 @@ ssl/
 *.crt
 *.pem
 
+# EFI/PIX certificates
+certs/
+*.p12
+
 # Temporary files
 *.tmp
 *.temp

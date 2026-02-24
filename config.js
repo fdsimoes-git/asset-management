@@ -33,6 +33,14 @@ if (!SESSION_SECRET) {
     process.exit(1);
 }
 
+// ── Optional validation ─────────────────────────────────────────────
+
+const INVITE_CODE_PRICE = process.env.INVITE_CODE_PRICE || '5.00';
+if (isNaN(parseFloat(INVITE_CODE_PRICE)) || parseFloat(INVITE_CODE_PRICE) <= 0) {
+    console.error('FATAL: INVITE_CODE_PRICE must be a positive number (e.g. "5.00").');
+    process.exit(1);
+}
+
 // ── Exported config ─────────────────────────────────────────────────
 
 module.exports = {
@@ -48,4 +56,8 @@ module.exports = {
     smtpUser:          process.env.SMTP_USER,
     smtpPass:          process.env.SMTP_PASS,
     smtpFrom:          process.env.SMTP_FROM,
+    paypalClientId:    process.env.PAYPAL_CLIENT_ID,
+    paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET,
+    paypalSandbox:     process.env.PAYPAL_SANDBOX !== 'false',
+    inviteCodePrice:   INVITE_CODE_PRICE,
 };

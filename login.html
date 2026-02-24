@@ -90,8 +90,6 @@
             padding: 0;
             padding-top: env(safe-area-inset-top, 0px);
             min-height: calc(100vh - env(safe-area-inset-top, 0px));
-            display: flex;
-            justify-content: center;
             color: var(--color-text-primary);
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
@@ -146,23 +144,99 @@
             animation: float 12s ease-in-out infinite;
         }
 
-        .container {
-            width: 100%;
-            max-width: 440px;
-            padding: 2rem;
-            margin: auto 0;
+        /* ── Landing Split Layout ── */
+        .landing-wrapper {
+            display: flex;
+            min-height: calc(100vh - env(safe-area-inset-top, 0px));
             position: relative;
             z-index: 1;
         }
 
-        .app-title {
+        .landing-hero {
+            flex: 0 0 58%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+        }
+
+        .hero-content {
+            max-width: 600px;
+            animation: fadeInUp 0.8s ease backwards;
+        }
+
+        .hero-title {
             font-family: var(--font-display);
-            font-size: 2.5rem;
+            font-size: 3.5rem;
             font-weight: 700;
             color: var(--color-accent-primary);
-            text-align: center;
-            margin-bottom: 2rem;
+            margin: 0 0 1rem 0;
             letter-spacing: -0.03em;
+            line-height: 1.1;
+        }
+
+        .hero-tagline {
+            color: var(--color-text-secondary);
+            font-size: 1.15rem;
+            margin: 0 0 2.5rem 0;
+            line-height: 1.7;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+        }
+
+        .feature-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            transition: all var(--transition-base);
+        }
+
+        .feature-card:hover {
+            background: rgba(30, 41, 59, 0.85);
+            border-color: rgba(245, 158, 11, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .feature-icon {
+            width: 36px;
+            height: 36px;
+            margin-bottom: 0.75rem;
+            color: var(--color-accent-primary);
+        }
+
+        .feature-card h3 {
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin: 0 0 0.35rem 0;
+        }
+
+        .feature-card p {
+            font-size: 0.8rem;
+            color: var(--color-text-muted);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* ── Login Side ── */
+        .landing-login {
+            flex: 0 0 42%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            border-left: 1px solid var(--color-border);
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
         }
 
         .login-form {
@@ -172,7 +246,7 @@
             box-shadow: var(--shadow-lg);
             border: 1px solid var(--color-border);
             text-align: center;
-            animation: fadeInUp 0.8s ease backwards, pulse-glow 4s ease-in-out infinite;
+            animation: fadeInUp 0.8s ease 0.15s backwards, pulse-glow 4s ease-in-out infinite;
             position: relative;
             overflow: hidden;
         }
@@ -343,10 +417,36 @@
             background: linear-gradient(90deg, transparent, var(--color-border), transparent);
         }
 
-        /* Responsive Design */
-        @media (max-width: 480px) {
-            .container {
-                padding: 1.25rem;
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .landing-wrapper {
+                flex-direction: column;
+            }
+
+            .landing-hero {
+                flex: none;
+                padding: 2.5rem 1.5rem 2rem;
+            }
+
+            .hero-title {
+                font-size: 2.5rem;
+            }
+
+            .hero-tagline {
+                font-size: 1rem;
+                margin-bottom: 2rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .landing-login {
+                flex: none;
+                border-left: none;
+                border-top: 1px solid var(--color-border);
+                padding: 2rem 1.5rem 3rem;
             }
 
             .login-form {
@@ -356,9 +456,23 @@
             .login-form h2 {
                 font-size: 1.75rem;
             }
+        }
 
-            .app-title {
+        @media (max-width: 480px) {
+            .landing-hero {
+                padding: 2rem 1.25rem 1.5rem;
+            }
+
+            .hero-title {
                 font-size: 2rem;
+            }
+
+            .landing-login {
+                padding: 1.5rem 1.25rem 2.5rem;
+            }
+
+            .login-form {
+                padding: 2rem 1.5rem;
             }
 
             .orb-1, .orb-2 {
@@ -372,26 +486,102 @@
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
 
-    <div class="container">
-        <h1 class="app-title">Asset Manager</h1>
-        <div class="login-form">
-            <h2>Welcome Back</h2>
-            <p class="subtitle">Sign in to manage your assets</p>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" placeholder="Enter your username" required>
+    <div class="landing-wrapper">
+        <!-- Hero / Features Side -->
+        <div class="landing-hero">
+            <div class="hero-content">
+                <h1 class="hero-title">Asset Manager</h1>
+                <p class="hero-tagline">Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            <path d="M9 12l2 2 4-4"/>
+                        </svg>
+                        <h3>AES-256 Encryption</h3>
+                        <p>Your data encrypted at rest with bank-grade security</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M7 17v-4"/>
+                            <path d="M12 17v-8"/>
+                            <path d="M17 17v-6"/>
+                        </svg>
+                        <h3>Visual Analytics</h3>
+                        <p>Interactive charts for income, expenses, and categories</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <path d="M8 13h2"/>
+                            <path d="M8 17h2"/>
+                            <path d="M14 13l-1.5 2L14 17"/>
+                            <path d="M17 13l1.5 2L17 17"/>
+                        </svg>
+                        <h3>AI-Powered Import</h3>
+                        <p>Upload bank statements and let AI extract transactions</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <h3>Couples Mode</h3>
+                        <p>Link accounts with your partner for shared tracking</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                            <path d="M12 18h.01"/>
+                        </svg>
+                        <h3>Mobile Native</h3>
+                        <p>Full iOS app for managing finances on the go</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                            <line x1="7" y1="7" x2="7.01" y2="7"/>
+                        </svg>
+                        <h3>Smart Categories</h3>
+                        <p>17 built-in tags for granular categorization</p>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="Enter your password" required>
+            </div>
+        </div>
+
+        <!-- Login Side -->
+        <div class="landing-login">
+            <div class="login-container">
+                <div class="login-form">
+                    <h2>Welcome Back</h2>
+                    <p class="subtitle">Sign in to manage your assets</p>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" placeholder="Enter your username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" placeholder="Enter your password" required>
+                        </div>
+                        <button type="submit">Sign In</button>
+                    </form>
+                    <p class="register-link" style="margin-top: 1.5rem;">Forgot your password? <a href="/forgot-password.html">Reset it</a></p>
+                    <div class="decorative-line">or</div>
+                    <p class="register-link">Don't have an account? <a href="/register.html">Create one</a></p>
+                    <div id="error-message" class="error-message"></div>
                 </div>
-                <button type="submit">Sign In</button>
-            </form>
-            <p class="register-link" style="margin-top: 1.5rem;">Forgot your password? <a href="/forgot-password.html">Reset it</a></p>
-            <div class="decorative-line">or</div>
-            <p class="register-link">Don't have an account? <a href="/register.html">Create one</a></p>
-            <div id="error-message" class="error-message"></div> 
+            </div>
         </div>
     </div>
     <script src="/js/login.js"></script>

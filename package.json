@@ -22,7 +22,8 @@
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.1",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "@paypal/paypal-server-sdk": "^2.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.2"

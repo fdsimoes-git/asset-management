@@ -47,6 +47,28 @@ async function sendEmail(to, subject, text) {
     }
 }
 
+// ============ PAYPAL CONFIGURATION ============
+
+let paypalClient = null;
+let ordersController = null;
+if (config.paypalClientId && config.paypalClientSecret) {
+    try {
+        const { Client, Environment, OrdersController } = require('@paypal/paypal-server-sdk');
+        paypalClient = new Client({
+            clientCredentialsAuthCredentials: {
+                oAuthClientId: config.paypalClientId,
+                oAuthClientSecret: config.paypalClientSecret,
+            },
+            environment: config.paypalSandbox ? Environment.Sandbox : Environment.Production,
+        });
+        ordersController = new OrdersController(paypalClient);
+    } catch (error) {
+        console.error('Warning: Failed to initialize PayPal SDK:', error.message);
+        paypalClient = null;
+        ordersController = null;
+    }
+}
+
 // Gemini AI model name (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';
 
@@ -138,6 +160,7 @@ const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 let users = [];
 let nextUserId = 1;
 let inviteCodes = [];
+let paypalOrders = [];
 
 // Load users from file
 function loadUsers() {
@@ -150,12 +173,15 @@ function loadUsers() {
                 users = decrypted.users || [];
                 nextUserId = decrypted.nextUserId || 1;
                 inviteCodes = decrypted.inviteCodes || [];
+                // Migration: pixCharges → paypalOrders
+                paypalOrders = decrypted.paypalOrders || decrypted.pixCharges || [];
             }
         }
     } catch (error) {
         console.error('Error loading users:', error);
         users = [];
         inviteCodes = [];
+        paypalOrders = [];
     }
 }
 
@@ -166,7 +192,7 @@ function saveUsers() {
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
-        const encrypted = encryptData({ users, nextUserId, inviteCodes });
+        const encrypted = encryptData({ users, nextUserId, inviteCodes, paypalOrders });
         fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
     } catch (error) {
         console.error('Error saving users:', error);
@@ -517,17 +543,19 @@ migrateUsersForEmail();
 
 // Security middleware
 app.use(helmet({
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is", "https://*.paypal.com"],
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net"],
-            imgSrc: ["'self'", "data:"],
+            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net", "https://*.paypal.com"],
+            imgSrc: ["'self'", "data:", "https://*.paypal.com", "https://*.paypalobjects.com"],
+            frameSrc: ["https://*.paypal.com"],
             objectSrc: ["'none'"],
-            frameAncestors: ["'none'"],
+            frameAncestors: ["'self'"],
             baseUri: ["'self'"],
             formAction: ["'self'"]
         }
@@ -546,7 +574,7 @@ app.use((req, res, next) => {
     const blocked = [
         '/server.js', '/config.js', '/package.json', '/package-lock.json',
         '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js', '/capacitor.config.json',
-        '/data', '/ssl', '/node_modules', '/ios', '/www'
+        '/data', '/ssl', '/certs', '/node_modules', '/ios', '/www'
     ];
     if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
         return res.status(404).end();
@@ -618,6 +646,14 @@ const pdfUploadLimiter = rateLimit({
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+const paypalOrderLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many order requests. Please try again later.' }
 });
 
 const forgotPasswordLimiter = rateLimit({
@@ -704,13 +740,20 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
 // Registration endpoint
 app.post('/api/register', registerLimiter, async (req, res) => {
-    const { username, password, confirmPassword, inviteCode } = req.body;
+    const { username, email, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
-    if (!username || !password || !confirmPassword || !inviteCode
-        || typeof username !== 'string' || typeof password !== 'string'
+    if (!username || !email || !password || !confirmPassword || !inviteCode
+        || typeof username !== 'string' || typeof email !== 'string'
+        || typeof password !== 'string'
         || typeof confirmPassword !== 'string' || typeof inviteCode !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
     }
 
     // Validate invite code before expensive operations
@@ -752,6 +795,7 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         const newUser = {
             id: nextUserId++,
             username: username,
+            email: encryptString(email),
             passwordHash: passwordHash,
             role: 'user',
             createdAt: new Date().toISOString(),
@@ -1353,6 +1397,126 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // ============ INVITE CODE ENDPOINTS ============
 
+// ============ PAYPAL PAYMENT ENDPOINTS ============
+
+// Cleanup abandoned/failed PayPal orders every 30 minutes (keep COMPLETED for audit)
+setInterval(() => {
+    const now = Date.now();
+    const expiry = 24 * 60 * 60 * 1000; // 24 hours
+    const before = paypalOrders.length;
+    paypalOrders = paypalOrders.filter(order => {
+        if (order.status === 'COMPLETED') return true;
+        return (now - new Date(order.createdAt).getTime()) < expiry;
+    });
+    if (paypalOrders.length !== before) saveUsers();
+}, 30 * 60 * 1000);
+
+// GET /api/paypal/config — public, returns whether PayPal is enabled, price, and client ID
+app.get('/api/paypal/config', (req, res) => {
+    res.json({
+        enabled: !!paypalClient,
+        price: paypalClient ? config.inviteCodePrice : null,
+        clientId: paypalClient ? config.paypalClientId : null
+    });
+});
+
+// POST /api/paypal/create-order — public, rate-limited, creates a PayPal order
+app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
+    if (!ordersController) {
+        return res.status(503).json({ message: 'PayPal payments are not configured' });
+    }
+
+    try {
+        const amount = parseFloat(config.inviteCodePrice).toFixed(2);
+        if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+            return res.status(500).json({ message: 'Invalid price configuration' });
+        }
+
+        const { result } = await ordersController.createOrder({
+            body: {
+                intent: 'CAPTURE',
+                purchaseUnits: [{
+                    amount: {
+                        currencyCode: 'BRL', // Intentional: app targets Brazilian market
+                        value: amount
+                    },
+                    description: 'Invite Code Purchase'
+                }]
+            }
+        });
+
+        const order = {
+            orderId: result.id,
+            amount,
+            currency: 'BRL',
+            status: result.status,
+            inviteCode: null,
+            createdAt: new Date().toISOString(),
+            confirmedAt: null
+        };
+
+        paypalOrders.push(order);
+        saveUsers();
+
+        res.status(201).json({ orderId: result.id });
+    } catch (error) {
+        console.error('Error creating PayPal order:', error.message || error);
+        res.status(500).json({ message: 'Failed to create PayPal order' });
+    }
+});
+
+// POST /api/paypal/capture-order/:orderId — public, rate-limited, captures a PayPal order after approval
+app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, res) => {
+    if (!ordersController) {
+        return res.status(503).json({ message: 'PayPal payments are not configured' });
+    }
+
+    const { orderId } = req.params;
+
+    // Validate orderId format (PayPal order IDs are alphanumeric, may include hyphens)
+    if (!/^[A-Z0-9\-]{10,25}$/.test(orderId)) {
+        return res.status(400).json({ message: 'Invalid order ID format' });
+    }
+
+    const order = paypalOrders.find(o => o.orderId === orderId);
+    if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Already captured — return the invite code
+    if (order.status === 'COMPLETED' && order.inviteCode) {
+        return res.json({ inviteCode: order.inviteCode });
+    }
+
+    try {
+        const { result } = await ordersController.captureOrder({ id: orderId });
+
+        if (result.status === 'COMPLETED') {
+            // Idempotency: re-check after async capture in case a concurrent request already set it
+            if (order.inviteCode) {
+                return res.json({ inviteCode: order.inviteCode });
+            }
+
+            const newCode = createInviteCode('paypal');
+            order.status = 'COMPLETED';
+            order.inviteCode = newCode.code;
+            order.confirmedAt = new Date().toISOString();
+            saveUsers();
+
+            return res.json({ inviteCode: newCode.code });
+        }
+
+        // Update stored status
+        order.status = result.status;
+        saveUsers();
+
+        return res.status(400).json({ message: 'Payment not completed. Status: ' + result.status });
+    } catch (error) {
+        console.error('Error capturing PayPal order:', error.message || error);
+        res.status(500).json({ message: 'Failed to capture payment' });
+    }
+});
+
 // Generate a new invite code (admin only)
 app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
     try {
@@ -1367,12 +1531,16 @@ app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
 // List all invite codes (admin only)
 app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
     const codesWithDetails = inviteCodes.map(ic => {
-        const creator = findUserById(ic.createdBy);
+        const creator = (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? null : findUserById(ic.createdBy);
         const consumer = ic.usedBy ? findUserById(ic.usedBy) : null;
         return {
             code: ic.code,
             createdAt: ic.createdAt,
-            createdByUsername: creator ? creator.username : 'Unknown',
+            createdByUsername: ic.createdBy === 'paypal'
+                ? 'PayPal Purchase'
+                : ic.createdBy === 'pix'
+                    ? 'PIX Purchase'
+                    : (creator ? creator.username : 'Unknown'),
             isUsed: ic.isUsed,
             usedAt: ic.usedAt,
             usedByUsername: consumer ? consumer.username : null
@@ -1650,6 +1818,13 @@ app.listen(PORT, '0.0.0.0', () => {
         console.log('SMTP configured — self-service password reset is available.');
     } else {
         console.log('No SMTP configured — password resets require admin action.');
+    }
+
+    // Verify PayPal configuration
+    if (paypalClient) {
+        console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
+    } else {
+        console.log('No PayPal configured — invite code purchases disabled.');
     }
 
     // Verify Gemini API configuration

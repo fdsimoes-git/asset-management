@@ -416,6 +416,129 @@
         .password-strength-bar.medium { width: 66%; background: var(--color-accent-primary); }
         .password-strength-bar.strong { width: 100%; background: var(--color-success); }
 
+        /* PayPal Purchase Section */
+        .paypal-section {
+            display: none;
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        .paypal-section.visible {
+            display: block;
+        }
+
+        .paypal-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            color: var(--color-text-secondary);
+            font-size: 0.85rem;
+            padding: 0.75rem 0;
+            user-select: none;
+            transition: color var(--transition-fast);
+        }
+
+        .paypal-toggle:hover {
+            color: var(--color-text-primary);
+        }
+
+        .paypal-toggle-arrow {
+            transition: transform var(--transition-base);
+            font-size: 0.7rem;
+        }
+
+        .paypal-toggle.open .paypal-toggle-arrow {
+            transform: rotate(90deg);
+        }
+
+        .paypal-body {
+            display: none;
+            padding: 1.25rem;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            margin-top: 0.5rem;
+        }
+
+        .paypal-body.open {
+            display: block;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .paypal-price {
+            font-size: 0.9rem;
+            color: var(--color-text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .paypal-price strong {
+            color: var(--color-text-primary);
+            font-size: 1.1rem;
+        }
+
+        .paypal-btn-container {
+            min-height: 55px;
+        }
+
+        .paypal-success {
+            display: none;
+            text-align: center;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--color-success-muted);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-md);
+            color: var(--color-success);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .paypal-success.visible {
+            display: block;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .paypal-success .paypal-checkmark {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            background: var(--color-success);
+            border-radius: 50%;
+            margin-bottom: 0.5rem;
+            position: relative;
+            animation: checkmark 0.5s ease 0.2s backwards;
+        }
+
+        .paypal-success .paypal-checkmark::after {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 7px;
+            width: 8px;
+            height: 16px;
+            border: solid white;
+            border-width: 0 2.5px 2.5px 0;
+            transform: rotate(45deg);
+        }
+
+        .paypal-error {
+            display: none;
+            text-align: center;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--color-danger-muted);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius-md);
+            color: var(--color-danger);
+            font-size: 0.85rem;
+        }
+
+        .paypal-error.visible {
+            display: block;
+            animation: fadeInUp 0.3s ease;
+        }
+
         /* Responsive Design */
         @media (max-width: 480px) {
             .container {
@@ -459,6 +582,12 @@
                     <small>3-30 characters, letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required
+                           placeholder="your@email.com">
+                    <small>Used for password recovery</small>
+                </div>
+                <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" required minlength="8"
                            placeholder="Create a strong password">
@@ -472,6 +601,23 @@
                     <input type="password" id="confirmPassword" required
                            placeholder="Re-enter your password">
                 </div>
+                <!-- PayPal Purchase Section -->
+                <div class="paypal-section" id="paypalSection">
+                    <div class="paypal-toggle" id="paypalToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="paypalBody">
+                        <span class="paypal-toggle-arrow">&#9654;</span>
+                        Don't have an invite code? Buy one via PayPal
+                    </div>
+                    <div class="paypal-body" id="paypalBody">
+                        <p class="paypal-price">Price: <strong>R$ <span id="paypalPrice">--</span></strong></p>
+                        <div class="paypal-btn-container" id="paypalButtonContainer"></div>
+                        <div class="paypal-success" id="paypalSuccess">
+                            <div class="paypal-checkmark"></div>
+                            <p style="margin: 0;">Payment confirmed! Code auto-filled below.</p>
+                        </div>
+                        <div class="paypal-error" id="paypalError"></div>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="inviteCode">Invite Code</label>
                     <input type="text" id="inviteCode" required
