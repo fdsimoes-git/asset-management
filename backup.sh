@@ -1,12 +1,12 @@
 #!/bin/bash
 # Asset Management Backup Script
-# Backs up data folder (and .env if present) to Google Drive via rclone
+# Backs up data folder (and .env if present) to Cloudflare R2 via rclone
 
 set -e
 
 # Configuration
 SOURCE_DIR="$HOME/projects/asset-management"
-REMOTE="gdrive:asset_management_backup_files_internet"
+REMOTE="r2:asset-management-backups"
 DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
 BACKUP_DIR="$REMOTE/$DATETIME"
 
