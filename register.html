@@ -416,18 +416,18 @@
         .password-strength-bar.medium { width: 66%; background: var(--color-accent-primary); }
         .password-strength-bar.strong { width: 100%; background: var(--color-success); }
 
-        /* PIX Purchase Section */
-        .pix-section {
+        /* PayPal Purchase Section */
+        .paypal-section {
             display: none;
             margin-bottom: 1.5rem;
             text-align: left;
         }
 
-        .pix-section.visible {
+        .paypal-section.visible {
             display: block;
         }
 
-        .pix-toggle {
+        .paypal-toggle {
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -439,20 +439,20 @@
             transition: color var(--transition-fast);
         }
 
-        .pix-toggle:hover {
+        .paypal-toggle:hover {
             color: var(--color-text-primary);
         }
 
-        .pix-toggle-arrow {
+        .paypal-toggle-arrow {
             transition: transform var(--transition-base);
             font-size: 0.7rem;
         }
 
-        .pix-toggle.open .pix-toggle-arrow {
+        .paypal-toggle.open .paypal-toggle-arrow {
             transform: rotate(90deg);
         }
 
-        .pix-body {
+        .paypal-body {
             display: none;
             padding: 1.25rem;
             background: var(--color-bg-base);
@@ -461,149 +461,27 @@
             margin-top: 0.5rem;
         }
 
-        .pix-body.open {
+        .paypal-body.open {
             display: block;
             animation: fadeInUp 0.3s ease;
         }
 
-        .pix-price {
+        .paypal-price {
             font-size: 0.9rem;
             color: var(--color-text-secondary);
             margin-bottom: 1rem;
         }
 
-        .pix-price strong {
+        .paypal-price strong {
             color: var(--color-text-primary);
             font-size: 1.1rem;
         }
 
-        .pix-btn {
-            width: 100%;
-            padding: 0.9rem;
-            background: linear-gradient(135deg, #00b894 0%, #00a884 100%);
-            color: #fff;
-            border: none;
-            border-radius: var(--radius-md);
-            font-size: 0.85rem;
-            font-family: var(--font-body);
-            font-weight: 700;
-            cursor: pointer;
-            transition: all var(--transition-base);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            box-shadow: 0 4px 24px rgba(0, 184, 148, 0.3);
-            margin-top: 0;
+        .paypal-btn-container {
+            min-height: 55px;
         }
 
-        .pix-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(0, 184, 148, 0.4);
-        }
-
-        .pix-btn:active {
-            transform: translateY(0);
-        }
-
-        .pix-btn:disabled {
-            background: var(--color-bg-surface);
-            cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
-            color: var(--color-text-muted);
-        }
-
-        .pix-qr-area {
-            display: none;
-            text-align: center;
-            margin-top: 1rem;
-        }
-
-        .pix-qr-area.visible {
-            display: block;
-            animation: fadeInUp 0.3s ease;
-        }
-
-        .pix-qr-area img {
-            width: 200px;
-            height: 200px;
-            border-radius: var(--radius-md);
-            background: #fff;
-            padding: 8px;
-        }
-
-        .pix-payload-group {
-            margin-top: 0.75rem;
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .pix-payload-input {
-            flex: 1;
-            padding: 0.6rem 0.75rem;
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            font-size: 0.75rem;
-            font-family: var(--font-body);
-            background: var(--color-bg-elevated);
-            color: var(--color-text-secondary);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .pix-copy-btn {
-            padding: 0.6rem 1rem;
-            background: var(--color-bg-surface);
-            color: var(--color-text-primary);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            font-size: 0.75rem;
-            font-family: var(--font-body);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            white-space: nowrap;
-            width: auto;
-            box-shadow: none;
-            text-transform: none;
-            letter-spacing: normal;
-            margin-top: 0;
-        }
-
-        .pix-copy-btn:hover {
-            background: var(--color-bg-elevated);
-            transform: none;
-            box-shadow: none;
-        }
-
-        .pix-status {
-            margin-top: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--color-text-secondary);
-        }
-
-        .pix-status .pix-spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid transparent;
-            border-top: 2px solid var(--color-accent-primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
-
-        .pix-timer {
-            margin-top: 0.5rem;
-            text-align: center;
-            font-size: 0.8rem;
-            color: var(--color-text-muted);
-        }
-
-        .pix-success {
+        .paypal-success {
             display: none;
             text-align: center;
             margin-top: 1rem;
@@ -616,12 +494,12 @@
             font-weight: 600;
         }
 
-        .pix-success.visible {
+        .paypal-success.visible {
             display: block;
             animation: fadeInUp 0.3s ease;
         }
 
-        .pix-success .pix-checkmark {
+        .paypal-success .paypal-checkmark {
             display: inline-block;
             width: 32px;
             height: 32px;
@@ -632,7 +510,7 @@
             animation: checkmark 0.5s ease 0.2s backwards;
         }
 
-        .pix-success .pix-checkmark::after {
+        .paypal-success .paypal-checkmark::after {
             content: '';
             position: absolute;
             left: 11px;
@@ -644,16 +522,21 @@
             transform: rotate(45deg);
         }
 
-        .pix-expired {
+        .paypal-error {
             display: none;
             text-align: center;
             margin-top: 1rem;
+            padding: 1rem;
+            background: var(--color-danger-muted);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius-md);
             color: var(--color-danger);
             font-size: 0.85rem;
         }
 
-        .pix-expired.visible {
+        .paypal-error.visible {
             display: block;
+            animation: fadeInUp 0.3s ease;
         }
 
         /* Responsive Design */
@@ -677,11 +560,6 @@
             .orb-1, .orb-2 {
                 opacity: 0.5;
             }
-
-            .pix-qr-area img {
-                width: 160px;
-                height: 160px;
-            }
         }
     </style>
 </head>
@@ -704,6 +582,12 @@
                     <small>3-30 characters, letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required
+                           placeholder="your@email.com">
+                    <small>Used for password recovery</small>
+                </div>
+                <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" required minlength="8"
                            placeholder="Create a strong password">
@@ -717,34 +601,20 @@
                     <input type="password" id="confirmPassword" required
                            placeholder="Re-enter your password">
                 </div>
-                <!-- PIX Purchase Section -->
-                <div class="pix-section" id="pixSection">
-                    <div class="pix-toggle" id="pixToggle" role="button" tabindex="0">
-                        <span class="pix-toggle-arrow">&#9654;</span>
-                        Don't have an invite code? Buy one via PIX
+                <!-- PayPal Purchase Section -->
+                <div class="paypal-section" id="paypalSection">
+                    <div class="paypal-toggle" id="paypalToggle" role="button" tabindex="0">
+                        <span class="paypal-toggle-arrow">&#9654;</span>
+                        Don't have an invite code? Buy one via PayPal
                     </div>
-                    <div class="pix-body" id="pixBody">
-                        <p class="pix-price">Price: <strong>R$ <span id="pixPrice">--</span></strong></p>
-                        <button type="button" class="pix-btn" id="pixGenerateBtn">Generate PIX Payment</button>
-                        <div class="pix-qr-area" id="pixQrArea">
-                            <img id="pixQrImage" src="" alt="PIX QR Code">
-                            <div class="pix-payload-group">
-                                <input type="text" class="pix-payload-input" id="pixPayload" readonly>
-                                <button type="button" class="pix-copy-btn" id="pixCopyBtn">Copy</button>
-                            </div>
-                            <div class="pix-status" id="pixStatus">
-                                <span class="pix-spinner"></span>
-                                <span>Waiting for payment...</span>
-                            </div>
-                            <div class="pix-timer" id="pixTimer"></div>
-                        </div>
-                        <div class="pix-success" id="pixSuccess">
-                            <div class="pix-checkmark"></div>
+                    <div class="paypal-body" id="paypalBody">
+                        <p class="paypal-price">Price: <strong>R$ <span id="paypalPrice">--</span></strong></p>
+                        <div class="paypal-btn-container" id="paypalButtonContainer"></div>
+                        <div class="paypal-success" id="paypalSuccess">
+                            <div class="paypal-checkmark"></div>
                             <p style="margin: 0;">Payment confirmed! Code auto-filled below.</p>
                         </div>
-                        <div class="pix-expired" id="pixExpired">
-                            Payment expired. Click "Generate PIX Payment" to try again.
-                        </div>
+                        <div class="paypal-error" id="paypalError"></div>
                     </div>
                 </div>
 

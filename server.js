@@ -47,17 +47,20 @@ async function sendEmail(to, subject, text) {
     }
 }
 
-// ============ EFI/PIX CONFIGURATION ============
+// ============ PAYPAL CONFIGURATION ============
 
-let efiClient = null;
-if (config.efiClientId && config.efiClientSecret && config.efiPixKey && config.efiCertificatePath) {
-    const EfiPay = require('sdk-node-apis-efi');
-    efiClient = new EfiPay({
-        client_id: config.efiClientId,
-        client_secret: config.efiClientSecret,
-        sandbox: config.efiSandbox,
-        certificate: path.resolve(config.efiCertificatePath)
+let paypalClient = null;
+let ordersController = null;
+if (config.paypalClientId && config.paypalClientSecret) {
+    const { Client, Environment, OrdersController, CheckoutPaymentIntent, ApiError } = require('@paypal/paypal-server-sdk');
+    paypalClient = new Client({
+        clientCredentialsAuthCredentials: {
+            oAuthClientId: config.paypalClientId,
+            oAuthClientSecret: config.paypalClientSecret,
+        },
+        environment: config.paypalSandbox ? Environment.Sandbox : Environment.Production,
     });
+    ordersController = new OrdersController(paypalClient);
 }
 
 // Gemini AI model name (instances created per-request)
@@ -151,7 +154,7 @@ const USERS_FILE = path.join(__dirname, 'data', 'users.json');
 let users = [];
 let nextUserId = 1;
 let inviteCodes = [];
-let pixCharges = [];
+let paypalOrders = [];
 
 // Load users from file
 function loadUsers() {
@@ -164,14 +167,15 @@ function loadUsers() {
                 users = decrypted.users || [];
                 nextUserId = decrypted.nextUserId || 1;
                 inviteCodes = decrypted.inviteCodes || [];
-                pixCharges = decrypted.pixCharges || [];
+                // Migration: pixCharges → paypalOrders
+                paypalOrders = decrypted.paypalOrders || decrypted.pixCharges || [];
             }
         }
     } catch (error) {
         console.error('Error loading users:', error);
         users = [];
         inviteCodes = [];
-        pixCharges = [];
+        paypalOrders = [];
     }
 }
 
@@ -182,7 +186,7 @@ function saveUsers() {
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
-        const encrypted = encryptData({ users, nextUserId, inviteCodes, pixCharges });
+        const encrypted = encryptData({ users, nextUserId, inviteCodes, paypalOrders });
         fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
     } catch (error) {
         console.error('Error saving users:', error);
@@ -533,17 +537,19 @@ migrateUsersForEmail();
 
 // Security middleware
 app.use(helmet({
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is", "https://*.paypal.com"],
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net"],
-            imgSrc: ["'self'", "data:"],
+            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net", "https://*.paypal.com"],
+            imgSrc: ["'self'", "data:", "https://*.paypal.com", "https://*.paypalobjects.com"],
+            frameSrc: ["https://*.paypal.com"],
             objectSrc: ["'none'"],
-            frameAncestors: ["'none'"],
+            frameAncestors: ["'self'", "https://*.paypal.com"],
             baseUri: ["'self'"],
             formAction: ["'self'"]
         }
@@ -636,12 +642,12 @@ const pdfUploadLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
-const pixChargeLimiter = rateLimit({
+const paypalOrderLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 5,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Too many PIX charge requests. Please try again later.' }
+    message: { message: 'Too many order requests. Please try again later.' }
 });
 
 const forgotPasswordLimiter = rateLimit({
@@ -728,13 +734,20 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
 // Registration endpoint
 app.post('/api/register', registerLimiter, async (req, res) => {
-    const { username, password, confirmPassword, inviteCode } = req.body;
+    const { username, email, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
-    if (!username || !password || !confirmPassword || !inviteCode
-        || typeof username !== 'string' || typeof password !== 'string'
+    if (!username || !email || !password || !confirmPassword || !inviteCode
+        || typeof username !== 'string' || typeof email !== 'string'
+        || typeof password !== 'string'
         || typeof confirmPassword !== 'string' || typeof inviteCode !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
     }
 
     // Validate invite code before expensive operations
@@ -776,6 +789,7 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         const newUser = {
             id: nextUserId++,
             username: username,
+            email: encryptString(email),
             passwordHash: passwordHash,
             role: 'user',
             createdAt: new Date().toISOString(),
@@ -1377,143 +1391,106 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // ============ INVITE CODE ENDPOINTS ============
 
-// ============ PIX PAYMENT ENDPOINTS ============
+// ============ PAYPAL PAYMENT ENDPOINTS ============
 
-// PIX status cache to avoid hammering EFI API
-const pixStatusCache = new Map();
-
-// Cleanup expired unpaid PIX charges every 30 minutes
-setInterval(() => {
-    const now = Date.now();
-    const expiry = 30 * 60 * 1000; // 30 minutes
-    const before = pixCharges.length;
-    pixCharges = pixCharges.filter(charge => {
-        if (charge.status === 'CONCLUIDA') return true; // Keep paid charges
-        const createdAt = new Date(charge.createdAt).getTime();
-        return (now - createdAt) < expiry;
-    });
-    if (pixCharges.length !== before) saveUsers();
-}, 30 * 60 * 1000);
-
-// GET /api/pix/config — public, returns whether PIX is enabled and the price
-app.get('/api/pix/config', (req, res) => {
+// GET /api/paypal/config — public, returns whether PayPal is enabled, price, and client ID
+app.get('/api/paypal/config', (req, res) => {
     res.json({
-        enabled: !!efiClient,
-        price: efiClient ? config.inviteCodePrice : null
+        enabled: !!paypalClient,
+        price: paypalClient ? config.inviteCodePrice : null,
+        clientId: paypalClient ? config.paypalClientId : null
     });
 });
 
-// POST /api/pix/create-charge — public, rate-limited, creates a PIX charge
-app.post('/api/pix/create-charge', pixChargeLimiter, async (req, res) => {
-    if (!efiClient) {
-        return res.status(503).json({ message: 'PIX payments are not configured' });
+// POST /api/paypal/create-order — public, rate-limited, creates a PayPal order
+app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
+    if (!ordersController) {
+        return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
 
     try {
-        const amount = config.inviteCodePrice;
-        const amountCents = Math.round(parseFloat(amount) * 100);
-        if (isNaN(amountCents) || amountCents <= 0) {
+        const amount = parseFloat(config.inviteCodePrice).toFixed(2);
+        if (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
             return res.status(500).json({ message: 'Invalid price configuration' });
         }
 
-        // Create immediate charge via EFI
-        const chargeResponse = await efiClient.pixCreateImmediateCharge([], {
-            calendario: { expiracao: 1800 }, // 30 minutes
-            valor: { original: parseFloat(amount).toFixed(2) },
-            chave: config.efiPixKey
+        const { result } = await ordersController.createOrder({
+            body: {
+                intent: 'CAPTURE',
+                purchaseUnits: [{
+                    amount: {
+                        currencyCode: 'BRL',
+                        value: amount
+                    },
+                    description: 'Invite Code Purchase'
+                }]
+            }
         });
 
-        const txid = chargeResponse.txid;
-        const locId = chargeResponse.loc.id;
-
-        // Generate QR code
-        const qrResponse = await efiClient.pixGenerateQRCode({ id: locId });
-
-        const charge = {
-            txid,
-            locId,
-            amount: parseFloat(amount).toFixed(2),
-            status: 'ATIVA',
+        const order = {
+            orderId: result.id,
+            amount,
+            currency: 'BRL',
+            status: result.status,
             inviteCode: null,
             createdAt: new Date().toISOString(),
             confirmedAt: null
         };
 
-        pixCharges.push(charge);
+        paypalOrders.push(order);
         saveUsers();
 
-        res.status(201).json({
-            txid,
-            qrcode: qrResponse.imagemQrcode, // base64 PNG
-            payload: qrResponse.qrcode, // copy-paste payload
-            expiresInSeconds: 1800
-        });
+        res.status(201).json({ orderId: result.id });
     } catch (error) {
-        console.error('Error creating PIX charge:', error.message || error, JSON.stringify(error, null, 2));
-        res.status(500).json({ message: 'Failed to create PIX charge' });
+        console.error('Error creating PayPal order:', error.message || error);
+        res.status(500).json({ message: 'Failed to create PayPal order' });
     }
 });
 
-// GET /api/pix/status/:txid — public, checks charge status with 10s cache
-app.get('/api/pix/status/:txid', async (req, res) => {
-    if (!efiClient) {
-        return res.status(503).json({ message: 'PIX payments are not configured' });
+// POST /api/paypal/capture-order/:orderId — public, captures a PayPal order after approval
+app.post('/api/paypal/capture-order/:orderId', async (req, res) => {
+    if (!ordersController) {
+        return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
 
-    const { txid } = req.params;
+    const { orderId } = req.params;
 
-    // Validate txid format
-    if (!/^[a-zA-Z0-9]{26,35}$/.test(txid)) {
-        return res.status(400).json({ message: 'Invalid txid format' });
+    // Validate orderId format (PayPal order IDs are alphanumeric)
+    if (!/^[A-Z0-9]{10,25}$/.test(orderId)) {
+        return res.status(400).json({ message: 'Invalid order ID format' });
     }
 
-    const charge = pixCharges.find(c => c.txid === txid);
-    if (!charge) {
-        return res.status(404).json({ message: 'Charge not found' });
+    const order = paypalOrders.find(o => o.orderId === orderId);
+    if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Already confirmed — return the invite code
-    if (charge.status === 'CONCLUIDA' && charge.inviteCode) {
-        return res.json({ status: 'CONCLUIDA', inviteCode: charge.inviteCode });
-    }
-
-    // Check cache (10 seconds)
-    const cacheKey = `pix_${txid}`;
-    const cached = pixStatusCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 10000) {
-        return res.json({ status: cached.status, inviteCode: cached.inviteCode || null });
+    // Already captured — return the invite code
+    if (order.status === 'COMPLETED' && order.inviteCode) {
+        return res.json({ inviteCode: order.inviteCode });
     }
 
     try {
-        const detail = await efiClient.pixDetailCharge({ txid });
-        const efiStatus = detail.status;
+        const { result } = await ordersController.captureOrder({ id: orderId });
 
-        // Update cache
-        pixStatusCache.set(cacheKey, { status: efiStatus, inviteCode: null, timestamp: Date.now() });
-
-        if (efiStatus === 'CONCLUIDA' && !charge.inviteCode) {
-            // Payment confirmed — generate invite code
-            const newCode = createInviteCode('pix');
-            charge.status = 'CONCLUIDA';
-            charge.inviteCode = newCode.code;
-            charge.confirmedAt = new Date().toISOString();
+        if (result.status === 'COMPLETED') {
+            const newCode = createInviteCode('paypal');
+            order.status = 'COMPLETED';
+            order.inviteCode = newCode.code;
+            order.confirmedAt = new Date().toISOString();
             saveUsers();
 
-            // Update cache with invite code
-            pixStatusCache.set(cacheKey, { status: 'CONCLUIDA', inviteCode: newCode.code, timestamp: Date.now() });
-            return res.json({ status: 'CONCLUIDA', inviteCode: newCode.code });
+            return res.json({ inviteCode: newCode.code });
         }
 
         // Update stored status
-        if (charge.status !== efiStatus) {
-            charge.status = efiStatus;
-            saveUsers();
-        }
+        order.status = result.status;
+        saveUsers();
 
-        return res.json({ status: efiStatus, inviteCode: null });
+        return res.status(400).json({ message: 'Payment not completed. Status: ' + result.status });
     } catch (error) {
-        console.error('Error checking PIX status:', error.message);
-        res.status(500).json({ message: 'Failed to check payment status' });
+        console.error('Error capturing PayPal order:', error.message || error);
+        res.status(500).json({ message: 'Failed to capture payment' });
     }
 });
 
@@ -1531,12 +1508,12 @@ app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
 // List all invite codes (admin only)
 app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
     const codesWithDetails = inviteCodes.map(ic => {
-        const creator = ic.createdBy === 'pix' ? null : findUserById(ic.createdBy);
+        const creator = (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? null : findUserById(ic.createdBy);
         const consumer = ic.usedBy ? findUserById(ic.usedBy) : null;
         return {
             code: ic.code,
             createdAt: ic.createdAt,
-            createdByUsername: ic.createdBy === 'pix' ? 'PIX Purchase' : (creator ? creator.username : 'Unknown'),
+            createdByUsername: (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? 'PayPal Purchase' : (creator ? creator.username : 'Unknown'),
             isUsed: ic.isUsed,
             usedAt: ic.usedAt,
             usedByUsername: consumer ? consumer.username : null
@@ -1816,11 +1793,11 @@ app.listen(PORT, '0.0.0.0', () => {
         console.log('No SMTP configured — password resets require admin action.');
     }
 
-    // Verify EFI/PIX configuration
-    if (efiClient) {
-        console.log(`EFI/PIX configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
+    // Verify PayPal configuration
+    if (paypalClient) {
+        console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
     } else {
-        console.log('No EFI/PIX configured — invite code purchases disabled.');
+        console.log('No PayPal configured — invite code purchases disabled.');
     }
 
     // Verify Gemini API configuration

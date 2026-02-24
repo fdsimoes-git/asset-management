@@ -1,26 +1,22 @@
-// ============ PIX PURCHASE LOGIC ============
+// ============ PAYPAL PURCHASE LOGIC ============
 
 (function() {
-    let pixPollingInterval = null;
-    let pixTimerInterval = null;
-    let pixCurrentTxid = null;
-
-    async function initPixSection() {
+    async function initPaypalSection() {
         try {
-            const res = await fetch('/api/pix/config');
+            const res = await fetch('/api/paypal/config');
             const data = await res.json();
             if (!data.enabled) return;
 
-            const section = document.getElementById('pixSection');
-            const priceEl = document.getElementById('pixPrice');
+            const section = document.getElementById('paypalSection');
+            const priceEl = document.getElementById('paypalPrice');
             if (!section || !priceEl) return;
 
             priceEl.textContent = data.price;
             section.classList.add('visible');
 
             // Toggle collapse
-            const toggle = document.getElementById('pixToggle');
-            const body = document.getElementById('pixBody');
+            const toggle = document.getElementById('paypalToggle');
+            const body = document.getElementById('paypalBody');
             toggle.addEventListener('click', () => {
                 toggle.classList.toggle('open');
                 body.classList.toggle('open');
@@ -32,186 +28,89 @@
                 }
             });
 
-            // Generate button
-            document.getElementById('pixGenerateBtn').addEventListener('click', createPixCharge);
-
-            // Copy button
-            document.getElementById('pixCopyBtn').addEventListener('click', copyPixPayload);
+            // Dynamically load PayPal JS SDK
+            const script = document.createElement('script');
+            script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(data.clientId) + '&currency=BRL&intent=capture';
+            script.onload = function() {
+                renderPaypalButtons();
+            };
+            script.onerror = function() {
+                console.error('Failed to load PayPal SDK');
+            };
+            document.head.appendChild(script);
         } catch (err) {
-            // PIX not available, silently ignore
+            // PayPal not available, silently ignore
         }
     }
 
-    async function createPixCharge() {
-        const btn = document.getElementById('pixGenerateBtn');
-        const qrArea = document.getElementById('pixQrArea');
-        const successEl = document.getElementById('pixSuccess');
-        const expiredEl = document.getElementById('pixExpired');
-        const statusEl = document.getElementById('pixStatus');
+    function renderPaypalButtons() {
+        var successEl = document.getElementById('paypalSuccess');
+        var errorEl = document.getElementById('paypalError');
+        var containerEl = document.getElementById('paypalButtonContainer');
 
-        // Reset state
-        clearPixIntervals();
-        qrArea.classList.remove('visible');
-        successEl.classList.remove('visible');
-        expiredEl.classList.remove('visible');
-        statusEl.style.display = 'flex';
+        paypal.Buttons({
+            style: {
+                layout: 'vertical',
+                color: 'gold',
+                shape: 'rect',
+                label: 'paypal'
+            },
+            createOrder: function() {
+                // Hide previous messages
+                successEl.classList.remove('visible');
+                errorEl.classList.remove('visible');
 
-        btn.disabled = true;
-        btn.textContent = 'Creating charge...';
+                return fetch('/api/paypal/create-order', { method: 'POST' })
+                    .then(function(res) {
+                        return res.json().then(function(json) {
+                            if (!res.ok) throw new Error(json.message || 'Failed to create order');
+                            return json;
+                        });
+                    })
+                    .then(function(data) {
+                        return data.orderId;
+                    });
+            },
+            onApprove: function(data) {
+                return fetch('/api/paypal/capture-order/' + data.orderID, { method: 'POST' })
+                    .then(function(res) {
+                        return res.json().then(function(json) {
+                            if (!res.ok) throw new Error(json.message || 'Failed to capture payment');
+                            return json;
+                        });
+                    })
+                    .then(function(result) {
+                        // Auto-fill invite code
+                        var inviteInput = document.getElementById('inviteCode');
+                        if (inviteInput && result.inviteCode) {
+                            inviteInput.value = result.inviteCode;
+                            inviteInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
 
-        try {
-            const res = await fetch('/api/pix/create-charge', { method: 'POST' });
-            const data = await res.json();
-
-            if (!res.ok) {
-                btn.disabled = false;
-                btn.textContent = 'Generate PIX Payment';
-                alert(data.message || 'Failed to create PIX charge');
-                return;
+                        // Show success state
+                        containerEl.style.display = 'none';
+                        successEl.classList.add('visible');
+                    })
+                    .catch(function(err) {
+                        errorEl.textContent = err.message || 'Payment capture failed. Please try again.';
+                        errorEl.classList.add('visible');
+                    });
+            },
+            onError: function(err) {
+                errorEl.textContent = 'Payment error. Please try again.';
+                errorEl.classList.add('visible');
+            },
+            onCancel: function() {
+                // User closed PayPal popup — no action needed
             }
-
-            pixCurrentTxid = data.txid;
-
-            // Show QR code
-            document.getElementById('pixQrImage').src = data.qrcode;
-            document.getElementById('pixPayload').value = data.payload;
-            qrArea.classList.add('visible');
-
-            // Start polling
-            startPixPolling(data.txid);
-
-            // Start timer
-            startPixTimer(data.expiresInSeconds);
-
-            btn.textContent = 'Generate PIX Payment';
-        } catch (err) {
-            btn.disabled = false;
-            btn.textContent = 'Generate PIX Payment';
-            alert('Failed to create PIX charge. Please try again.');
-        }
+        }).render('#paypalButtonContainer');
     }
-
-    function startPixPolling(txid) {
-        pixPollingInterval = setInterval(async () => {
-            try {
-                const res = await fetch('/api/pix/status/' + txid);
-                const data = await res.json();
-
-                if (data.status === 'CONCLUIDA' && data.inviteCode) {
-                    clearPixIntervals();
-                    onPixPaymentConfirmed(data.inviteCode);
-                }
-            } catch (err) {
-                // Silently retry on next interval
-            }
-        }, 5000);
-    }
-
-    function startPixTimer(seconds) {
-        const timerEl = document.getElementById('pixTimer');
-        let remaining = seconds;
-
-        function updateTimer() {
-            const min = Math.floor(remaining / 60);
-            const sec = remaining % 60;
-            timerEl.textContent = 'Expires in ' + min + ':' + (sec < 10 ? '0' : '') + sec;
-        }
-
-        updateTimer();
-        pixTimerInterval = setInterval(() => {
-            remaining--;
-            if (remaining <= 0) {
-                clearPixIntervals();
-                timerEl.textContent = '';
-                onPixExpired();
-                return;
-            }
-            updateTimer();
-        }, 1000);
-    }
-
-    function onPixPaymentConfirmed(inviteCode) {
-        const qrArea = document.getElementById('pixQrArea');
-        const successEl = document.getElementById('pixSuccess');
-        const btn = document.getElementById('pixGenerateBtn');
-        const statusEl = document.getElementById('pixStatus');
-        const timerEl = document.getElementById('pixTimer');
-
-        statusEl.style.display = 'none';
-        timerEl.textContent = '';
-        qrArea.classList.remove('visible');
-        successEl.classList.add('visible');
-        btn.disabled = true;
-
-        // Auto-fill invite code
-        const inviteInput = document.getElementById('inviteCode');
-        if (inviteInput) {
-            inviteInput.value = inviteCode;
-            inviteInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-
-    function onPixExpired() {
-        const statusEl = document.getElementById('pixStatus');
-        const expiredEl = document.getElementById('pixExpired');
-        const btn = document.getElementById('pixGenerateBtn');
-
-        statusEl.style.display = 'none';
-        expiredEl.classList.add('visible');
-        btn.disabled = false;
-    }
-
-    function copyPixPayload() {
-        const payload = document.getElementById('pixPayload').value;
-        if (!payload) return;
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(payload).then(() => {
-                showCopyFeedback();
-            }).catch(() => {
-                fallbackCopy(payload);
-            });
-        } else {
-            fallbackCopy(payload);
-        }
-    }
-
-    function fallbackCopy(text) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            document.execCommand('copy');
-            showCopyFeedback();
-        } catch (err) {
-            // Silently fail
-        }
-        document.body.removeChild(textarea);
-    }
-
-    function showCopyFeedback() {
-        const btn = document.getElementById('pixCopyBtn');
-        const original = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = original; }, 2000);
-    }
-
-    function clearPixIntervals() {
-        if (pixPollingInterval) { clearInterval(pixPollingInterval); pixPollingInterval = null; }
-        if (pixTimerInterval) { clearInterval(pixTimerInterval); pixTimerInterval = null; }
-    }
-
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', clearPixIntervals);
 
     // Initialize on DOM ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initPixSection);
+        document.addEventListener('DOMContentLoaded', initPaypalSection);
     } else {
-        initPixSection();
+        initPaypalSection();
     }
 })();
 
@@ -221,6 +120,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     e.preventDefault();
 
     const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
     const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
@@ -233,6 +133,12 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     successMessage.classList.remove('show');
 
     // Client-side validation
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errorMessage.textContent = 'A valid email address is required';
+        errorMessage.classList.add('show');
+        return;
+    }
+
     if (password !== confirmPassword) {
         errorMessage.textContent = 'Passwords do not match';
         errorMessage.classList.add('show');
@@ -267,7 +173,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password, confirmPassword, inviteCode }),
+            body: JSON.stringify({ username, email, password, confirmPassword, inviteCode }),
             credentials: 'include'
         });
 
