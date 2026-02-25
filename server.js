@@ -329,16 +329,16 @@ function consumeResetCode(code) {
 function checkAndRecordResetAttempt(username) {
     const key = username.toLowerCase();
     const now = Date.now();
-    const record = resetAttempts.get(key);
+    let record = resetAttempts.get(key);
     if (record && (now - record.firstAttempt) > RESET_ATTEMPT_WINDOW) {
         resetAttempts.delete(key);
+        record = undefined;
     }
-    const current = resetAttempts.get(key);
-    if (current && current.count >= MAX_RESET_ATTEMPTS) {
+    if (record && record.count >= MAX_RESET_ATTEMPTS) {
         return false; // too many attempts
     }
-    if (current) {
-        current.count++;
+    if (record) {
+        record.count++;
     } else {
         resetAttempts.set(key, { count: 1, firstAttempt: now });
     }
@@ -1557,7 +1557,7 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
     } catch (error) {
         console.error('Error capturing PayPal order:', error.message || error);
         const statusCode = error.statusCode;
-        if (statusCode && statusCode >= 400 && statusCode < 500) {
+        if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
             res.status(400).json({ message: 'Failed to capture payment' });
         } else {
             res.status(500).json({ message: 'Failed to capture payment' });
