@@ -31,7 +31,7 @@
 
             // Dynamically load PayPal JS SDK
             const script = document.createElement('script');
-            script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(data.clientId) + '&currency=BRL&intent=capture&disable-funding=paypal';
+            script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(data.clientId) + '&currency=BRL&intent=capture';
             script.onload = function() {
                 renderPaypalButtons();
             };
@@ -57,9 +57,10 @@
         var containerEl = document.getElementById('paypalButtonContainer');
 
         paypal.Buttons({
+            fundingSource: paypal.FUNDING.CARD,
             style: {
                 layout: 'vertical',
-                color: 'gold',
+                color: 'black',
                 shape: 'rect',
                 label: 'pay'
             },
