@@ -31,7 +31,7 @@
 
             // Dynamically load PayPal JS SDK
             const script = document.createElement('script');
-            script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(data.clientId) + '&currency=BRL&intent=capture';
+            script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(data.clientId) + '&currency=BRL&intent=capture&disable-funding=paypal';
             script.onload = function() {
                 renderPaypalButtons();
             };
@@ -61,7 +61,7 @@
                 layout: 'vertical',
                 color: 'gold',
                 shape: 'rect',
-                label: 'paypal'
+                label: 'pay'
             },
             createOrder: function() {
                 // Hide previous messages
