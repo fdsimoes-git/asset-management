@@ -279,6 +279,9 @@ setInterval(() => {
 
 const resetCodes = new Map();
 const RESET_CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
+const resetAttempts = new Map(); // per-username failed reset code attempts
+const MAX_RESET_ATTEMPTS = 5;
+const RESET_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 function generateResetCode() {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -323,12 +326,40 @@ function consumeResetCode(code) {
     return data.userId;
 }
 
-// Cleanup expired reset codes every 15 minutes
+function checkAndRecordResetAttempt(username) {
+    const key = username.toLowerCase();
+    const now = Date.now();
+    let record = resetAttempts.get(key);
+    if (record && (now - record.firstAttempt) > RESET_ATTEMPT_WINDOW) {
+        resetAttempts.delete(key);
+        record = undefined;
+    }
+    if (record && record.count >= MAX_RESET_ATTEMPTS) {
+        return false; // too many attempts
+    }
+    if (record) {
+        record.count++;
+    } else {
+        resetAttempts.set(key, { count: 1, firstAttempt: now });
+    }
+    return true; // attempt allowed
+}
+
+function clearResetAttempts(username) {
+    resetAttempts.delete(username.toLowerCase());
+}
+
+// Cleanup expired reset codes and attempt records every 15 minutes
 setInterval(() => {
     const now = Date.now();
     for (const [code, data] of resetCodes.entries()) {
         if (now - data.createdAt > RESET_CODE_EXPIRY) {
             resetCodes.delete(code);
+        }
+    }
+    for (const [key, record] of resetAttempts.entries()) {
+        if (now - record.firstAttempt > RESET_ATTEMPT_WINDOW) {
+            resetAttempts.delete(key);
         }
     }
 }, 15 * 60 * 1000);
@@ -661,7 +692,7 @@ const forgotPasswordLimiter = rateLimit({
     max: 3,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Too many password reset requests. Please try again later.' }
+    message: { message: 'If an account with that username exists and has an email on file, a reset code has been sent.' }
 });
 
 const generalLimiter = rateLimit({
@@ -753,6 +784,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
+    }
+    if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
 
@@ -890,6 +924,11 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
         return res.status(403).json({ message: 'User account is inactive' });
     }
 
+    // Per-username attempt tracking to prevent reset code brute-force
+    if (!checkAndRecordResetAttempt(username)) {
+        return res.status(429).json({ message: 'Too many failed reset attempts. Please request a new code.' });
+    }
+
     const userId = consumeResetCode(code);
     if (!userId || user.id !== userId) {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
@@ -902,6 +941,7 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
 
         // Clear brute-force lockouts since user proved identity via email
         resetFailedLogins(username);
+        clearResetAttempts(username);
 
         res.json({ message: 'Password reset successfully. You can now log in with your new password.' });
     } catch (error) {
@@ -1273,6 +1313,9 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
             if (!emailRegex.test(email)) {
                 return res.status(400).json({ message: 'Invalid email format' });
             }
+            if (email.length > 254 || /[<>]/.test(email)) {
+                return res.status(400).json({ message: 'Invalid email format' });
+            }
             user.email = encryptString(email);
         }
     }
@@ -1513,7 +1556,12 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
         return res.status(400).json({ message: 'Payment not completed. Status: ' + result.status });
     } catch (error) {
         console.error('Error capturing PayPal order:', error.message || error);
-        res.status(500).json({ message: 'Failed to capture payment' });
+        const statusCode = error.statusCode;
+        if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
+            res.status(400).json({ message: 'Failed to capture payment' });
+        } else {
+            res.status(500).json({ message: 'Failed to capture payment' });
+        }
     }
 });
 

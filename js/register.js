@@ -57,11 +57,12 @@
         var containerEl = document.getElementById('paypalButtonContainer');
 
         paypal.Buttons({
+            fundingSource: paypal.FUNDING.CARD,
             style: {
                 layout: 'vertical',
-                color: 'gold',
+                color: 'black',
                 shape: 'rect',
-                label: 'paypal'
+                label: 'pay'
             },
             createOrder: function() {
                 // Hide previous messages
