@@ -330,6 +330,9 @@
             text-transform: uppercase;
             letter-spacing: 0.08em;
             box-shadow: 0 4px 24px rgba(245, 158, 11, 0.3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         button:hover {
@@ -473,6 +476,12 @@
 
             .login-form {
                 padding: 2rem 1.5rem;
+            }
+
+            .login-form button {
+                font-size: 0.8rem;
+                padding: 0.9rem;
+                letter-spacing: 0.04em;
             }
 
             .orb-1, .orb-2 {
