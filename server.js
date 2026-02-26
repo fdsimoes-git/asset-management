@@ -2021,18 +2021,19 @@ const chatToolDeclarations = [
     },
     {
         name: 'editEntry',
-        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated.',
+        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated. The "confirmed" flag must be true — the client sets this only after the user explicitly approves the proposed changes.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 entryId: { type: Type.NUMBER, description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
-                description: { type: Type.STRING, description: 'New description for the entry.' },
-                amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number).' },
+                confirmed: { type: Type.BOOLEAN, description: 'Must be true. The client sets this after the user explicitly confirms the edit.' },
+                description: { type: Type.STRING, description: 'New description for the entry (max 500 characters).' },
+                amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
                 tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' }
             },
-            required: ['entryId']
+            required: ['entryId', 'confirmed']
         }
     }
 ];
@@ -2048,7 +2049,7 @@ RULES:
 - Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
 - When showing data, use simple formatting with bold for emphasis.
 - If the user asks about something unrelated to finances, politely redirect them.
-- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry and confirm the details with the user before making changes with editEntry. Only edit entries that belong to the current user.
+- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry and confirm the details with the user before making changes with editEntry. Only edit entries that belong to the current user. You must set confirmed: true when calling editEntry — the server will reject the call otherwise.
 - After editing an entry, confirm the changes made and show the updated entry details.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
@@ -2225,6 +2226,7 @@ function toolSearchEntries(userId, args) {
 
     return {
         results: results.map(e => ({
+            // id is intentionally included so the editEntry tool can reference entries by ID
             id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
@@ -2237,7 +2239,29 @@ function toolSearchEntries(userId, args) {
     };
 }
 
+/**
+ * Edit an existing financial entry on behalf of the authenticated user.
+ * Requires a server-side `confirmed: true` flag to prevent unconfirmed writes.
+ * Only the fields provided in `args` are updated; `userId`, `id`, and `isCoupleExpense`
+ * are preserved from the original entry and cannot be changed via this tool.
+ *
+ * @param {number} userId - The authenticated user's ID (from session).
+ * @param {object} args - Tool arguments from the AI model.
+ * @param {number} args.entryId - The entry to edit (required).
+ * @param {boolean} args.confirmed - Must be true (required).
+ * @param {string} [args.description] - New description (max 500 chars).
+ * @param {number} [args.amount] - New amount (positive, max 10 000 000).
+ * @param {string} [args.type] - "income" or "expense".
+ * @param {string} [args.month] - YYYY-MM format.
+ * @param {string[]} [args.tags] - Category tags.
+ * @returns {object} Updated entry on success, or `{ error }` on failure.
+ */
 function toolEditEntry(userId, args) {
+    // Require explicit confirmation flag
+    if (args.confirmed !== true) {
+        return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
+    }
+
     // Validate entryId is provided
     const entryId = args.entryId != null ? parseInt(args.entryId, 10) : NaN;
     if (!Number.isFinite(entryId)) {
@@ -2259,6 +2283,9 @@ function toolEditEntry(userId, args) {
         if (!desc) {
             return { error: 'Description cannot be empty.' };
         }
+        if (desc.length > 500) {
+            return { error: 'Description must be 500 characters or fewer.' };
+        }
         updates.description = desc;
     }
 
@@ -2266,6 +2293,9 @@ function toolEditEntry(userId, args) {
         const amount = parseFloat(args.amount);
         if (!Number.isFinite(amount) || amount <= 0) {
             return { error: 'Amount must be a positive number.' };
+        }
+        if (amount > 10000000) {
+            return { error: 'Amount must not exceed 10,000,000.' };
         }
         updates.amount = amount;
     }
@@ -2302,7 +2332,8 @@ function toolEditEntry(userId, args) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
 
-    // Apply updates
+    // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
+    // Only the explicitly validated fields above can appear in `updates`.
     entries[index] = { ...entry, ...updates };
     saveEntries();
 
