@@ -171,7 +171,7 @@
             const data = await res.json();
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
             if (data.pendingEdits && data.pendingEdits.length > 0) {
-                data.pendingEdits.forEach(pe => renderConfirmationCard(pe));
+                renderConfirmationCard(data.pendingEdits);
             }
         } catch (err) {
             hideLoading();
@@ -189,41 +189,49 @@
         return String(value);
     }
 
-    function renderConfirmationCard(pendingEdit) {
+    function renderConfirmationCard(pendingEdits) {
+        const isBulk = pendingEdits.length > 1;
         const card = document.createElement('div');
         card.className = 'chat-confirm-card';
 
-        const entry = pendingEdit.currentEntry;
-        const changes = pendingEdit.changes;
-
         // Title
-        let html = '<div class="chat-confirm-title">' + escapeHtml(t('chat.confirmEditTitle')) + '</div>';
+        var titleText = isBulk
+            ? t('chat.confirmEditTitleCount', { count: pendingEdits.length })
+            : t('chat.confirmEditTitle');
+        let html = '<div class="chat-confirm-title">' + escapeHtml(titleText) + '</div>';
 
-        // Current entry summary
-        html += '<div class="chat-confirm-entry">';
-        html += '<strong>' + escapeHtml(entry.description) + '</strong><br>';
-        html += escapeHtml(entry.type) + ' &middot; ' + escapeHtml(entry.month) + ' &middot; ' + escapeHtml(parseFloat(entry.amount).toFixed(2));
-        if (entry.tags && entry.tags.length) {
-            html += ' &middot; ' + escapeHtml(entry.tags.join(', '));
-        }
-        html += '</div>';
+        // Render each entry and its changes
+        for (const pe of pendingEdits) {
+            const entry = pe.currentEntry;
+            const changes = pe.changes;
 
-        // Proposed changes
-        html += '<div class="chat-confirm-changes">';
-        for (const [key, newVal] of Object.entries(changes)) {
-            const currentVal = entry[key];
-            html += '<div class="chat-confirm-change">';
-            html += '<span class="chat-confirm-change-label">' + escapeHtml(key) + '</span>';
-            html += '<span class="chat-confirm-change-current">' + escapeHtml(formatFieldValue(key, currentVal)) + '</span>';
-            html += '<span class="chat-confirm-change-arrow">&rarr;</span>';
-            html += '<span class="chat-confirm-change-new">' + escapeHtml(formatFieldValue(key, newVal)) + '</span>';
+            html += '<div class="chat-confirm-entry-group">';
+            html += '<div class="chat-confirm-entry">';
+            html += '<strong>' + escapeHtml(entry.description) + '</strong><br>';
+            html += escapeHtml(entry.type) + ' &middot; ' + escapeHtml(entry.month) + ' &middot; ' + escapeHtml(parseFloat(entry.amount).toFixed(2));
+            if (entry.tags && entry.tags.length) {
+                html += ' &middot; ' + escapeHtml(entry.tags.join(', '));
+            }
+            html += '</div>';
+
+            html += '<div class="chat-confirm-changes">';
+            for (const [key, newVal] of Object.entries(changes)) {
+                const currentVal = entry[key];
+                html += '<div class="chat-confirm-change">';
+                html += '<span class="chat-confirm-change-label">' + escapeHtml(key) + '</span>';
+                html += '<span class="chat-confirm-change-current">' + escapeHtml(formatFieldValue(key, currentVal)) + '</span>';
+                html += '<span class="chat-confirm-change-arrow">&rarr;</span>';
+                html += '<span class="chat-confirm-change-new">' + escapeHtml(formatFieldValue(key, newVal)) + '</span>';
+                html += '</div>';
+            }
+            html += '</div>';
             html += '</div>';
         }
-        html += '</div>';
 
         // Buttons
+        var confirmLabel = isBulk ? t('chat.confirmAllEdits') : t('chat.confirmEdit');
         html += '<div class="chat-confirm-actions">';
-        html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(t('chat.confirmEdit')) + '</button>';
+        html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(confirmLabel) + '</button>';
         html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelEdit')) + '</button>';
         html += '</div>';
 
@@ -237,20 +245,22 @@
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
             try {
-                const res = await fetch('/api/ai/confirm-edit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ entryId: pendingEdit.entryId })
-                });
-                if (res.status === 410) {
-                    replaceCardWithMessage(card, t('chat.editExpired'), 'error');
-                } else if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    replaceCardWithMessage(card, err.error || t('chat.errorGeneric'), 'error');
+                let hasError = false;
+                for (const pe of pendingEdits) {
+                    const res = await fetch('/api/ai/confirm-edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pe.entryId })
+                    });
+                    if (res.status === 410) { hasError = true; }
+                    else if (!res.ok) { hasError = true; }
+                }
+                if (hasError) {
+                    replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
                 } else {
-                    replaceCardWithMessage(card, t('chat.editConfirmed'), 'success');
-                    chatMessages.push({ role: 'assistant', content: t('chat.editConfirmed') });
-                    // Refresh dashboard entries table so changes are visible immediately
+                    var msg = isBulk ? t('chat.allEditsConfirmed') : t('chat.editConfirmed');
+                    replaceCardWithMessage(card, msg, 'success');
+                    chatMessages.push({ role: 'assistant', content: msg });
                     if (typeof window.loadEntries === 'function') window.loadEntries();
                 }
             } catch (e) {
@@ -262,14 +272,15 @@
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
             try {
+                // Cancel all pending edits in one call (no entryId = cancel all)
                 await fetch('/api/ai/cancel-edit', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ entryId: pendingEdit.entryId })
+                    headers: { 'Content-Type': 'application/json' }
                 });
             } catch (e) { /* ignore */ }
-            replaceCardWithMessage(card, t('chat.editCancelled'), 'info');
-            chatMessages.push({ role: 'assistant', content: t('chat.editCancelled') });
+            var msg = isBulk ? t('chat.allEditsCancelled') : t('chat.editCancelled');
+            replaceCardWithMessage(card, msg, 'info');
+            chatMessages.push({ role: 'assistant', content: msg });
         });
 
         scrollToBottom();
