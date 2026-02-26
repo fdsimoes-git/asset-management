@@ -2429,7 +2429,8 @@ function toolUndoLastEdit(userId, args) {
     const expected = snapshotData.after;
     if (current.description !== expected.description || current.amount !== expected.amount
         || current.type !== expected.type || current.month !== expected.month
-        || JSON.stringify(current.tags) !== JSON.stringify(expected.tags)) {
+        || JSON.stringify(current.tags) !== JSON.stringify(expected.tags)
+        || current.isCoupleExpense !== expected.isCoupleExpense) {
         lastEditSnapshots.delete(snapshotKey);
         return { error: 'This entry has been modified since the AI edit (possibly via the UI). Undo is no longer available to avoid overwriting those changes.' };
     }
