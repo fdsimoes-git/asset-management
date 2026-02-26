@@ -2021,12 +2021,12 @@ const chatToolDeclarations = [
     },
     {
         name: 'editEntry',
-        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated. The "confirmed" flag must be true — the client sets this only after the user explicitly approves the proposed changes.',
+        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated. The "confirmed" flag must be set to true — this is a model-level assertion (not gated by UI confirmation). Always confirm details with the user in conversation before calling this tool.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 entryId: { type: Type.NUMBER, description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
-                confirmed: { type: Type.BOOLEAN, description: 'Must be true. The client sets this after the user explicitly confirms the edit.' },
+                confirmed: { type: Type.BOOLEAN, description: 'Must be true. This is a model-level assertion — always confirm with the user in conversation before setting this.' },
                 description: { type: Type.STRING, description: 'New description for the entry (max 500 characters).' },
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
@@ -2051,7 +2051,9 @@ const chatToolDeclarations = [
 
 // Stores the pre-edit snapshot for the most recent AI edit per entry, keyed by "userId:entryId".
 // Cleared on undo or server restart — only the last edit per entry is reversible.
+// Capped at 1000 entries; oldest snapshots are evicted when the limit is reached.
 const lastEditSnapshots = new Map();
+const SNAPSHOT_MAX_SIZE = 1000;
 
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
 
@@ -2173,6 +2175,7 @@ function toolGetTopExpenses(userId, args) {
 
     return {
         topExpenses: sorted.map(e => ({
+            // id is intentionally included so the editEntry tool can reference entries by ID
             id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
@@ -2257,7 +2260,10 @@ function toolSearchEntries(userId, args) {
 
 /**
  * Edit an existing financial entry on behalf of the authenticated user.
- * Requires a server-side `confirmed: true` flag to prevent unconfirmed writes.
+ * Requires a `confirmed: true` flag — this is a model-level assertion, not a UI-gated
+ * user confirmation. The AI is instructed via system prompt to confirm with the user
+ * in conversation before calling this tool. True UI-level confirmation would require
+ * frontend changes (e.g., a confirmation dialog in chat.js).
  * Only the fields provided in `args` are updated; `userId`, `id`, and `isCoupleExpense`
  * are preserved from the original entry and cannot be changed via this tool.
  *
@@ -2348,7 +2354,12 @@ function toolEditEntry(userId, args) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
 
-    // Save pre-edit snapshot so the user can undo this edit
+    // Save pre-edit snapshot so the user can undo this edit.
+    // Evict oldest snapshot if the map exceeds the size cap.
+    if (lastEditSnapshots.size >= SNAPSHOT_MAX_SIZE) {
+        const oldestKey = lastEditSnapshots.keys().next().value;
+        lastEditSnapshots.delete(oldestKey);
+    }
     lastEditSnapshots.set(`${userId}:${entryId}`, { ...entry });
 
     // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
@@ -2359,7 +2370,7 @@ function toolEditEntry(userId, args) {
     const updated = entries[index];
     const result = {
         success: true,
-        message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id}.`,
+        message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
         entry: {
             id: updated.id,
             description: updated.description,
