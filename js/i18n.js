@@ -762,6 +762,11 @@ function applyTranslations() {
     var key = el.getAttribute('data-i18n-title');
     if (key) el.title = t(key);
   });
+  // Aria labels
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(function(el) {
+    var key = el.getAttribute('data-i18n-aria-label');
+    if (key) el.setAttribute('aria-label', t(key));
+  });
   // Update html lang attribute
   document.documentElement.lang = getLang() === 'pt' ? 'pt-BR' : 'en';
 }
