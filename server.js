@@ -71,8 +71,9 @@ if (config.paypalClientId && config.paypalClientSecret) {
     }
 }
 
-// Gemini AI model name (instances created per-request)
-const GEMINI_MODEL = 'gemini-3-flash-preview';
+// Gemini AI model names (instances created per-request)
+const GEMINI_MODEL = 'gemini-3-flash-preview';       // PDF processing & structured extraction
+const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be changed independently)
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -2229,11 +2230,18 @@ function executeTool(name, userId, args) {
 }
 
 // AI Chat endpoint
-app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
-    const { messages: clientMessages, message } = req.body;
+const MAX_CHAT_MESSAGE_LENGTH = 8000;
 
-    if (!message || typeof message !== 'string' || !message.trim()) {
+app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
+    const { messages: clientMessages, message: rawMessage } = req.body;
+
+    if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim()) {
         return res.status(400).json({ error: 'Message is required.' });
+    }
+
+    const message = rawMessage.trim();
+    if (message.length > MAX_CHAT_MESSAGE_LENGTH) {
+        return res.status(413).json({ error: 'Message is too long.' });
     }
 
     // Sanitize client-provided history: only accept user messages to prevent prompt injection
@@ -2270,7 +2278,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                 contents.push({ role: 'user', parts: [{ text }] });
             }
         }
-        contents.push({ role: 'user', parts: [{ text: message.trim() }] });
+        contents.push({ role: 'user', parts: [{ text: message }] });
 
         // Tool call loop (max 5 iterations)
         let currentContents = contents;
@@ -2279,7 +2287,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
 
         for (let i = 0; i < maxIterations; i++) {
             const response = await chatGenAI.models.generateContent({
-                model: GEMINI_MODEL,
+                model: GEMINI_CHAT_MODEL,
                 contents: currentContents,
                 config: {
                     temperature: 0.7,
