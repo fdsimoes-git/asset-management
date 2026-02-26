@@ -177,9 +177,11 @@
             transition: all var(--transition-base);
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            white-space: nowrap;
         }
 
         .add-entry-btn {
@@ -217,6 +219,7 @@
             transition: all var(--transition-fast);
             text-transform: uppercase;
             letter-spacing: 0.03em;
+            white-space: nowrap;
         }
 
         .bulk-action-btn:hover {
@@ -731,6 +734,11 @@
                 flex-wrap: wrap;
             }
 
+            .header-buttons button {
+                font-size: 0.7rem;
+                padding: 0.6rem 0.9rem;
+            }
+
             .view-mode-toggle {
                 flex-direction: column;
                 align-items: flex-start;
@@ -786,8 +794,12 @@
             .header-buttons button {
                 flex: 1;
                 min-width: 0;
-                padding: 0.6rem 0.75rem;
-                font-size: 0.7rem;
+                padding: 0.6rem 0.5rem;
+                font-size: 0.65rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                letter-spacing: 0.02em;
             }
 
             main {
@@ -938,11 +950,13 @@
         .user-actions {
             display: flex;
             gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
         .user-actions button {
             padding: 0.3rem 0.6rem;
             font-size: 0.7rem;
+            white-space: nowrap;
         }
 
         /* Couple Feature Styles */
