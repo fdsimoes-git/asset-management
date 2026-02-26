@@ -1851,7 +1851,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <p style="margin: 0 0 0.5rem; font-weight: 600; color: var(--color-accent-primary);">${t('settings.saveBackupCodes')}</p>
                                         <p style="margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--color-text-secondary);">${t('settings.backupCodesWarning')}</p>
                                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; font-family: monospace; font-size: 0.95rem;">
-                                            ${vData.backupCodes.map(c => `<code style="padding: 0.3rem 0.5rem; background: var(--color-bg-elevated); border-radius: 4px; text-align: center;">${c}</code>`).join('')}
+                                            ${vData.backupCodes.map(c => `<code style="padding: 0.3rem 0.5rem; background: var(--color-bg-elevated); border-radius: 4px; text-align: center;">${escapeHtml(c)}</code>`).join('')}
                                         </div>
                                     </div>
                                     <button type="button" id="settings2FADoneBtn" style="width: 100%; margin-top: 1rem; padding: 0.6rem;">${t('settings.done')}</button>

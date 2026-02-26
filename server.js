@@ -1168,8 +1168,10 @@ app.get('/api/user/email', requireAuth, (req, res) => {
     if (hasEmail) {
         try {
             const email = decryptString(req.user.email.encryptedData, req.user.email.iv);
-            const [local, domain] = email.split('@');
-            maskedEmail = local.charAt(0) + '***@' + domain;
+            const parts = email.split('@');
+            if (parts.length === 2 && parts[0].length > 0 && parts[1].length > 0) {
+                maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
+            }
         } catch (e) {
             // Decryption failed
         }
@@ -1209,8 +1211,11 @@ app.put('/api/user/email', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    const [local, domain] = email.split('@');
-    const maskedEmail = local.charAt(0) + '***@' + domain;
+    const parts = email.split('@');
+    if (parts.length !== 2 || !parts[0].length || !parts[1].length) {
+        return res.status(400).json({ message: 'Invalid email format' });
+    }
+    const maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
     res.json({ message: 'Email updated', hasEmail: true, maskedEmail });
 });
 
