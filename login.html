@@ -479,9 +479,39 @@
                 opacity: 0.5;
             }
         }
+
+        .lang-toggle {
+            position: fixed;
+            bottom: 1.25rem;
+            right: 1.25rem;
+            z-index: 999;
+            width: 2.5rem;
+            height: 2.5rem;
+            padding: 0;
+            background: var(--color-bg-elevated);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 50%;
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            transition: all var(--transition-base);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .lang-toggle:hover {
+            background: var(--color-bg-surface);
+            border-color: var(--color-accent-primary);
+            color: var(--color-accent-primary);
+            transform: none;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+        }
     </style>
 </head>
 <body>
+    <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
@@ -490,8 +520,8 @@
         <!-- Hero / Features Side -->
         <div class="landing-hero">
             <div class="hero-content">
-                <h1 class="hero-title">Asset Manager</h1>
-                <p class="hero-tagline">Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.</p>
+                <h1 class="hero-title" data-i18n="login.title">Asset Manager</h1>
+                <p class="hero-tagline" data-i18n="login.heroTagline">Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.</p>
 
                 <div class="feature-grid">
                     <div class="feature-card">
@@ -499,8 +529,8 @@
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                             <path d="M9 12l2 2 4-4"/>
                         </svg>
-                        <h3>AES-256 Encryption</h3>
-                        <p>Your data encrypted at rest with bank-grade security</p>
+                        <h3 data-i18n="login.feature.encryption">AES-256 Encryption</h3>
+                        <p data-i18n="login.feature.encryptionDesc">Your data encrypted at rest with bank-grade security</p>
                     </div>
 
                     <div class="feature-card">
@@ -510,8 +540,8 @@
                             <path d="M12 17v-8"/>
                             <path d="M17 17v-6"/>
                         </svg>
-                        <h3>Visual Analytics</h3>
-                        <p>Interactive charts for income, expenses, and categories</p>
+                        <h3 data-i18n="login.feature.analytics">Visual Analytics</h3>
+                        <p data-i18n="login.feature.analyticsDesc">Interactive charts for income, expenses, and categories</p>
                     </div>
 
                     <div class="feature-card">
@@ -523,8 +553,8 @@
                             <path d="M14 13l-1.5 2L14 17"/>
                             <path d="M17 13l1.5 2L17 17"/>
                         </svg>
-                        <h3>AI-Powered Import</h3>
-                        <p>Upload bank statements and let AI extract transactions</p>
+                        <h3 data-i18n="login.feature.ai">AI-Powered Import</h3>
+                        <p data-i18n="login.feature.aiDesc">Upload bank statements and let AI extract transactions</p>
                     </div>
 
                     <div class="feature-card">
@@ -534,8 +564,8 @@
                             <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
                             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                         </svg>
-                        <h3>Couples Mode</h3>
-                        <p>Link accounts with your partner for shared tracking</p>
+                        <h3 data-i18n="login.feature.couples">Couples Mode</h3>
+                        <p data-i18n="login.feature.couplesDesc">Link accounts with your partner for shared tracking</p>
                     </div>
 
                     <div class="feature-card">
@@ -543,8 +573,8 @@
                             <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
                             <path d="M12 18h.01"/>
                         </svg>
-                        <h3>Mobile Native</h3>
-                        <p>Full iOS app for managing finances on the go</p>
+                        <h3 data-i18n="login.feature.mobile">Mobile Native</h3>
+                        <p data-i18n="login.feature.mobileDesc">Full iOS app for managing finances on the go</p>
                     </div>
 
                     <div class="feature-card">
@@ -552,8 +582,8 @@
                             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
                             <line x1="7" y1="7" x2="7.01" y2="7"/>
                         </svg>
-                        <h3>Smart Categories</h3>
-                        <p>17 built-in tags for granular categorization</p>
+                        <h3 data-i18n="login.feature.categories">Smart Categories</h3>
+                        <p data-i18n="login.feature.categoriesDesc">17 built-in tags for granular categorization</p>
                     </div>
                 </div>
             </div>
@@ -563,27 +593,43 @@
         <div class="landing-login">
             <div class="login-container">
                 <div class="login-form">
-                    <h2>Welcome Back</h2>
-                    <p class="subtitle">Sign in to manage your assets</p>
+                    <h2 data-i18n="login.welcome">Welcome Back</h2>
+                    <p class="subtitle" data-i18n="login.subtitle">Sign in to manage your assets</p>
                     <form id="loginForm">
                         <div class="form-group">
-                            <label for="username">Username</label>
-                            <input type="text" id="username" placeholder="Enter your username" required>
+                            <label for="username" data-i18n="common.username">Username</label>
+                            <input type="text" id="username" placeholder="Enter your username" data-i18n-placeholder="login.usernamePlaceholder" required>
                         </div>
                         <div class="form-group">
-                            <label for="password">Password</label>
-                            <input type="password" id="password" placeholder="Enter your password" required>
+                            <label for="password" data-i18n="common.password">Password</label>
+                            <input type="password" id="password" placeholder="Enter your password" data-i18n-placeholder="login.passwordPlaceholder" required>
                         </div>
-                        <button type="submit">Sign In</button>
+                        <button type="submit" data-i18n="login.signIn">Sign In</button>
                     </form>
-                    <p class="register-link" style="margin-top: 1.5rem;">Forgot your password? <a href="/forgot-password.html">Reset it</a></p>
-                    <div class="decorative-line">or</div>
-                    <p class="register-link">Don't have an account? <a href="/register.html">Create one</a></p>
+                    <p class="register-link" style="margin-top: 1.5rem;"><span data-i18n="login.forgotPassword">Forgot your password?</span> <a href="/forgot-password.html" data-i18n="login.resetIt">Reset it</a></p>
+                    <div class="decorative-line" data-i18n="common.or">or</div>
+                    <p class="register-link"><span data-i18n="login.noAccount">Don't have an account?</span> <a href="/register.html" data-i18n="login.createOne">Create one</a></p>
                     <div id="error-message" class="error-message"></div>
+                </div>
+
+                <div id="twofa-step" class="login-form" style="display: none;">
+                    <h2 data-i18n="login.twoFAStep">Two-Factor Authentication</h2>
+                    <p class="subtitle" data-i18n="login.twoFAPrompt">Enter the code from your authenticator app</p>
+                    <div class="form-group">
+                        <label for="twofaCode" data-i18n="login.twoFACode">Verification Code</label>
+                        <input type="text" id="twofaCode" maxlength="8" placeholder="000000" data-i18n-placeholder="login.twoFAPlaceholder" autocomplete="one-time-code" required>
+                    </div>
+                    <small style="color: var(--color-text-muted); display: block; margin-bottom: 1rem; text-align: left;" data-i18n="login.twoFABackupHint">You can also use an 8-character backup code</small>
+                    <button type="button" id="verify2FABtn" data-i18n="login.verify">Verify</button>
+                    <p class="register-link" style="margin-top: 1.5rem;">
+                        <a href="#" id="backToLogin" data-i18n="login.backToLogin">Back to login</a>
+                    </p>
+                    <div id="twofa-error" class="error-message"></div>
                 </div>
             </div>
         </div>
     </div>
+    <script src="/js/i18n.js"></script>
     <script src="/js/login.js"></script>
 </body>
 </html>

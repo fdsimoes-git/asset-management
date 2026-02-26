@@ -41,7 +41,7 @@
                 var containerEl = document.getElementById('paypalButtonContainer');
                 if (containerEl) containerEl.style.display = 'none';
                 if (errorEl) {
-                    errorEl.textContent = 'Unable to load PayPal at the moment. Please try again later.';
+                    errorEl.textContent = t('register.paypalLoadError');
                     errorEl.classList.add('visible');
                 }
             };
@@ -101,12 +101,12 @@
                         successEl.classList.add('visible');
                     })
                     .catch(function(err) {
-                        errorEl.textContent = err.message || 'Payment capture failed. Please try again.';
+                        errorEl.textContent = err.message || t('register.paypalCaptureError');
                         errorEl.classList.add('visible');
                     });
             },
             onError: function(err) {
-                errorEl.textContent = 'Payment error. Please try again.';
+                errorEl.textContent = t('register.paypalError');
                 errorEl.classList.add('visible');
             },
             onCancel: function() {
@@ -143,31 +143,31 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
 
     // Client-side validation
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        errorMessage.textContent = 'A valid email address is required';
+        errorMessage.textContent = t('register.errorEmail');
         errorMessage.classList.add('show');
         return;
     }
 
     if (password !== confirmPassword) {
-        errorMessage.textContent = 'Passwords do not match';
+        errorMessage.textContent = t('register.errorPasswordMatch');
         errorMessage.classList.add('show');
         return;
     }
 
     if (password.length < 8) {
-        errorMessage.textContent = 'Password must be at least 8 characters';
+        errorMessage.textContent = t('register.errorPasswordLength');
         errorMessage.classList.add('show');
         return;
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-        errorMessage.textContent = 'Username can only contain letters, numbers, and underscores';
+        errorMessage.textContent = t('register.errorUsername');
         errorMessage.classList.add('show');
         return;
     }
 
     if (!inviteCode) {
-        errorMessage.textContent = 'Invite code is required';
+        errorMessage.textContent = t('register.errorInviteCode');
         errorMessage.classList.add('show');
         return;
     }
@@ -189,17 +189,17 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
         const data = await response.json();
 
         if (response.ok) {
-            successMessage.textContent = 'Registration successful! Redirecting to login...';
+            successMessage.textContent = t('register.success') + ' ' + t('register.redirecting');
             successMessage.classList.add('show');
             setTimeout(() => {
                 window.location.href = '/login.html';
             }, 2000);
         } else {
-            errorMessage.textContent = data.message || 'Registration failed';
+            errorMessage.textContent = data.message || t('register.errorGeneric');
             errorMessage.classList.add('show');
         }
     } catch (error) {
-        errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.textContent = t('register.errorGeneric');
         errorMessage.classList.add('show');
     } finally {
         submitBtn.classList.remove('loading');

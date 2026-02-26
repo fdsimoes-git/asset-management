@@ -13,6 +13,8 @@ const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
 const nodemailer = require('nodemailer');
+const otplib = require('otplib');
+const QRCode = require('qrcode');
 
 const app = express();
 
@@ -70,7 +72,7 @@ if (config.paypalClientId && config.paypalClientSecret) {
 }
 
 // Gemini AI model name (instances created per-request)
-const GEMINI_MODEL = 'gemini-3-flash-preview';
+const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -572,6 +574,49 @@ function migrateUsersForEmail() {
 }
 migrateUsersForEmail();
 
+// Migration: Add TOTP 2FA fields to existing users
+function migrateUsersForTOTP() {
+    let migrated = false;
+    users.forEach(user => {
+        let userUpdated = false;
+        if (user.totpSecret === undefined) {
+            user.totpSecret = null;
+            userUpdated = true;
+        }
+        if (user.totpEnabled === undefined) {
+            user.totpEnabled = false;
+            userUpdated = true;
+        }
+        if (user.backupCodes === undefined) {
+            user.backupCodes = [];
+            userUpdated = true;
+        }
+        if (userUpdated) {
+            migrated = true;
+        }
+    });
+    if (migrated) {
+        saveUsers();
+        console.log('Migrated users for TOTP 2FA');
+    }
+}
+migrateUsersForTOTP();
+
+// ============ PENDING 2FA SESSIONS ============
+
+const pending2FASessions = new Map();
+const PENDING_2FA_EXPIRY = 5 * 60 * 1000; // 5 minutes
+
+// Cleanup expired pending 2FA sessions every minute
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of pending2FASessions.entries()) {
+        if (now - session.createdAt > PENDING_2FA_EXPIRY) {
+            pending2FASessions.delete(token);
+        }
+    }
+}, 60 * 1000);
+
 // Security middleware
 app.use(helmet({
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
@@ -695,6 +740,14 @@ const forgotPasswordLimiter = rateLimit({
     message: { message: 'If an account with that username exists and has an email on file, a reset code has been sent.' }
 });
 
+const totpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many verification attempts. Please try again later.' }
+});
+
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -746,6 +799,17 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
         resetFailedLogins(username);
+
+        // Check if user has 2FA enabled
+        if (user.totpEnabled && user.totpSecret) {
+            const tempToken = crypto.randomBytes(32).toString('hex');
+            pending2FASessions.set(tempToken, {
+                userId: user.id,
+                createdAt: Date.now()
+            });
+            return res.json({ requires2FA: true, tempToken });
+        }
+
         const userData = { id: user.id, username: user.username, role: user.role };
 
         // Session fixation prevention: regenerate session ID on login
@@ -834,7 +898,10 @@ app.post('/api/register', registerLimiter, async (req, res) => {
             role: 'user',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            isActive: true
+            isActive: true,
+            totpSecret: null,
+            totpEnabled: false,
+            backupCodes: []
         };
 
         users.push(newUser);
@@ -959,7 +1026,8 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerId: null,
         partnerLinkedAt: null,
         partnerUsername: null,
-        hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData)
+        hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData),
+        has2FA: !!req.user.totpEnabled
     };
 
     // Include partner info only if partner exists and is mutually linked
@@ -1002,6 +1070,274 @@ app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
     saveUsers();
 
     res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false });
+});
+
+// ============ 2FA VERIFICATION (LOGIN STEP 2) ============
+
+app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
+    const { tempToken, totpCode } = req.body;
+
+    if (!tempToken || !totpCode || typeof tempToken !== 'string' || typeof totpCode !== 'string') {
+        return res.status(400).json({ message: 'Token and code are required' });
+    }
+
+    const session2FA = pending2FASessions.get(tempToken);
+    if (!session2FA) {
+        return res.status(401).json({ message: 'Invalid or expired session. Please log in again.' });
+    }
+
+    // Check expiry
+    if (Date.now() - session2FA.createdAt > PENDING_2FA_EXPIRY) {
+        pending2FASessions.delete(tempToken);
+        return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
+
+    const user = findUserById(session2FA.userId);
+    if (!user || !user.isActive || !user.totpEnabled || !user.totpSecret) {
+        pending2FASessions.delete(tempToken);
+        return res.status(401).json({ message: 'Invalid session. Please log in again.' });
+    }
+
+    // Decrypt TOTP secret
+    let secret;
+    try {
+        secret = decryptString(user.totpSecret.encryptedData, user.totpSecret.iv);
+    } catch (e) {
+        return res.status(500).json({ message: 'Authentication error' });
+    }
+
+    const code = totpCode.trim();
+    let verified = false;
+
+    // Try TOTP verification first
+    try {
+        const result = otplib.verifySync({ token: code, secret });
+        verified = result.valid;
+    } catch (e) {
+        // Invalid token format, will try backup codes
+    }
+
+    // If TOTP failed and code is 8 chars, try backup codes
+    if (!verified && code.length === 8 && user.backupCodes && user.backupCodes.length > 0) {
+        for (let i = 0; i < user.backupCodes.length; i++) {
+            try {
+                if (await bcrypt.compare(code, user.backupCodes[i])) {
+                    user.backupCodes.splice(i, 1);
+                    saveUsers();
+                    verified = true;
+                    break;
+                }
+            } catch (e) {
+                // Skip invalid hash
+            }
+        }
+    }
+
+    if (!verified) {
+        return res.status(401).json({ message: 'Invalid verification code' });
+    }
+
+    // Delete temp token
+    pending2FASessions.delete(tempToken);
+
+    // Create session (same pattern as normal login)
+    const userData = { id: user.id, username: user.username, role: user.role };
+    req.session.regenerate((err) => {
+        if (err) {
+            console.error('Session regeneration error:', err);
+            return res.status(500).json({ message: 'Login failed' });
+        }
+        req.session.user = userData;
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ message: 'Login failed' });
+            }
+            res.json({ message: 'Login successful', user: userData });
+        });
+    });
+});
+
+// ============ USER SELF-SERVICE EMAIL ENDPOINTS ============
+
+// Get current user's email (masked)
+app.get('/api/user/email', requireAuth, (req, res) => {
+    const hasEmail = !!(req.user.email && req.user.email.iv && req.user.email.encryptedData);
+    let maskedEmail = null;
+
+    if (hasEmail) {
+        try {
+            const email = decryptString(req.user.email.encryptedData, req.user.email.iv);
+            const parts = email.split('@');
+            if (parts.length === 2 && parts[0].length > 0 && parts[1].length > 0) {
+                maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
+            }
+        } catch (e) {
+            // Decryption failed
+        }
+    }
+
+    res.json({ hasEmail, maskedEmail });
+});
+
+// Update current user's email
+app.put('/api/user/email', requireAuth, (req, res) => {
+    const { email } = req.body;
+
+    if (email === undefined) {
+        return res.status(400).json({ message: 'Email field is required' });
+    }
+
+    if (email === '' || email === null) {
+        req.user.email = null;
+        req.user.updatedAt = new Date().toISOString();
+        saveUsers();
+        return res.json({ message: 'Email removed', hasEmail: false, maskedEmail: null });
+    }
+
+    if (typeof email !== 'string') {
+        return res.status(400).json({ message: 'Invalid email' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
+    }
+    if (email.length > 254 || /[<>]/.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    req.user.email = encryptString(email);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    const parts = email.split('@');
+    if (parts.length !== 2 || !parts[0].length || !parts[1].length) {
+        return res.status(400).json({ message: 'Invalid email format' });
+    }
+    const maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
+    res.json({ message: 'Email updated', hasEmail: true, maskedEmail });
+});
+
+// ============ TOTP 2FA ENDPOINTS ============
+
+// Get 2FA status
+app.get('/api/user/2fa/status', requireAuth, (req, res) => {
+    res.json({
+        enabled: !!req.user.totpEnabled,
+        backupCodesRemaining: (req.user.backupCodes || []).length
+    });
+});
+
+// Start 2FA setup - generate secret and QR code
+app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
+    if (req.user.totpEnabled) {
+        return res.status(400).json({ message: 'Two-factor authentication is already enabled. Disable it first before setting up again.' });
+    }
+
+    const secret = otplib.generateSecret();
+    const otpauth = otplib.generateURI({ label: req.user.username, issuer: 'AssetManager', secret });
+
+    try {
+        const qrCode = await QRCode.toDataURL(otpauth);
+
+        // Store encrypted secret but don't enable yet
+        req.user.totpSecret = encryptString(secret);
+        req.user.updatedAt = new Date().toISOString();
+        saveUsers();
+
+        res.json({ secret, qrCode });
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+        res.status(500).json({ message: 'Failed to setup 2FA' });
+    }
+});
+
+// Verify 2FA setup - enable 2FA and generate backup codes
+app.post('/api/user/2fa/verify', requireAuth, async (req, res) => {
+    const { totpCode } = req.body;
+
+    if (!totpCode || typeof totpCode !== 'string') {
+        return res.status(400).json({ message: 'Verification code is required' });
+    }
+
+    if (!req.user.totpSecret) {
+        return res.status(400).json({ message: 'Please start 2FA setup first' });
+    }
+
+    // Decrypt the stored secret
+    let secret;
+    try {
+        secret = decryptString(req.user.totpSecret.encryptedData, req.user.totpSecret.iv);
+    } catch (e) {
+        return res.status(500).json({ message: 'Failed to verify code' });
+    }
+
+    // Verify the code
+    let isValid = false;
+    try {
+        isValid = otplib.verifySync({ token: totpCode.trim(), secret }).valid;
+    } catch (e) {
+        // Invalid token format
+    }
+    if (!isValid) {
+        return res.status(400).json({ message: 'Invalid verification code' });
+    }
+
+    // Generate 10 backup codes (8-char hex)
+    const backupCodes = [];
+    const hashedCodes = [];
+    for (let i = 0; i < 10; i++) {
+        const code = crypto.randomBytes(4).toString('hex');
+        backupCodes.push(code);
+        hashedCodes.push(await bcrypt.hash(code, 10));
+    }
+
+    req.user.totpEnabled = true;
+    req.user.backupCodes = hashedCodes;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: '2FA enabled successfully', backupCodes });
+});
+
+// Disable 2FA
+app.post('/api/user/2fa/disable', requireAuth, (req, res) => {
+    const { totpCode } = req.body;
+
+    if (!totpCode || typeof totpCode !== 'string') {
+        return res.status(400).json({ message: 'Current code is required to disable 2FA' });
+    }
+
+    if (!req.user.totpEnabled || !req.user.totpSecret) {
+        return res.status(400).json({ message: '2FA is not enabled' });
+    }
+
+    // Decrypt and verify
+    let secret;
+    try {
+        secret = decryptString(req.user.totpSecret.encryptedData, req.user.totpSecret.iv);
+    } catch (e) {
+        return res.status(500).json({ message: 'Failed to verify code' });
+    }
+
+    let isValid = false;
+    try {
+        isValid = otplib.verifySync({ token: totpCode.trim(), secret }).valid;
+    } catch (e) {
+        // Invalid token format
+    }
+    if (!isValid) {
+        return res.status(400).json({ message: 'Invalid verification code' });
+    }
+
+    req.user.totpSecret = null;
+    req.user.totpEnabled = false;
+    req.user.backupCodes = [];
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: '2FA disabled successfully' });
 });
 
 // Logout endpoint
@@ -1191,19 +1527,9 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
             isActive: u.isActive,
             entriesCount: entriesCountByUserId[u.id] || 0,
             partnerId: u.partnerId || null,
-            hasEmail: !!(u.email && u.email.iv && u.email.encryptedData)
+            hasEmail: !!(u.email && u.email.iv && u.email.encryptedData),
+            has2FA: !!u.totpEnabled
         };
-
-        // Include decrypted email for admin visibility
-        if (u.email && u.email.iv && u.email.encryptedData) {
-            try {
-                userData.email = decryptString(u.email.encryptedData, u.email.iv);
-            } catch (e) {
-                userData.email = null;
-            }
-        } else {
-            userData.email = null;
-        }
 
         // Include partner username if linked
         if (u.partnerId) {
@@ -1240,9 +1566,13 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
             username,
             passwordHash,
             role: userRole,
+            email: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            isActive: true
+            isActive: true,
+            totpSecret: null,
+            totpEnabled: false,
+            backupCodes: []
         };
 
         users.push(newUser);
@@ -1269,7 +1599,7 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
         return res.status(404).json({ message: 'User not found' });
     }
 
-    const { username, password, role, isActive, email } = req.body;
+    const { username, password, role, isActive } = req.body;
     const user = users[userIndex];
 
     // Prevent admin from demoting themselves
@@ -1303,21 +1633,6 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
 
     if (typeof isActive === 'boolean') {
         user.isActive = isActive;
-    }
-
-    if (email !== undefined) {
-        if (email === '' || email === null) {
-            user.email = null;
-        } else if (typeof email === 'string') {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-                return res.status(400).json({ message: 'Invalid email format' });
-            }
-            if (email.length > 254 || /[<>]/.test(email)) {
-                return res.status(400).json({ message: 'Invalid email format' });
-            }
-            user.email = encryptString(email);
-        }
     }
 
     user.updatedAt = new Date().toISOString();
