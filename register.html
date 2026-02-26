@@ -539,6 +539,34 @@
             animation: fadeInUp 0.3s ease;
         }
 
+        .lang-toggle {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 999;
+            padding: 0.5rem 1rem;
+            background: var(--color-bg-elevated);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all var(--transition-base);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            width: auto;
+            box-shadow: none;
+        }
+        .lang-toggle:hover {
+            background: var(--color-bg-surface);
+            border-color: var(--color-accent-primary);
+            color: var(--color-accent-primary);
+            transform: none;
+            box-shadow: none;
+        }
+
         /* Responsive Design */
         @media (max-width: 480px) {
             .container {
@@ -564,80 +592,82 @@
     </style>
 </head>
 <body>
+    <button class="lang-toggle" data-i18n="lang.switch" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')">PT</button>
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
 
     <div class="container">
-        <h1 class="app-title">Asset Manager</h1>
+        <h1 class="app-title" data-i18n="common.appName">Asset Manager</h1>
         <div class="register-form">
-            <h2>Create Account</h2>
-            <p class="subtitle">Start managing your assets today</p>
+            <h2 data-i18n="register.title">Create Account</h2>
+            <p class="subtitle" data-i18n="register.subtitle">Start managing your assets today</p>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="username">Username</label>
+                    <label for="username" data-i18n="common.username">Username</label>
                     <input type="text" id="username" required minlength="3" maxlength="30"
                            pattern="[a-zA-Z0-9_]+" title="Letters, numbers, and underscores only"
-                           placeholder="Choose a username">
-                    <small>3-30 characters, letters, numbers, and underscores</small>
+                           placeholder="Choose a username" data-i18n-placeholder="register.usernamePlaceholder">
+                    <small data-i18n="register.usernameHelp">3-30 characters, letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
-                    <label for="email">Email</label>
+                    <label for="email" data-i18n="common.email">Email</label>
                     <input type="email" id="email" required
-                           placeholder="your@email.com">
-                    <small>Used for password recovery</small>
+                           placeholder="your@email.com" data-i18n-placeholder="register.emailPlaceholder">
+                    <small data-i18n="register.emailHelp">Used for password recovery</small>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password</label>
+                    <label for="password" data-i18n="common.password">Password</label>
                     <input type="password" id="password" required minlength="8"
-                           placeholder="Create a strong password">
+                           placeholder="Create a strong password" data-i18n-placeholder="register.passwordPlaceholder">
                     <div class="password-strength">
                         <div class="password-strength-bar" id="passwordStrength"></div>
                     </div>
-                    <small>Minimum 8 characters</small>
+                    <small data-i18n="register.passwordHelp">Minimum 8 characters</small>
                 </div>
                 <div class="form-group">
-                    <label for="confirmPassword">Confirm Password</label>
+                    <label for="confirmPassword" data-i18n="register.confirmPassword">Confirm Password</label>
                     <input type="password" id="confirmPassword" required
-                           placeholder="Re-enter your password">
+                           placeholder="Re-enter your password" data-i18n-placeholder="register.confirmPlaceholder">
                 </div>
                 <!-- PayPal Purchase Section -->
                 <div class="paypal-section" id="paypalSection">
                     <div class="paypal-toggle" id="paypalToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="paypalBody">
                         <span class="paypal-toggle-arrow">&#9654;</span>
-                        Don't have an invite code? Buy one with Credit/Debit Card
+                        <span data-i18n="register.paypalToggle">Don't have an invite code? Buy one with Credit/Debit Card</span>
                     </div>
                     <div class="paypal-body" id="paypalBody">
-                        <p class="paypal-price">Price: <strong>R$ <span id="paypalPrice">--</span></strong></p>
+                        <p class="paypal-price"><span data-i18n="register.price">Price:</span> <strong>R$ <span id="paypalPrice">--</span></strong></p>
                         <div class="paypal-btn-container" id="paypalButtonContainer"></div>
                         <div class="paypal-success" id="paypalSuccess">
                             <div class="paypal-checkmark"></div>
-                            <p style="margin: 0;">Payment confirmed! Code auto-filled below.</p>
+                            <p style="margin: 0;" data-i18n="register.paymentConfirmed">Payment confirmed! Code auto-filled below.</p>
                         </div>
                         <div class="paypal-error" id="paypalError"></div>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="inviteCode">Invite Code</label>
+                    <label for="inviteCode" data-i18n="register.inviteCode">Invite Code</label>
                     <input type="text" id="inviteCode" required
-                           placeholder="Enter your invite code"
+                           placeholder="Enter your invite code" data-i18n-placeholder="register.invitePlaceholder"
                            maxlength="8"
                            style="text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;">
-                    <small>Required. Ask an administrator for a code.</small>
+                    <small data-i18n="register.inviteHelp">Required. Ask an administrator for a code.</small>
                 </div>
-                <button type="submit">Create Account</button>
+                <button type="submit" data-i18n="register.createAccount">Create Account</button>
             </form>
-            <div class="decorative-line">or</div>
-            <p class="login-link">Already have an account? <a href="/login.html">Sign in</a></p>
+            <div class="decorative-line" data-i18n="common.or">or</div>
+            <p class="login-link"><span data-i18n="register.hasAccount">Already have an account?</span> <a href="/login.html" data-i18n="register.signIn">Sign in</a></p>
             <div id="error-message" class="error-message"></div>
             <div id="success-message" class="success-message">
                 <div class="checkmark"></div>
-                <p style="margin: 0; font-weight: 600;">Account Created Successfully!</p>
-                <p style="margin: 0.5rem 0 0; opacity: 0.8;">Redirecting to login...</p>
+                <p style="margin: 0; font-weight: 600;" data-i18n="register.success">Account Created Successfully!</p>
+                <p style="margin: 0.5rem 0 0; opacity: 0.8;" data-i18n="register.redirecting">Redirecting to login...</p>
             </div>
         </div>
     </div>
+    <script src="/js/i18n.js"></script>
     <script src="/js/register.js"></script>
     <script>
         // Password strength indicator

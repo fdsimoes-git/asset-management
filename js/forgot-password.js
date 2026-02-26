@@ -12,14 +12,14 @@ document.getElementById('step1Form').addEventListener('submit', async (e) => {
     infoMessage.classList.remove('show');
 
     if (!username) {
-        errorMessage.textContent = 'Please enter your username.';
+        errorMessage.textContent = t('forgot.errorUsername');
         errorMessage.classList.add('show');
         return;
     }
 
     btn.disabled = true;
     btn.classList.add('loading');
-    btn.textContent = 'Sending';
+    btn.textContent = t('forgot.sending');
 
     try {
         const response = await fetch('/api/forgot-password', {
@@ -34,19 +34,19 @@ document.getElementById('step1Form').addEventListener('submit', async (e) => {
         storedUsername = username;
         document.getElementById('step1Form').style.display = 'none';
         document.getElementById('step2Form').style.display = 'block';
-        document.querySelector('.subtitle').textContent = 'Enter the code sent to your email';
+        document.querySelector('.subtitle').textContent = t('forgot.step2Subtitle');
 
         infoMessage.textContent = data.message;
         infoMessage.classList.add('show');
 
         document.getElementById('resetCode').focus();
     } catch (error) {
-        errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.textContent = t('forgot.errorGeneric');
         errorMessage.classList.add('show');
     } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
-        btn.textContent = 'Send Reset Code';
+        btn.textContent = t('forgot.sendCode');
     }
 });
 
@@ -65,26 +65,26 @@ document.getElementById('step2Form').addEventListener('submit', async (e) => {
     infoMessage.classList.remove('show');
 
     if (!code || !newPassword || !confirmPassword) {
-        errorMessage.textContent = 'All fields are required.';
+        errorMessage.textContent = t('forgot.errorAllFields');
         errorMessage.classList.add('show');
         return;
     }
 
     if (newPassword.length < 8) {
-        errorMessage.textContent = 'Password must be at least 8 characters.';
+        errorMessage.textContent = t('forgot.errorPasswordLength');
         errorMessage.classList.add('show');
         return;
     }
 
     if (newPassword !== confirmPassword) {
-        errorMessage.textContent = 'Passwords do not match.';
+        errorMessage.textContent = t('forgot.errorPasswordMatch');
         errorMessage.classList.add('show');
         return;
     }
 
     btn.disabled = true;
     btn.classList.add('loading');
-    btn.textContent = 'Resetting';
+    btn.textContent = t('forgot.resetting');
 
     try {
         const response = await fetch('/api/reset-password', {
@@ -107,15 +107,15 @@ document.getElementById('step2Form').addEventListener('submit', async (e) => {
                 window.location.href = '/login.html';
             }, 2000);
         } else {
-            errorMessage.textContent = data.message || 'Failed to reset password.';
+            errorMessage.textContent = data.message || t('forgot.errorResetFailed');
             errorMessage.classList.add('show');
         }
     } catch (error) {
-        errorMessage.textContent = 'An error occurred. Please try again.';
+        errorMessage.textContent = t('forgot.errorGeneric');
         errorMessage.classList.add('show');
     } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
-        btn.textContent = 'Reset Password';
+        btn.textContent = t('forgot.resetBtn');
     }
 });

@@ -283,6 +283,12 @@
             color: var(--color-danger);
         }
 
+        #settingsBtn:hover {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: var(--color-accent-primary);
+            color: var(--color-accent-primary);
+        }
+
         .admin-btn {
             background: var(--color-bg-surface);
             color: var(--color-text-primary);
@@ -1329,12 +1335,14 @@
 <body>
     <div class="container">
         <header>
-            <h1>Asset Management</h1>
+            <h1 data-i18n="common.assetManagement">Asset Management</h1>
             <div class="header-buttons">
-                <button id="addEntryBtn" class="add-entry-btn">Add New Entry</button>
-                <button id="openBulkUploadModal" class="bulk-upload-btn">Bulk PDF Upload</button>
-                <button id="adminPanelBtn" class="admin-btn" style="display:none;">Admin Panel</button>
-                <button id="logoutBtn" class="logout-btn">Logout</button>
+                <button id="addEntryBtn" class="add-entry-btn" data-i18n="dash.addEntry">Add New Entry</button>
+                <button id="openBulkUploadModal" class="bulk-upload-btn" data-i18n="dash.bulkUpload">Bulk PDF Upload</button>
+                <button id="settingsBtn" class="logout-btn" data-i18n="dash.settings">Settings</button>
+                <button id="adminPanelBtn" class="admin-btn" style="display:none;" data-i18n="dash.adminPanel">Admin Panel</button>
+                <button id="langToggleBtn" class="logout-btn" data-i18n="lang.switch" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')">PT</button>
+                <button id="logoutBtn" class="logout-btn" data-i18n="common.logout">Logout</button>
             </div>
         </header>
         <main>
@@ -1342,39 +1350,39 @@
             <div id="entryModal" class="modal">
                 <div class="modal-content">
                     <span class="close">&times;</span>
-                    <h2>Add New Entry</h2>
+                    <h2 data-i18n="modal.addEntry">Add New Entry</h2>
                     <form id="entryForm">
                         <div class="form-group">
-                            <label for="month">Month</label>
+                            <label for="month" data-i18n="modal.month">Month</label>
                             <input type="month" id="month" required>
                         </div>
                         <div class="form-group">
-                            <label for="type">Type</label>
+                            <label for="type" data-i18n="modal.type">Type</label>
                             <select id="type" required>
-                                <option value="income">Income</option>
-                                <option value="expense">Expense</option>
+                                <option value="income" data-i18n="type.income">Income</option>
+                                <option value="expense" data-i18n="type.expense">Expense</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="amount">Amount</label>
+                            <label for="amount" data-i18n="modal.amount">Amount</label>
                             <input type="number" id="amount" step="0.01" required>
                         </div>
                         <div class="form-group">
-                            <label for="description">Description</label>
+                            <label for="description" data-i18n="modal.description">Description</label>
                             <input type="text" id="description" required>
                         </div>
                         <div class="form-group">
-                            <label for="tags">Tags (comma-separated)</label>
-                            <input type="text" id="tags" placeholder="e.g. food, subscription">
+                            <label for="tags" data-i18n="modal.tags">Tags (comma-separated)</label>
+                            <input type="text" id="tags" placeholder="e.g. food, subscription" data-i18n-placeholder="modal.tagsPlaceholder">
                         </div>
                         <div class="couple-expense-toggle" id="coupleExpenseToggle" style="display: none;">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="isCoupleExpense">
-                                <span>This is a couple expense</span>
+                                <span data-i18n="modal.coupleExpense">This is a couple expense</span>
                             </label>
-                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
+                            <small class="help-text" data-i18n="modal.coupleHelp">Couple expenses will appear in the combined view for both partners.</small>
                         </div>
-                        <button type="submit">Add Entry</button>
+                        <button type="submit" data-i18n="modal.addEntryBtn">Add Entry</button>
                     </form>
                 </div>
             </div>
@@ -1382,40 +1390,40 @@
             <div id="editEntryModal" class="modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close" id="closeEditModal">&times;</span>
-                    <h2>Edit Entry</h2>
+                    <h2 data-i18n="modal.editEntry">Edit Entry</h2>
                     <form id="editEntryForm">
                         <input type="hidden" id="editEntryId">
                         <div class="form-group">
-                            <label for="editMonth">Month</label>
+                            <label for="editMonth" data-i18n="modal.month">Month</label>
                             <input type="month" id="editMonth" required>
                         </div>
                         <div class="form-group">
-                            <label for="editType">Type</label>
+                            <label for="editType" data-i18n="modal.type">Type</label>
                             <select id="editType" required>
-                                <option value="income">Income</option>
-                                <option value="expense">Expense</option>
+                                <option value="income" data-i18n="type.income">Income</option>
+                                <option value="expense" data-i18n="type.expense">Expense</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="editAmount">Amount</label>
+                            <label for="editAmount" data-i18n="modal.amount">Amount</label>
                             <input type="number" id="editAmount" step="0.01" required>
                         </div>
                         <div class="form-group">
-                            <label for="editDescription">Description</label>
+                            <label for="editDescription" data-i18n="modal.description">Description</label>
                             <input type="text" id="editDescription" required>
                         </div>
                         <div class="form-group">
-                            <label for="editTags">Tags (comma-separated)</label>
-                            <input type="text" id="editTags" placeholder="e.g. food, subscription">
+                            <label for="editTags" data-i18n="modal.tags">Tags (comma-separated)</label>
+                            <input type="text" id="editTags" placeholder="e.g. food, subscription" data-i18n-placeholder="modal.tagsPlaceholder">
                         </div>
                         <div class="couple-expense-toggle" id="editCoupleExpenseToggle" style="display: none;">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="editIsCoupleExpense">
-                                <span>This is a couple expense</span>
+                                <span data-i18n="modal.coupleExpense">This is a couple expense</span>
                             </label>
-                            <small class="help-text">Couple expenses will appear in the combined view for both partners.</small>
+                            <small class="help-text" data-i18n="modal.coupleHelp">Couple expenses will appear in the combined view for both partners.</small>
                         </div>
-                        <button type="submit">Save Changes</button>
+                        <button type="submit" data-i18n="modal.saveChanges">Save Changes</button>
                     </form>
                 </div>
             </div>
@@ -1423,9 +1431,9 @@
             <div id="bulkUploadModal" class="modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close" id="closeBulkUploadModal">&times;</span>
-                    <h2>Bulk Upload from PDF</h2>
+                    <h2 data-i18n="bulk.title">Bulk Upload from PDF</h2>
                     <div class="form-group">
-                        <label for="bulkPdfUpload">Select PDF File</label>
+                        <label for="bulkPdfUpload" data-i18n="bulk.selectFile">Select PDF File</label>
                         <input type="file" id="bulkPdfUpload" accept="application/pdf" />
                     </div>
 
@@ -1433,22 +1441,22 @@
                     <div id="geminiKeyStored" style="display: none; padding: 1rem; background: var(--color-success-muted); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md); margin: 1rem 0;">
                         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                             <span style="color: var(--color-success); font-size: 1.1rem;">&#10003;</span>
-                            <span style="color: var(--color-success); font-weight: 600; font-size: 0.85rem;">Saved API key will be used</span>
+                            <span style="color: var(--color-success); font-weight: 600; font-size: 0.85rem;" data-i18n="bulk.savedKeyUsed">Saved API key will be used</span>
                         </div>
                         <div style="display: flex; gap: 0.5rem;">
-                            <button type="button" id="geminiKeyUseDifferent" class="bulk-upload-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Use different key</button>
-                            <button type="button" id="geminiKeyRemove" class="delete-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Remove saved key</button>
+                            <button type="button" id="geminiKeyUseDifferent" class="bulk-upload-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" data-i18n="bulk.useDifferent">Use different key</button>
+                            <button type="button" id="geminiKeyRemove" class="delete-btn" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" data-i18n="bulk.removeSaved">Remove saved key</button>
                         </div>
                     </div>
 
                     <!-- Gemini API Key: Manual input -->
                     <div id="geminiKeyInput" style="display: none; padding: 1rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin: 1rem 0;">
                         <div class="form-group" style="margin-bottom: 0.75rem;">
-                            <label for="geminiApiKeyInput">Gemini API Key</label>
-                            <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key" autocomplete="off" />
+                            <label for="geminiApiKeyInput" data-i18n="bulk.geminiKey">Gemini API Key</label>
+                            <input type="password" id="geminiApiKeyInput" placeholder="Enter your Gemini API key" data-i18n-placeholder="bulk.geminiPlaceholder" autocomplete="off" />
                         </div>
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem; color: var(--color-text-secondary);">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.8rem; color: var(--color-text-secondary);" data-i18n="bulk.saveKey">
                                 <input type="checkbox" id="geminiKeySaveCheckbox" style="accent-color: var(--color-accent-primary);">
                                 Save this key for future use
                             </label>
@@ -1457,54 +1465,54 @@
                     </div>
 
                     <!-- Gemini API Key: No key hint -->
-                    <div id="geminiKeyNone" style="display: none; padding: 0.75rem 1rem; color: var(--color-text-muted); font-size: 0.8rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); margin: 1rem 0;">
+                    <div id="geminiKeyNone" data-i18n="bulk.keyRequired" style="display: none; padding: 0.75rem 1rem; color: var(--color-text-muted); font-size: 0.8rem; border: 1px dashed var(--color-border); border-radius: var(--radius-md); margin: 1rem 0;">
                         A Gemini API key is required to process PDFs with AI. Enter your key above.
                     </div>
 
-                    <button id="processBulkPdfBtn" class="bulk-upload-btn" style="width: 100%; margin: 1rem 0;">Upload and Process</button>
+                    <button id="processBulkPdfBtn" class="bulk-upload-btn" style="width: 100%; margin: 1rem 0;" data-i18n="bulk.uploadProcess">Upload and Process</button>
                     <div id="loadingIndicator" style="display:none; text-align: center; margin: 20px 0;">
                         <div style="display: inline-block; width: 40px; height: 40px; border: 3px solid var(--color-border); border-top: 3px solid var(--color-accent-primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                        <p style="margin-top: 12px; color: var(--color-text-secondary); font-size: 0.875rem;">Analyzing PDF with AI...</p>
+                        <p style="margin-top: 12px; color: var(--color-text-secondary); font-size: 0.875rem;" data-i18n="bulk.analyzing">Analyzing PDF with AI...</p>
                     </div>
-                    <h3 style="font-family: var(--font-display); font-size: 1rem; font-weight: 500; margin: 1.5rem 0 1rem;">Preview Extracted Entries</h3>
+                    <h3 style="font-family: var(--font-display); font-size: 1rem; font-weight: 500; margin: 1.5rem 0 1rem;" data-i18n="bulk.preview">Preview Extracted Entries</h3>
                     <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--color-border); margin-bottom: 1rem; border-radius: var(--radius-md);">
                         <table style="width:100%;">
                             <thead>
-                                <tr><th>Month</th><th>Type</th><th>Amount</th><th>Description</th><th>Category</th><th id="bulkCoupleHeader" style="display: none;">Couple</th><th>Actions</th></tr>
+                                <tr><th data-i18n="common.month">Month</th><th data-i18n="common.type">Type</th><th data-i18n="common.amount">Amount</th><th data-i18n="common.description">Description</th><th data-i18n="bulk.category">Category</th><th id="bulkCoupleHeader" style="display: none;" data-i18n="dash.couple">Couple</th><th data-i18n="common.actions">Actions</th></tr>
                             </thead>
                             <tbody id="bulkExtractedEntries"></tbody>
                         </table>
                     </div>
-                    <button id="confirmBulkEntriesBtn" style="display:none; width: 100%;">Confirm and Add Entries</button>
+                    <button id="confirmBulkEntriesBtn" style="display:none; width: 100%;" data-i18n="bulk.confirm">Confirm and Add Entries</button>
                 </div>
             </div>
             <!-- Admin Panel Modal -->
             <div id="adminModal" class="modal admin-modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close" id="closeAdminModal">&times;</span>
-                    <h2>User Management</h2>
+                    <h2 data-i18n="admin.title">User Management</h2>
 
                     <!-- Create User Form -->
                     <div class="admin-create-user">
-                        <h3>Create New User</h3>
+                        <h3 data-i18n="admin.createUser">Create New User</h3>
                         <form id="createUserForm">
                             <div class="admin-form-row">
                                 <div class="form-group">
-                                    <label for="newUsername">Username</label>
+                                    <label for="newUsername" data-i18n="common.username">Username</label>
                                     <input type="text" id="newUsername" required minlength="3" maxlength="30">
                                 </div>
                                 <div class="form-group">
-                                    <label for="newPassword">Password</label>
+                                    <label for="newPassword" data-i18n="common.password">Password</label>
                                     <input type="password" id="newPassword" required minlength="8">
                                 </div>
                                 <div class="form-group">
-                                    <label for="newRole">Role</label>
+                                    <label for="newRole" data-i18n="common.role">Role</label>
                                     <select id="newRole">
-                                        <option value="user">User</option>
-                                        <option value="admin">Admin</option>
+                                        <option value="user" data-i18n="admin.roleUser">User</option>
+                                        <option value="admin" data-i18n="admin.roleAdmin">Admin</option>
                                     </select>
                                 </div>
-                                <button type="submit" class="add-entry-btn">Create User</button>
+                                <button type="submit" class="add-entry-btn" data-i18n="admin.createBtn">Create User</button>
                             </div>
                         </form>
                     </div>
@@ -1514,15 +1522,16 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>Username</th>
-                                    <th>Role</th>
-                                    <th>Email</th>
-                                    <th>Partner</th>
-                                    <th>Status</th>
-                                    <th>Created</th>
-                                    <th>Entries</th>
-                                    <th>Actions</th>
+                                    <th data-i18n="admin.id">ID</th>
+                                    <th data-i18n="common.username">Username</th>
+                                    <th data-i18n="common.role">Role</th>
+                                    <th data-i18n="common.email">Email</th>
+                                    <th>2FA</th>
+                                    <th data-i18n="common.partner">Partner</th>
+                                    <th data-i18n="common.status">Status</th>
+                                    <th data-i18n="common.created">Created</th>
+                                    <th data-i18n="admin.entries">Entries</th>
+                                    <th data-i18n="common.actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="usersTableBody"></tbody>
@@ -1531,40 +1540,40 @@
 
                     <!-- Couple Management Section -->
                     <div class="admin-couples-section">
-                        <h3>Couple Management</h3>
+                        <h3 data-i18n="admin.coupleManagement">Couple Management</h3>
 
                         <!-- Link Couple Form -->
                         <div class="admin-link-couple">
-                            <h4>Link Users as Couple</h4>
+                            <h4 data-i18n="admin.linkCouple">Link Users as Couple</h4>
                             <form id="linkCoupleForm">
                                 <div class="admin-form-row">
                                     <div class="form-group">
-                                        <label for="coupleUser1">User 1</label>
+                                        <label for="coupleUser1" data-i18n="admin.user1">User 1</label>
                                         <select id="coupleUser1" required>
-                                            <option value="">Select user...</option>
+                                            <option value="" data-i18n="admin.selectUser">Select user...</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label for="coupleUser2">User 2</label>
+                                        <label for="coupleUser2" data-i18n="admin.user2">User 2</label>
                                         <select id="coupleUser2" required>
-                                            <option value="">Select user...</option>
+                                            <option value="" data-i18n="admin.selectUser">Select user...</option>
                                         </select>
                                     </div>
-                                    <button type="submit" class="add-entry-btn">Link as Couple</button>
+                                    <button type="submit" class="add-entry-btn" data-i18n="admin.linkBtn">Link as Couple</button>
                                 </div>
                             </form>
                         </div>
 
                         <!-- Existing Couples List -->
                         <div class="couples-table">
-                            <h4>Linked Couples</h4>
+                            <h4 data-i18n="admin.linkedCouples">Linked Couples</h4>
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>User 1</th>
-                                        <th>User 2</th>
-                                        <th>Linked Date</th>
-                                        <th>Actions</th>
+                                        <th data-i18n="admin.user1">User 1</th>
+                                        <th data-i18n="admin.user2">User 2</th>
+                                        <th data-i18n="admin.linkedDate">Linked Date</th>
+                                        <th data-i18n="common.actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="couplesTableBody"></tbody>
@@ -1574,30 +1583,30 @@
 
                     <!-- Invite Code Management Section -->
                     <div class="admin-couples-section">
-                        <h3>Invite Codes</h3>
+                        <h3 data-i18n="admin.inviteCodes">Invite Codes</h3>
 
                         <div class="admin-link-couple">
-                            <h4>Generate New Invite Code</h4>
+                            <h4 data-i18n="admin.generateCode">Generate New Invite Code</h4>
                             <div class="admin-form-row">
-                                <button type="button" id="generateInviteCodeBtn" class="add-entry-btn">Generate Code</button>
+                                <button type="button" id="generateInviteCodeBtn" class="add-entry-btn" data-i18n="admin.generateBtn">Generate Code</button>
                             </div>
                             <div id="generatedCodeDisplay" style="display:none; margin-top: 1rem; padding: 1rem; background: var(--color-bg-base); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
-                                <span style="font-size: 0.7rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">New Code:</span>
+                                <span style="font-size: 0.7rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em;" data-i18n="admin.newCode">New Code:</span>
                                 <span id="generatedCodeValue" style="font-family: monospace; font-size: 1.5rem; font-weight: 700; color: var(--color-accent-primary); letter-spacing: 0.15em; display: block; margin-top: 0.5rem;"></span>
                             </div>
                         </div>
 
                         <div class="couples-table">
-                            <h4>All Invite Codes</h4>
+                            <h4 data-i18n="admin.allCodes">All Invite Codes</h4>
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Code</th>
-                                        <th>Created By</th>
-                                        <th>Created</th>
-                                        <th>Status</th>
-                                        <th>Used By</th>
-                                        <th>Actions</th>
+                                        <th data-i18n="admin.code">Code</th>
+                                        <th data-i18n="admin.createdBy">Created By</th>
+                                        <th data-i18n="common.created">Created</th>
+                                        <th data-i18n="common.status">Status</th>
+                                        <th data-i18n="admin.usedBy">Used By</th>
+                                        <th data-i18n="common.actions">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="inviteCodesTableBody"></tbody>
@@ -1608,63 +1617,63 @@
             </div>
             <!-- View Mode Toggle (visible only for users with partners) -->
             <div id="viewModeContainer" class="view-mode-toggle" style="display: none;">
-                <label>View Mode</label>
+                <label data-i18n="dash.viewMode">View Mode</label>
                 <div class="toggle-buttons">
-                    <button type="button" id="individualViewBtn" class="view-btn active">Individual</button>
-                    <button type="button" id="combinedViewBtn" class="view-btn">Combined (Couple)</button>
+                    <button type="button" id="individualViewBtn" class="view-btn active" data-i18n="dash.individual">Individual</button>
+                    <button type="button" id="combinedViewBtn" class="view-btn" data-i18n="dash.combined">Combined (Couple)</button>
                 </div>
                 <span id="partnerInfo" style="font-size: 0.8rem; color: var(--color-text-muted);"></span>
             </div>
             <section class="filters-section">
-                <h2>Filters</h2>
+                <h2 data-i18n="dash.filters">Filters</h2>
                 <div class="filters">
                     <div class="form-group">
-                        <label for="monthFilterStart">Start Month</label>
+                        <label for="monthFilterStart" data-i18n="dash.startMonth">Start Month</label>
                         <input type="month" id="monthFilterStart">
                     </div>
                     <div class="form-group">
-                        <label for="monthFilterEnd">End Month</label>
+                        <label for="monthFilterEnd" data-i18n="dash.endMonth">End Month</label>
                         <input type="month" id="monthFilterEnd">
                     </div>
                     <div class="form-group">
-                        <label for="typeFilter">Type</label>
+                        <label for="typeFilter" data-i18n="common.type">Type</label>
                         <select id="typeFilter">
-                            <option value="all">All</option>
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
+                            <option value="all" data-i18n="type.all">All</option>
+                            <option value="income" data-i18n="type.income">Income</option>
+                            <option value="expense" data-i18n="type.expense">Expense</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="categoryFilter">Category</label>
+                        <label for="categoryFilter" data-i18n="dash.category">Category</label>
                         <select id="categoryFilter" multiple size="6">
-                            <option value="food">Food</option>
-                            <option value="groceries">Groceries</option>
-                            <option value="transport">Transport</option>
-                            <option value="travel">Travel</option>
-                            <option value="entertainment">Entertainment</option>
-                            <option value="utilities">Utilities</option>
-                            <option value="healthcare">Healthcare</option>
-                            <option value="education">Education</option>
-                            <option value="shopping">Shopping</option>
-                            <option value="subscription">Subscription</option>
-                            <option value="housing">Housing</option>
-                            <option value="salary">Salary</option>
-                            <option value="freelance">Freelance</option>
-                            <option value="investment">Investment</option>
-                            <option value="transfer">Transfer</option>
-                            <option value="wedding">Wedding</option>
-                            <option value="other">Other</option>
+                            <option value="food" data-i18n="cat.food">Food</option>
+                            <option value="groceries" data-i18n="cat.groceries">Groceries</option>
+                            <option value="transport" data-i18n="cat.transport">Transport</option>
+                            <option value="travel" data-i18n="cat.travel">Travel</option>
+                            <option value="entertainment" data-i18n="cat.entertainment">Entertainment</option>
+                            <option value="utilities" data-i18n="cat.utilities">Utilities</option>
+                            <option value="healthcare" data-i18n="cat.healthcare">Healthcare</option>
+                            <option value="education" data-i18n="cat.education">Education</option>
+                            <option value="shopping" data-i18n="cat.shopping">Shopping</option>
+                            <option value="subscription" data-i18n="cat.subscription">Subscription</option>
+                            <option value="housing" data-i18n="cat.housing">Housing</option>
+                            <option value="salary" data-i18n="cat.salary">Salary</option>
+                            <option value="freelance" data-i18n="cat.freelance">Freelance</option>
+                            <option value="investment" data-i18n="cat.investment">Investment</option>
+                            <option value="transfer" data-i18n="cat.transfer">Transfer</option>
+                            <option value="wedding" data-i18n="cat.wedding">Wedding</option>
+                            <option value="other" data-i18n="cat.other">Other</option>
                         </select>
                     </div>
-                    <button id="clearFilters" class="filter-btn">Clear Filters</button>
+                    <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                 </div>
             </section>
             <!-- Couple Expense Share (visible only in combined view) -->
             <section class="couple-share-section" id="coupleShareSection">
-                <h2>Expense Share</h2>
+                <h2 data-i18n="dash.expenseShare">Expense Share</h2>
                 <div class="couple-share-cards">
                     <div class="couple-share-card" id="coupleShareCardUser">
-                        <div class="person-name" id="coupleShareUserName">You</div>
+                        <div class="person-name" id="coupleShareUserName" data-i18n="dash.you">You</div>
                         <div class="person-amount" id="coupleShareUserAmount">$0.00</div>
                         <div class="person-bar-container">
                             <div class="person-bar" id="coupleShareUserBar" style="width: 0%" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Your expense share"></div>
@@ -1672,7 +1681,7 @@
                         <div class="person-share" id="coupleShareUserPercent">0% of total</div>
                     </div>
                     <div class="couple-share-card" id="coupleShareCardPartner">
-                        <div class="person-name" id="coupleSharePartnerName">Partner</div>
+                        <div class="person-name" id="coupleSharePartnerName" data-i18n="dash.partnerLabel">Partner</div>
                         <div class="person-amount" id="coupleSharePartnerAmount">$0.00</div>
                         <div class="person-bar-container">
                             <div class="person-bar" id="coupleSharePartnerBar" style="width: 0%" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Partner's expense share"></div>
@@ -1681,13 +1690,13 @@
                     </div>
                 </div>
                 <div class="couple-settlement" id="coupleSettlement">
-                    <div class="settlement-label">Settlement</div>
-                    <div class="settlement-amount settlement-settled" id="coupleSettlementAmount">All settled up!</div>
+                    <div class="settlement-label" data-i18n="dash.settlement">Settlement</div>
+                    <div class="settlement-amount settlement-settled" id="coupleSettlementAmount" data-i18n="dash.allSettled">All settled up!</div>
                     <div class="settlement-direction" id="coupleSettlementDirection"></div>
                 </div>
             </section>
             <section class="charts-section">
-                <h2>Dashboard</h2>
+                <h2 data-i18n="dash.dashboard">Dashboard</h2>
                 <div class="charts-container">
                     <div class="chart-wrapper">
                         <canvas id="monthlyBalanceChart"></canvas>
@@ -1704,18 +1713,18 @@
                 </div>
             </section>
             <section class="entries-section">
-                <h2>Registered Entries</h2>
+                <h2 data-i18n="dash.registeredEntries">Registered Entries</h2>
                 <div class="summary">
                     <div class="summary-item">
-                        <span>Total Income</span>
+                        <span data-i18n="dash.totalIncome">Total Income</span>
                         <span id="totalIncome">$0.00</span>
                     </div>
                     <div class="summary-item">
-                        <span>Total Expenses</span>
+                        <span data-i18n="dash.totalExpenses">Total Expenses</span>
                         <span id="totalExpenses">$0.00</span>
                     </div>
                     <div class="summary-item">
-                        <span>Net Balance</span>
+                        <span data-i18n="dash.netBalance">Net Balance</span>
                         <span id="netBalance">$0.00</span>
                     </div>
                 </div>
@@ -1723,12 +1732,12 @@
                     <table id="entriesTable">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort="month">Month</th>
-                                <th class="sortable" data-sort="type">Type</th>
-                                <th class="sortable" data-sort="amount">Amount</th>
-                                <th class="sortable" data-sort="description">Description</th>
-                                <th class="sortable" data-sort="tags">Tags</th>
-                                <th>Action</th>
+                                <th class="sortable" data-sort="month" data-i18n="common.month">Month</th>
+                                <th class="sortable" data-sort="type" data-i18n="common.type">Type</th>
+                                <th class="sortable" data-sort="amount" data-i18n="common.amount">Amount</th>
+                                <th class="sortable" data-sort="description" data-i18n="common.description">Description</th>
+                                <th class="sortable" data-sort="tags" data-i18n="dash.tags">Tags</th>
+                                <th data-i18n="dash.action">Action</th>
                             </tr>
                         </thead>
                         <tbody id="entriesBody">
@@ -1753,6 +1762,7 @@
                 window.location.href = '/login.html';
             });
     </script>
+    <script src="/js/i18n.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

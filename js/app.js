@@ -159,7 +159,7 @@ function initializeCharts() {
         data: {
             labels: [],
             datasets: [{
-                label: 'Monthly Balance',
+                label: t('chart.monthlyBalance'),
                 data: [],
                 borderColor: colors.accent,
                 backgroundColor: colors.accentGlow,
@@ -182,7 +182,7 @@ function initializeCharts() {
             labels: [],
             datasets: [
                 {
-                    label: 'Income',
+                    label: t('chart.income'),
                     data: [],
                     backgroundColor: 'rgba(16, 185, 129, 0.8)',
                     borderColor: colors.success,
@@ -191,7 +191,7 @@ function initializeCharts() {
                     hoverBackgroundColor: colors.success
                 },
                 {
-                    label: 'Expenses',
+                    label: t('chart.expenses'),
                     data: [],
                     backgroundColor: 'rgba(239, 68, 68, 0.8)',
                     borderColor: colors.danger,
@@ -217,7 +217,7 @@ function initializeCharts() {
         data: {
             labels: [],
             datasets: [{
-                label: 'Amount',
+                label: t('chart.amount'),
                 data: [],
                 backgroundColor: categoryColors.map(c => c + 'cc'),
                 borderColor: categoryColors,
@@ -236,7 +236,7 @@ function initializeCharts() {
                 },
                 title: {
                     display: true,
-                    text: 'Expenses by Category',
+                    text: t('chart.expensesByCategory'),
                     color: colors.textPrimary,
                     font: { size: 14, weight: '600', family: "'Fraunces', serif" },
                     padding: { bottom: 20 }
@@ -292,7 +292,7 @@ function initializeCharts() {
         'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
     const stackedDatasets = expenseCategories.map((category, index) => ({
-        label: category.charAt(0).toUpperCase() + category.slice(1),
+        label: t('cat.' + category),
         data: [],
         backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length] + 'cc',
         borderColor: stackedCategoryColors[index % stackedCategoryColors.length],
@@ -322,7 +322,7 @@ function initializeCharts() {
                 },
                 title: {
                     display: true,
-                    text: 'Expense Categories by Month',
+                    text: t('chart.expenseCatByMonth'),
                     color: colors.textPrimary,
                     font: { size: 14, weight: '600', family: "'Fraunces', serif" },
                     padding: { bottom: 15 }
@@ -468,7 +468,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
 
     monthlyBalanceChart.data.labels = months;
     monthlyBalanceChart.data.datasets[0].data = totalAssetData;
-    monthlyBalanceChart.data.datasets[0].label = forceDefaultMonths ? 'Total Asset Progression (Last 6 Months)' : 'Total Asset Progression';
+    monthlyBalanceChart.data.datasets[0].label = forceDefaultMonths ? t('chart.totalAssetRecent') : t('chart.totalAsset');
     monthlyBalanceChart.update();
 
     incomeVsExpenseChart.data.labels = months;
@@ -494,7 +494,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 borderDash: [6, 4],
                 label: {
                     display: true,
-                    content: `Avg Income: $${avgIncome.toFixed(0)}`,
+                    content: t('chart.avgIncome', { value: avgIncome.toFixed(0) }),
                     position: 'start',
                     backgroundColor: 'rgba(16, 185, 129, 0.85)',
                     color: '#fff',
@@ -514,7 +514,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 borderDash: [6, 4],
                 label: {
                     display: true,
-                    content: `Avg Expenses: $${avgExpense.toFixed(0)}`,
+                    content: t('chart.avgExpenses', { value: avgExpense.toFixed(0) }),
                     position: 'end',
                     backgroundColor: 'rgba(239, 68, 68, 0.85)',
                     color: '#fff',
@@ -544,7 +544,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
             });
         });
     const sortedTags = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
-    categoryChart.data.labels = sortedTags.map(([tag]) => tag.charAt(0).toUpperCase() + tag.slice(1));
+    categoryChart.data.labels = sortedTags.map(([tag]) => t('cat.' + tag));
     categoryChart.data.datasets[0].data = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
     categoryChart.update();
 
@@ -700,17 +700,17 @@ function displayEntries(entriesToShow) {
     sortedEntries.forEach(entry => {
         const row = document.createElement('tr');
         const escapedDescription = escapeHtml(entry.description);
-        const tags = (entry.tags || []).map(t =>
-            `<span class="tag tag-${escapeHtml(t)}">${escapeHtml(t)}</span>`
+        const tags = (entry.tags || []).map(tag =>
+            `<span class="tag tag-${escapeHtml(tag)}">${escapeHtml(t('cat.' + tag))}</span>`
         ).join(' ');
-        const coupleBadge = entry.isCoupleExpense ? '<span class="couple-badge">Couple</span>' : '';
+        const coupleBadge = entry.isCoupleExpense ? `<span class="couple-badge">${t('dash.couple')}</span>` : '';
 
         // In combined view, only show Edit/Delete for user's own entries
         const isOwnEntry = !currentUser || entry.userId === currentUser.id;
         const actionButtons = isOwnEntry
-            ? `<button class="edit-btn" data-id="${entry.id}">Edit</button>
-               <button class="delete-btn" data-id="${entry.id}">Delete</button>`
-            : '<span style="color: var(--text-secondary); font-size: 0.75rem;">Partner\'s entry</span>';
+            ? `<button class="edit-btn" data-id="${entry.id}">${t('common.edit')}</button>
+               <button class="delete-btn" data-id="${entry.id}">${t('common.delete')}</button>`
+            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`;
 
         row.innerHTML = `
             <td>${escapeHtml(entry.month)}</td>
@@ -798,23 +798,23 @@ function updateCoupleShare(entriesToShow) {
     partnerBar.setAttribute('aria-label', `${currentUser.partnerUsername || 'Partner'} expense share`);
 
     // Update percentages
-    document.getElementById('coupleShareUserPercent').textContent = `${userPercent.toFixed(1)}% of total`;
-    document.getElementById('coupleSharePartnerPercent').textContent = `${partnerPercent.toFixed(1)}% of total`;
+    document.getElementById('coupleShareUserPercent').textContent = t('dash.ofTotal', { percent: userPercent.toFixed(1) });
+    document.getElementById('coupleSharePartnerPercent').textContent = t('dash.ofTotal', { percent: partnerPercent.toFixed(1) });
 
     // Settlement calculation (50/50 split)
     const settlementEl = document.getElementById('coupleSettlementAmount');
     const directionEl = document.getElementById('coupleSettlementDirection');
 
     if (totalExpenses === 0) {
-        settlementEl.textContent = 'No expenses recorded';
+        settlementEl.textContent = t('dash.noExpenses');
         settlementEl.className = 'settlement-amount settlement-settled';
         settlementEl.style.color = '';
         directionEl.textContent = '';
     } else if (Math.abs(userExpenses - partnerExpenses) < 0.01) {
-        settlementEl.textContent = 'All settled up!';
+        settlementEl.textContent = t('dash.allSettled');
         settlementEl.className = 'settlement-amount settlement-settled';
         settlementEl.style.color = '';
-        directionEl.textContent = 'Both paid equally';
+        directionEl.textContent = t('dash.bothPaidEqually');
     } else {
         const overpayer = userExpenses > partnerExpenses ? currentUser.username : currentUser.partnerUsername;
         const underpayer = userExpenses > partnerExpenses ? currentUser.partnerUsername : currentUser.username;
@@ -823,7 +823,7 @@ function updateCoupleShare(entriesToShow) {
         settlementEl.textContent = `$${owedAmount.toFixed(2)}`;
         settlementEl.className = 'settlement-amount';
         settlementEl.style.color = '#f59e0b';
-        directionEl.textContent = `${underpayer} owes ${overpayer}`;
+        directionEl.textContent = t('dash.owes', { underpayer: underpayer, overpayer: overpayer });
     }
 }
 
@@ -886,17 +886,17 @@ document.getElementById('geminiKeyCancel')?.addEventListener('click', () => {
 
 // "Remove saved key" button
 document.getElementById('geminiKeyRemove')?.addEventListener('click', async () => {
-    if (!confirm('Remove your saved Gemini API key?')) return;
+    if (!confirm(t('gemini.confirmRemove'))) return;
     try {
         const response = await fetch('/api/user/gemini-key', { method: 'DELETE' });
         if (response.ok) {
             currentUser.hasGeminiApiKey = false;
             updateGeminiKeyUI();
         } else {
-            alert('Failed to remove API key.');
+            alert(t('gemini.removeFailed'));
         }
     } catch (error) {
-        alert('Failed to remove API key.');
+        alert(t('gemini.removeFailed'));
     }
 });
 
@@ -924,27 +924,27 @@ const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainm
 
 function generateCategorySelect(selectedTag, index) {
     const options = categoryOptions.map(cat =>
-        `<option value="${cat}"${cat === selectedTag ? ' selected' : ''}>${cat.charAt(0).toUpperCase() + cat.slice(1)}</option>`
+        `<option value="${cat}"${cat === selectedTag ? ' selected' : ''}>${t('cat.' + cat)}</option>`
     ).join('');
     return `<select class="preview-select category-select" data-index="${index}">${options}</select>`;
 }
 
 function generateTypeSelect(selectedType, index) {
     return `<select class="preview-select type-select" data-index="${index}">
-        <option value="expense"${selectedType === 'expense' ? ' selected' : ''}>Expense</option>
-        <option value="income"${selectedType === 'income' ? ' selected' : ''}>Income</option>
+        <option value="expense"${selectedType === 'expense' ? ' selected' : ''}>${t('type.expense')}</option>
+        <option value="income"${selectedType === 'income' ? ' selected' : ''}>${t('type.income')}</option>
     </select>`;
 }
 
 processBulkPdfBtn.addEventListener('click', async () => {
     const pdfFile = bulkPdfUploadInput.files[0];
     if (!pdfFile) {
-        alert('Please select a PDF file.');
+        alert(t('bulk.alertSelectPdf'));
         return;
     }
 
     if (pdfFile.size > 10 * 1024 * 1024) {
-        alert('File is too large. Maximum size is 10MB.');
+        alert(t('bulk.alertTooLarge'));
         return;
     }
 
@@ -956,14 +956,14 @@ processBulkPdfBtn.addEventListener('click', async () => {
 
     // If overriding stored key, require a manual key
     if (geminiKeyOverrideMode && !manualKey) {
-        alert('Please enter a Gemini API key or click Cancel to use your saved key.');
+        alert(t('bulk.alertEnterKeyOrCancel'));
         if (manualKeyInput) manualKeyInput.focus();
         return;
     }
 
     // If no stored key and no manual key entered, prompt user
     if (!hasStoredKey && !manualKey) {
-        alert('Please enter a Gemini API key to process PDFs.');
+        alert(t('bulk.alertEnterKey'));
         if (manualKeyInput) manualKeyInput.focus();
         return;
     }
@@ -987,7 +987,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
     // Show loading indicator
     loadingIndicator.style.display = 'block';
     processBulkPdfBtn.disabled = true;
-    processBulkPdfBtn.textContent = 'Processing...';
+    processBulkPdfBtn.textContent = t('bulk.processing');
 
     const formData = new FormData();
     formData.append('pdfFile', pdfFile);
@@ -1016,16 +1016,16 @@ processBulkPdfBtn.addEventListener('click', async () => {
                 const errorData = await response.json();
                 errorMsg = errorData.message || errorMsg;
             } catch { /* ignore parse errors */ }
-            alert(`Error processing PDF: ${errorMsg}`);
+            alert(t('bulk.errorProcess', { message: errorMsg }));
         }
     } catch (error) {
-        alert('Failed to process PDF. Check console for details.');
+        alert(t('bulk.errorFailed'));
         console.error(error);
     } finally {
         // Hide loading indicator and reset button
         loadingIndicator.style.display = 'none';
         processBulkPdfBtn.disabled = false;
-        processBulkPdfBtn.textContent = 'Upload and Process';
+        processBulkPdfBtn.textContent = t('bulk.uploadProcess');
     }
 });
 
@@ -1050,19 +1050,19 @@ function saveEntryFromEdit(index, row) {
 
     // Validate month format
     if (!isValidMonthFormat(month)) {
-        alert('Please enter a valid month in YYYY-MM format');
+        alert(t('bulk.alertValidMonth'));
         return false;
     }
 
     // Validate amount is a positive number
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-        alert('Please enter a valid positive amount');
+        alert(t('bulk.alertValidAmount'));
         return false;
     }
 
     // Validate description is not empty after trimming
     if (!description) {
-        alert('Please enter a description');
+        alert(t('bulk.alertEnterDesc'));
         return false;
     }
 
@@ -1123,8 +1123,8 @@ function renderBulkPreviewTable() {
                     <td>${escapedTag}</td>
                     ${coupleCellEdit}
                     <td>
-                        <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">Save</button>
-                        <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">Cancel</button>
+                        <button class="bulk-action-btn bulk-action-btn--save bulk-save-btn" data-index="${index}" aria-label="Save changes to entry: ${escapedDescription}">${t('common.save')}</button>
+                        <button class="bulk-action-btn bulk-action-btn--cancel bulk-cancel-btn" data-index="${index}" aria-label="Cancel editing entry: ${escapedDescription}">${t('common.cancel')}</button>
                     </td>
                 `;
             } else {
@@ -1137,8 +1137,8 @@ function renderBulkPreviewTable() {
                     <td>${generateCategorySelect(currentTag, index)}</td>
                     ${coupleCell}
                     <td>
-                        <button class="bulk-action-btn bulk-action-btn--edit bulk-edit-btn" data-index="${index}" aria-label="Edit entry: ${escapedDescription}">Edit</button>
-                        <button class="bulk-action-btn bulk-action-btn--delete bulk-delete-btn" data-index="${index}" aria-label="Delete entry: ${escapedDescription}">Delete</button>
+                        <button class="bulk-action-btn bulk-action-btn--edit bulk-edit-btn" data-index="${index}" aria-label="Edit entry: ${escapedDescription}">${t('common.edit')}</button>
+                        <button class="bulk-action-btn bulk-action-btn--delete bulk-delete-btn" data-index="${index}" aria-label="Delete entry: ${escapedDescription}">${t('common.delete')}</button>
                     </td>
                 `;
             }
@@ -1198,7 +1198,7 @@ function renderBulkPreviewTable() {
         document.querySelectorAll('.bulk-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const index = parseInt(e.target.dataset.index);
-                if (confirm('Delete this entry from the preview?')) {
+                if (confirm(t('bulk.confirmDelete'))) {
                     bulkExtractedEntries.splice(index, 1);
                     renderBulkPreviewTable();
                 }
@@ -1241,7 +1241,7 @@ function renderBulkPreviewTable() {
         confirmBulkEntriesBtn.style.display = 'inline-block';
     } else {
         const colspan = hasPartner ? 7 : 6;
-        bulkExtractedEntriesTbody.innerHTML = `<tr><td colspan="${colspan}">No valid entries found in PDF.</td></tr>`;
+        bulkExtractedEntriesTbody.innerHTML = `<tr><td colspan="${colspan}">${t('bulk.noEntries')}</td></tr>`;
         confirmBulkEntriesBtn.style.display = 'none';
     }
 }
@@ -1281,11 +1281,11 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
 
             // Close modal and show success message
             bulkUploadModal.style.display = 'none';
-            alert(`Successfully added ${savedEntries.length} entries to your database!`);
+            alert(t('bulk.successAdd', { count: savedEntries.length }));
 
         } catch (error) {
             console.error('Error saving bulk entries:', error);
-            alert(`Error saving entries: ${error.message}. Some entries may not have been saved.`);
+            alert(t('bulk.errorSave', { message: error.message }));
         }
     }
 });
@@ -1348,7 +1348,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const submitBtn = newForm.querySelector('button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Saving...';
+            submitBtn.textContent = t('modal.saving');
         }
 
         // --- Manual Entry Logic ---
@@ -1358,16 +1358,16 @@ document.addEventListener('DOMContentLoaded', () => {
         amountValue = amountValue.replace(/(\.(?=\d{3}(\.|$)))/g, '');
         const parsedAmount = parseFloat(amountValue);
         if (isNaN(parsedAmount) || amountValue.trim() === '') {
-            alert('Please enter a valid number for Amount (use a dot as decimal separator).');
+            alert(t('entry.alertValidAmount'));
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Add Entry';
+                submitBtn.textContent = t('modal.addEntryBtn');
             }
             return;
         }
 
         const tagsInput = document.getElementById('tags').value;
-        const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean) : [];
         const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
         const isCoupleExpense = isCoupleExpenseCheckbox ? isCoupleExpenseCheckbox.checked : false;
 
@@ -1380,10 +1380,10 @@ document.addEventListener('DOMContentLoaded', () => {
             isCoupleExpense: isCoupleExpense
         };
         if (!entry.month || !entry.type || !entry.amount) {
-            alert('Please fill in Month, Type, and Amount for manual entry.');
+            alert(t('entry.alertFillFields'));
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Add Entry';
+                submitBtn.textContent = t('modal.addEntryBtn');
             }
             return;
         }
@@ -1401,15 +1401,15 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 const errorData = await response.text();
                 console.error('Error adding entry:', response.statusText, errorData);
-                alert(`Error adding entry: ${response.statusText}.`);
+                alert(t('entry.alertAddError', { message: response.statusText }));
             }
         } catch (error) {
             console.error('Fetch error:', error);
-            alert('Failed to add entry. Check console for details.');
+            alert(t('entry.alertAddFailed'));
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Add Entry';
+                submitBtn.textContent = t('modal.addEntryBtn');
             }
         }
     });
@@ -1422,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Delete button clicked but no valid ID found.');
                 return;
             }
-            const confirmation = confirm('Are you sure you want to delete this entry?');
+            const confirmation = confirm(t('entry.confirmDelete'));
             if (confirmation) {
                 try {
                     const response = await fetch(`/api/entries/${id}`, {
@@ -1436,11 +1436,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         filterEntries();
                     } else {
                         console.error('Error deleting entry on server:', response.statusText);
-                        alert('Failed to delete entry on server.');
+                        alert(t('entry.alertDeleteFailed'));
                     }
                 } catch (error) {
                     console.error('Error deleting entry:', error);
-                     alert('Failed to delete entry. Check console for details.');
+                     alert(t('entry.alertDeleteError'));
                 }
             }
         }
@@ -1470,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const id = parseInt(document.getElementById('editEntryId').value);
         const tagsInput = document.getElementById('editTags').value;
-        const tags = tagsInput ? tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+        const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean) : [];
         const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
         const isCoupleExpense = editIsCoupleExpense ? editIsCoupleExpense.checked : false;
 
@@ -1495,11 +1495,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 await loadEntries();
                 document.getElementById('editEntryModal').style.display = 'none';
             } else {
-                alert('Failed to update entry.');
+                alert(t('entry.alertUpdateFailed'));
             }
         } catch (error) {
             console.error('Error updating entry:', error);
-            alert('Failed to update entry. Check console for details.');
+            alert(t('entry.alertUpdateError'));
         }
     });
 
@@ -1574,14 +1574,318 @@ document.addEventListener('DOMContentLoaded', () => {
             await fetch('/api/logout', { method: 'POST', credentials: 'include' });
             window.location.href = '/login.html';
         } catch (error) {
-            alert('Logout failed.');
+            alert(t('logout.failed'));
         }
     });
+
+    document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
 
     document.getElementById('monthFilterStart').addEventListener('input', filterEntries);
     document.getElementById('monthFilterEnd').addEventListener('input', filterEntries);
     document.getElementById('typeFilter').addEventListener('change', filterEntries);
     document.getElementById('categoryFilter').addEventListener('change', filterEntries);
+
+    // ============ SETTINGS MODAL ============
+
+    async function openSettingsModal() {
+        // Fetch email and 2FA status in parallel
+        let emailData = { hasEmail: false, maskedEmail: null };
+        let twoFAData = { enabled: false, backupCodesRemaining: 0 };
+
+        try {
+            const [emailRes, twoFARes] = await Promise.all([
+                fetch('/api/user/email', { credentials: 'include' }),
+                fetch('/api/user/2fa/status', { credentials: 'include' })
+            ]);
+            if (emailRes.ok) emailData = await emailRes.json();
+            if (twoFARes.ok) twoFAData = await twoFARes.json();
+        } catch (e) {
+            // Continue with defaults
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.display = 'block';
+
+        const emailInfo = emailData.hasEmail
+            ? `<span style="color: var(--color-text-primary);">${escapeHtml(emailData.maskedEmail)}</span>`
+            : `<span style="color: var(--color-text-muted);">${t('settings.noEmail')}</span>`;
+
+        const emailBtnLabel = emailData.hasEmail ? t('settings.changeEmail') : t('settings.addEmail');
+
+        const twoFAStatus = twoFAData.enabled
+            ? `<span style="color: var(--color-success);">${t('settings.twoFAEnabled')}</span>`
+            : `<span style="color: var(--color-text-muted);">${t('settings.twoFADisabled')}</span>`;
+
+        const backupInfo = twoFAData.enabled
+            ? `<small style="color: var(--color-text-muted); display: block; margin-top: 0.25rem;">${t('settings.backupCodesRemaining', { count: twoFAData.backupCodesRemaining })}</small>`
+            : '';
+
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 480px;">
+                <span class="close" id="closeSettingsModal">&times;</span>
+                <h2>${t('settings.title')}</h2>
+
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.emailSection')}</h3>
+                    <div id="settingsEmailDisplay">
+                        <p style="margin: 0 0 0.75rem 0;">${t('settings.currentEmail')}: ${emailInfo}</p>
+                        <button type="button" id="settingsEmailBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${emailBtnLabel}</button>
+                    </div>
+                    <div id="settingsEmailForm" style="display: none;">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="email" id="settingsEmailInput" placeholder="your@email.com" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.emailHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsEmailSave" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsEmailCancel" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.twoFASection')}</h3>
+                    <div id="settings2FAStatus">
+                        <p style="margin: 0 0 0.75rem 0;">${twoFAStatus}${backupInfo}</p>
+                        ${twoFAData.enabled
+                            ? `<button type="button" id="settings2FADisableBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.disable2FA')}</button>`
+                            : `<button type="button" id="settings2FAEnableBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.enable2FA')}</button>`
+                        }
+                    </div>
+                    <div id="settings2FASetup" style="display: none;"></div>
+                    <div id="settings2FADisable" style="display: none;"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const closeBtn = overlay.querySelector('#closeSettingsModal');
+        function cleanup() { document.body.removeChild(overlay); }
+        closeBtn.addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+        wireSettingsEmail(overlay, emailData);
+        wireSettings2FA(overlay, twoFAData, cleanup);
+    }
+
+    function wireSettingsEmail(overlay, emailData) {
+        const emailBtn = overlay.querySelector('#settingsEmailBtn');
+        const emailDisplay = overlay.querySelector('#settingsEmailDisplay');
+        const emailForm = overlay.querySelector('#settingsEmailForm');
+        const emailInput = overlay.querySelector('#settingsEmailInput');
+        const saveBtn = overlay.querySelector('#settingsEmailSave');
+        const cancelBtn = overlay.querySelector('#settingsEmailCancel');
+
+        if (!emailBtn) return;
+
+        emailBtn.addEventListener('click', () => {
+            emailDisplay.style.display = 'none';
+            emailForm.style.display = '';
+            emailInput.value = '';
+            emailInput.focus();
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            emailForm.style.display = 'none';
+            emailDisplay.style.display = '';
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            const value = emailInput.value.trim();
+            if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                alert(t('settings.enterValidEmail'));
+                return;
+            }
+            try {
+                const response = await fetch('/api/user/email', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: value || '' }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    // Refresh modal
+                    document.body.removeChild(overlay);
+                    openSettingsModal();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || t('error.generic'));
+                }
+            } catch (e) {
+                alert(t('error.generic'));
+            }
+        });
+
+        emailInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveBtn.click();
+            if (e.key === 'Escape') cancelBtn.click();
+        });
+    }
+
+    function wireSettings2FA(overlay, twoFAData, cleanupModal) {
+        if (twoFAData.enabled) {
+            // Disable flow
+            const disableBtn = overlay.querySelector('#settings2FADisableBtn');
+            const disableDiv = overlay.querySelector('#settings2FADisable');
+            if (!disableBtn) return;
+
+            disableBtn.addEventListener('click', () => {
+                disableDiv.innerHTML = `
+                    <p style="margin: 0.75rem 0; color: var(--color-text-secondary);">${t('settings.disable2FAConfirm')}</p>
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <input type="text" id="settings2FADisableCode" maxlength="6" placeholder="000000" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                    </div>
+                    <button type="button" id="settings2FAConfirmDisable" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.confirmDisable')}</button>
+                `;
+                disableDiv.style.display = '';
+                disableBtn.style.display = 'none';
+                disableDiv.querySelector('#settings2FADisableCode').focus();
+
+                disableDiv.querySelector('#settings2FAConfirmDisable').addEventListener('click', async () => {
+                    const code = disableDiv.querySelector('#settings2FADisableCode').value.trim();
+                    if (!code) return;
+                    try {
+                        const response = await fetch('/api/user/2fa/disable', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ totpCode: code }),
+                            credentials: 'include'
+                        });
+                        if (response.ok) {
+                            cleanupModal();
+                            openSettingsModal();
+                        } else {
+                            const data = await response.json();
+                            alert(data.message || t('error.generic'));
+                        }
+                    } catch (e) {
+                        alert(t('error.generic'));
+                    }
+                });
+
+                disableDiv.querySelector('#settings2FADisableCode').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') disableDiv.querySelector('#settings2FAConfirmDisable').click();
+                });
+            });
+        } else {
+            // Enable flow
+            const enableBtn = overlay.querySelector('#settings2FAEnableBtn');
+            const setupDiv = overlay.querySelector('#settings2FASetup');
+            if (!enableBtn) return;
+
+            enableBtn.addEventListener('click', async () => {
+                enableBtn.disabled = true;
+                enableBtn.textContent = t('common.loading');
+
+                try {
+                    const response = await fetch('/api/user/2fa/setup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        alert(t('error.generic'));
+                        enableBtn.disabled = false;
+                        enableBtn.textContent = t('settings.enable2FA');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    enableBtn.style.display = 'none';
+
+                    setupDiv.innerHTML = `
+                        <div style="text-align: center; margin-top: 0.75rem;">
+                            <p style="margin-bottom: 0.75rem; color: var(--color-text-secondary);">${t('settings.scanQR')}</p>
+                            <img src="${data.qrCode}" alt="QR Code" style="max-width: 200px; border-radius: 8px; margin-bottom: 0.75rem;">
+                            <details style="margin-bottom: 1rem; text-align: left;">
+                                <summary style="cursor: pointer; color: var(--color-text-muted); font-size: 0.85rem;">${t('settings.manualEntry')}</summary>
+                                <code style="display: block; margin-top: 0.5rem; padding: 0.5rem; background: var(--color-bg-base); border-radius: 6px; word-break: break-all; font-size: 0.8rem;">${escapeHtml(data.secret)}</code>
+                            </details>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label style="display: block; margin-bottom: 0.4rem; color: var(--color-text-secondary); font-size: 0.8rem;">${t('settings.enterCode')}</label>
+                            <input type="text" id="settings2FASetupCode" maxlength="6" placeholder="000000" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                        </div>
+                        <button type="button" id="settings2FAVerifyBtn" style="width: 100%; padding: 0.6rem;">${t('settings.verifyAndEnable')}</button>
+                        <div id="settings2FABackupCodes" style="display: none;"></div>
+                    `;
+                    setupDiv.style.display = '';
+
+                    const codeInput = setupDiv.querySelector('#settings2FASetupCode');
+                    codeInput.focus();
+
+                    const verifyBtn = setupDiv.querySelector('#settings2FAVerifyBtn');
+                    const backupDiv = setupDiv.querySelector('#settings2FABackupCodes');
+
+                    async function verifySetup() {
+                        const code = codeInput.value.trim();
+                        if (!code || code.length < 6) {
+                            alert(t('settings.enterValidCode'));
+                            return;
+                        }
+
+                        verifyBtn.disabled = true;
+                        try {
+                            const vRes = await fetch('/api/user/2fa/verify', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ totpCode: code }),
+                                credentials: 'include'
+                            });
+
+                            if (vRes.ok) {
+                                const vData = await vRes.json();
+                                // Hide setup form, show backup codes
+                                codeInput.style.display = 'none';
+                                verifyBtn.style.display = 'none';
+                                setupDiv.querySelector('details')?.remove();
+                                setupDiv.querySelector('img')?.remove();
+                                setupDiv.querySelector('label')?.remove();
+                                const scanP = setupDiv.querySelector('p');
+                                if (scanP) scanP.textContent = t('settings.twoFASuccess');
+
+                                backupDiv.innerHTML = `
+                                    <div style="margin-top: 1rem; padding: 1rem; background: var(--color-bg-base); border-radius: 8px; border: 1px solid var(--color-border);">
+                                        <p style="margin: 0 0 0.5rem; font-weight: 600; color: var(--color-accent-primary);">${t('settings.saveBackupCodes')}</p>
+                                        <p style="margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--color-text-secondary);">${t('settings.backupCodesWarning')}</p>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; font-family: monospace; font-size: 0.95rem;">
+                                            ${vData.backupCodes.map(c => `<code style="padding: 0.3rem 0.5rem; background: var(--color-bg-elevated); border-radius: 4px; text-align: center;">${c}</code>`).join('')}
+                                        </div>
+                                    </div>
+                                    <button type="button" id="settings2FADoneBtn" style="width: 100%; margin-top: 1rem; padding: 0.6rem;">${t('settings.done')}</button>
+                                `;
+                                backupDiv.style.display = '';
+
+                                backupDiv.querySelector('#settings2FADoneBtn').addEventListener('click', () => {
+                                    cleanupModal();
+                                    openSettingsModal();
+                                });
+                            } else {
+                                const vErrData = await vRes.json();
+                                alert(vErrData.message || t('settings.enterValidCode'));
+                                verifyBtn.disabled = false;
+                            }
+                        } catch (e) {
+                            alert(t('error.generic'));
+                            verifyBtn.disabled = false;
+                        }
+                    }
+
+                    verifyBtn.addEventListener('click', verifySetup);
+                    codeInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') verifySetup();
+                    });
+
+                } catch (e) {
+                    alert(t('error.generic'));
+                    enableBtn.disabled = false;
+                    enableBtn.textContent = t('settings.enable2FA');
+                }
+            });
+        }
+    }
 
     // ============ ADMIN PANEL FUNCTIONALITY ============
 
@@ -1625,7 +1929,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'block';
             if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'block';
             if (partnerInfo && currentUser.partnerUsername) {
-                partnerInfo.textContent = `Partner: ${currentUser.partnerUsername}`;
+                partnerInfo.textContent = t('common.partner') + ': ' + currentUser.partnerUsername;
             }
         } else {
             viewModeContainer.style.display = 'none';
@@ -1694,32 +1998,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<span class="partner-badge">${user.partnerUsername}</span>`
                 : '-';
             const emailDisplay = user.hasEmail
-                ? '<span class="email-check" style="color: var(--color-success); cursor: help;">&#10003;</span>'
+                ? '<span style="color: var(--color-success);">&#10003;</span>'
+                : '<span style="color: var(--color-text-muted);">-</span>';
+            const twoFADisplay = user.has2FA
+                ? '<span style="color: var(--color-success);">&#10003;</span>'
                 : '<span style="color: var(--color-text-muted);">-</span>';
             row.innerHTML = `
                 <td>${user.id}</td>
                 <td>${user.username}</td>
-                <td><span class="role-badge role-${user.role}">${user.role}</span></td>
-                <td>${emailDisplay} <button class="edit-btn" onclick="showEmailModal(${user.id})" style="padding: 0.2rem 0.5rem; font-size: 0.65rem;">Set</button></td>
+                <td><span class="role-badge role-${user.role}">${user.role === 'admin' ? t('admin.roleAdmin') : t('admin.roleUser')}</span></td>
+                <td>${emailDisplay}</td>
+                <td>${twoFADisplay}</td>
                 <td>${partnerDisplay}</td>
                 <td><span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">
-                    ${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                    ${user.isActive ? t('admin.active') : t('admin.inactive')}</span></td>
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td>${user.entriesCount || 0}</td>
                 <td class="user-actions">
-                    <button class="edit-btn" onclick="resetUserPassword(${user.id})">Reset Password</button>
-                    <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? 'Deactivate' : 'Activate'}</button>
+                    <button class="edit-btn" onclick="resetUserPassword(${user.id})">${t('admin.resetPassword')}</button>
+                    <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
                     ${user.id !== currentUser.id ?
-                        `<button class="delete-btn" onclick="deleteUser(${user.id})">Delete</button>` : ''}
+                        `<button class="delete-btn" onclick="deleteUser(${user.id})">${t('common.delete')}</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);
-
-            // Set title via DOM to avoid quote-escaping XSS in attribute
-            if (user.hasEmail && user.email) {
-                const checkSpan = row.querySelector('.email-check');
-                if (checkSpan) checkSpan.title = user.email;
-            }
         });
     }
 
@@ -1736,10 +2038,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadUsersForAdmin();
             } else {
                 const data = await response.json();
-                alert(data.message || 'Failed to update user');
+                alert(data.message || t('error.updateUser'));
             }
         } catch (error) {
-            alert('Error updating user');
+            alert(t('error.updateUser'));
         }
     };
 
@@ -1752,15 +2054,15 @@ document.addEventListener('DOMContentLoaded', () => {
             overlay.innerHTML = `
                 <div class="modal-content" style="max-width: 400px;">
                     <span class="close" id="closePasswordModal">&times;</span>
-                    <h2>Reset Password</h2>
+                    <h2>${t('admin.resetPassword')}</h2>
                     <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
-                        Enter new password for <strong>${username}</strong>
+                        ${t('admin.enterNewPassword')} <strong>${escapeHtml(username)}</strong>
                     </p>
                     <div class="form-group">
-                        <label for="resetPasswordInput">New Password</label>
-                        <input type="password" id="resetPasswordInput" placeholder="Minimum 8 characters" required>
+                        <label for="resetPasswordInput">${t('admin.newPassword')}</label>
+                        <input type="password" id="resetPasswordInput" placeholder="${t('admin.minChars')}" required>
                     </div>
-                    <button type="button" id="confirmPasswordReset" style="width: 100%; margin-top: 1rem;">Reset Password</button>
+                    <button type="button" id="confirmPasswordReset" style="width: 100%; margin-top: 1rem;">${t('admin.resetPasswordBtn')}</button>
                 </div>
             `;
             document.body.appendChild(overlay);
@@ -1798,95 +2100,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Show email modal for setting user email
-    function showEmailModal(userId) {
-        const user = adminUsersCache[userId];
-        if (!user) {
-            alert('User not found');
-            return;
-        }
-
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.className = 'modal';
-            overlay.style.display = 'block';
-            overlay.innerHTML = `
-                <div class="modal-content" style="max-width: 400px;">
-                    <span class="close" id="closeEmailModal">&times;</span>
-                    <h2>Set Email</h2>
-                    <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
-                        Set email for <strong>${escapeHtml(user.username)}</strong>
-                    </p>
-                    <div class="form-group">
-                        <label for="emailInput">Email Address</label>
-                        <input type="email" id="emailInput" placeholder="user@example.com">
-                    </div>
-                    <small style="color: var(--color-text-muted); display: block; margin-bottom: 1rem;">
-                        Used for self-service password resets. Leave empty to remove.
-                    </small>
-                    <button type="button" id="confirmEmailSet" style="width: 100%; margin-top: 0.5rem;">Save Email</button>
-                </div>
-            `;
-            document.body.appendChild(overlay);
-
-            const input = overlay.querySelector('#emailInput');
-            const confirmBtn = overlay.querySelector('#confirmEmailSet');
-            const closeBtn = overlay.querySelector('#closeEmailModal');
-
-            // Set value via DOM to avoid quote-escaping XSS in attribute
-            input.value = user.email || '';
-
-            function cleanup() {
-                document.body.removeChild(overlay);
-            }
-
-            async function onConfirm() {
-                const value = input.value.trim();
-                cleanup();
-                try {
-                    const response = await fetch(`/api/admin/users/${userId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: value || '' })
-                    });
-                    if (response.ok) {
-                        alert(value ? `Email set for "${user.username}"` : `Email removed for "${user.username}"`);
-                        loadUsersForAdmin();
-                    } else {
-                        const data = await response.json();
-                        alert(data.message || 'Failed to set email');
-                    }
-                } catch (error) {
-                    alert('Error setting email');
-                }
-                resolve();
-            }
-
-            function onCancel() {
-                cleanup();
-                resolve();
-            }
-
-            closeBtn.addEventListener('click', onCancel);
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) onCancel();
-            });
-            confirmBtn.addEventListener('click', onConfirm);
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') onConfirm();
-                if (e.key === 'Escape') onCancel();
-            });
-
-            input.focus();
-        });
-    }
-    window.showEmailModal = showEmailModal;
-
     // Reset user password (admin only)
     window.resetUserPassword = async function(userId) {
         const user = adminUsersCache[userId];
         if (!user) {
-            alert('User not found');
+            alert(t('error.userNotFound'));
             return;
         }
 
@@ -1897,7 +2115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (newPassword.length < 8) {
-            alert('Password must be at least 8 characters');
+            alert(t('admin.passwordMinLength'));
             return;
         }
 
@@ -1909,19 +2127,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert(`Password reset successfully for "${user.username}"`);
+                alert(t('admin.passwordReset', { username: user.username }));
             } else {
                 const data = await response.json();
-                alert(data.message || 'Failed to reset password');
+                alert(data.message || t('error.resetPassword'));
             }
         } catch (error) {
-            alert('Error resetting password');
+            alert(t('error.resetPassword'));
         }
     };
 
     // Delete user
     window.deleteUser = async function(userId) {
-        if (!confirm('Are you sure you want to delete this user? All their entries will also be deleted.')) {
+        if (!confirm(t('admin.confirmDeleteUser'))) {
             return;
         }
 
@@ -1931,14 +2149,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert('User deleted successfully');
+                alert(t('admin.userDeleted'));
                 loadUsersForAdmin();
             } else {
                 const data = await response.json();
-                alert(data.message || 'Failed to delete user');
+                alert(data.message || t('error.deleteUser'));
             }
         } catch (error) {
-            alert('Error deleting user');
+            alert(t('error.deleteUser'));
         }
     };
 
@@ -1958,15 +2176,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert('User created successfully');
+                alert(t('admin.userCreated'));
                 loadUsersForAdmin();
                 e.target.reset();
             } else {
                 const data = await response.json();
-                alert(data.message || 'Failed to create user');
+                alert(data.message || t('error.createUser'));
             }
         } catch (error) {
-            alert('Error creating user');
+            alert(t('error.createUser'));
         }
     });
 
@@ -2016,7 +2234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
 
         if (couples.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No couples linked yet</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">${t('admin.noCouples')}</td></tr>`;
             return;
         }
 
@@ -2027,7 +2245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${couple.user2.username}</td>
                 <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
                 <td>
-                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">Unlink</button>
+                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">${t('admin.unlink')}</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -2048,7 +2266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!select1 || !select2) return;
 
                 [select1, select2].forEach(select => {
-                    select.innerHTML = '<option value="">Select user...</option>';
+                    select.innerHTML = `<option value="">${t('admin.selectUser')}</option>`;
                     unlinkedUsers.forEach(user => {
                         select.innerHTML += `<option value="${user.id}">${user.username}</option>`;
                     });
@@ -2069,12 +2287,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const userId2 = parseInt(document.getElementById('coupleUser2').value);
 
             if (!userId1 || !userId2) {
-                alert('Please select both users');
+                alert(t('admin.selectBothUsers'));
                 return;
             }
 
             if (userId1 === userId2) {
-                alert('Please select two different users');
+                alert(t('admin.selectDifferent'));
                 return;
             }
 
@@ -2086,24 +2304,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (response.ok) {
-                    alert('Users linked as couple successfully');
+                    alert(t('admin.coupleLinked'));
                     loadCouplesForAdmin();
                     populateCoupleDropdowns();
                     loadUsersForAdmin();
                     e.target.reset();
                 } else {
                     const data = await response.json();
-                    alert(data.message || 'Failed to link users');
+                    alert(data.message || t('error.linkCouple'));
                 }
             } catch (error) {
-                alert('Error linking users');
+                alert(t('error.linkCouple'));
             }
         });
     }
 
     // Unlink couple
     window.unlinkCouple = async function(userId) {
-        if (!confirm('Are you sure you want to unlink this couple?')) return;
+        if (!confirm(t('admin.confirmUnlink'))) return;
 
         try {
             const response = await fetch('/api/admin/couples/unlink', {
@@ -2113,16 +2331,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                alert('Couple unlinked successfully');
+                alert(t('admin.coupleUnlinked'));
                 loadCouplesForAdmin();
                 populateCoupleDropdowns();
                 loadUsersForAdmin();
             } else {
                 const data = await response.json();
-                alert(data.message || 'Failed to unlink couple');
+                alert(data.message || t('error.unlinkCouple'));
             }
         } catch (error) {
-            alert('Error unlinking couple');
+            alert(t('error.unlinkCouple'));
         }
     };
 
@@ -2147,7 +2365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
 
         if (codes.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary);">No invite codes generated yet</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-secondary);">${t('admin.noInviteCodes')}</td></tr>`;
             return;
         }
 
@@ -2176,10 +2394,10 @@ document.addEventListener('DOMContentLoaded', () => {
             statusSpan.classList.add('code-badge');
             if (code.isUsed) {
                 statusSpan.classList.add('code-used');
-                statusSpan.textContent = 'Used';
+                statusSpan.textContent = t('admin.used');
             } else {
                 statusSpan.classList.add('code-active');
-                statusSpan.textContent = 'Active';
+                statusSpan.textContent = t('admin.active');
             }
             statusCell.appendChild(statusSpan);
             row.appendChild(statusCell);
@@ -2194,7 +2412,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!code.isUsed) {
                 const deleteButton = document.createElement('button');
                 deleteButton.classList.add('delete-btn', 'invite-code-delete-btn');
-                deleteButton.textContent = 'Delete';
+                deleteButton.textContent = t('common.delete');
                 deleteButton.dataset.code = code.code;
                 deleteCell.appendChild(deleteButton);
             }
@@ -2206,7 +2424,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.invite-code-delete-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const codeVal = e.target.dataset.code;
-                if (!confirm(`Delete invite code ${codeVal}?`)) return;
+                if (!confirm(t('admin.confirmDeleteCode', { code: codeVal }))) return;
 
                 try {
                     const response = await fetch(`/api/admin/invite-codes/${codeVal}`, {
@@ -2216,10 +2434,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         loadInviteCodesForAdmin();
                     } else {
                         const data = await response.json();
-                        alert(data.message || 'Failed to delete invite code');
+                        alert(data.message || t('error.deleteCode'));
                     }
                 } catch (error) {
-                    alert('Error deleting invite code');
+                    alert(t('error.deleteCode'));
                 }
             });
         });
@@ -2242,10 +2460,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadInviteCodesForAdmin();
                 } else {
                     const data = await response.json();
-                    alert(data.message || 'Failed to generate invite code');
+                    alert(data.message || t('error.generateCode'));
                 }
             } catch (error) {
-                alert('Error generating invite code');
+                alert(t('error.generateCode'));
             }
         });
     }
