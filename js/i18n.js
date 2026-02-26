@@ -349,6 +349,17 @@ const translations = {
     'forgot.errorPasswordMatch': 'Passwords do not match.',
     'forgot.errorGeneric': 'An error occurred. Please try again.',
     'forgot.errorResetFailed': 'Failed to reset password.',
+
+    // ── AI Chat ──
+    'chat.title': 'AI Financial Advisor',
+    'chat.placeholder': 'Ask about your finances...',
+    'chat.send': 'Send',
+    'chat.close': 'Close',
+    'chat.welcome': 'Hello! I\'m your AI financial advisor. I can analyze your income, expenses, and spending patterns to help you make better financial decisions.',
+    'chat.welcomeExamples': 'For example:\n- "How much did I spend last month?"\n- "What are my biggest expenses?"\n- "Compare January vs February"',
+    'chat.errorNoKey': 'No AI API key configured. Please add your Gemini API key in Settings to use the chat advisor.',
+    'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
+    'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
   },
 
   pt: {
@@ -699,6 +710,17 @@ const translations = {
     'forgot.errorPasswordMatch': 'As senhas n\u00e3o coincidem.',
     'forgot.errorGeneric': 'Ocorreu um erro. Por favor, tente novamente.',
     'forgot.errorResetFailed': 'Falha ao redefinir a senha.',
+
+    // ── AI Chat ──
+    'chat.title': 'Consultor Financeiro IA',
+    'chat.placeholder': 'Pergunte sobre suas finanças...',
+    'chat.send': 'Enviar',
+    'chat.close': 'Fechar',
+    'chat.welcome': 'Olá! Sou seu consultor financeiro com IA. Posso analisar sua renda, despesas e padrões de gastos para ajudá-lo a tomar melhores decisões financeiras.',
+    'chat.welcomeExamples': 'Por exemplo:\n- "Quanto gastei no mês passado?"\n- "Quais são minhas maiores despesas?"\n- "Compare janeiro com fevereiro"',
+    'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione sua chave Gemini API nas Configurações para usar o consultor.',
+    'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
+    'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
   }
 };
 
