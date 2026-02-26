@@ -2359,7 +2359,7 @@ function toolEditEntry(userId, args) {
     const updated = entries[index];
     const result = {
         success: true,
-        message: 'Entry updated successfully. The user can undo this edit if needed.',
+        message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id}.`,
         entry: {
             id: updated.id,
             description: updated.description,
