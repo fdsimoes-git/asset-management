@@ -18,9 +18,11 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 ### Multi-User System
 - **Public Registration**: New users can create accounts
 - **Self-Service Password Reset**: Users reset their own password via email (one-time code, 15-min expiry)
+- **Two-Factor Authentication (2FA)**: Optional TOTP-based 2FA using authenticator apps (Google Authenticator, Duo, Authy) with backup codes
 - **Data Isolation**: Each user sees only their own entries
-- **Admin Panel**: Admins can create, activate/deactivate, and delete users; set user emails for password reset
+- **Admin Panel**: Admins can create, activate/deactivate, and delete users; view email/2FA status indicators
 - **Role-Based Access**: Admin and regular user roles
+- **User Settings**: Users manage their own email and 2FA via the Settings modal
 
 ### Couples/Partner Feature
 - **Partner Linking**: Admins can link two users as a couple
@@ -54,6 +56,11 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Category Distribution**: Horizontal bar chart showing expense breakdown by category
 - **Category Trends**: Stacked bar chart showing expense categories evolution per month
 - **Summary Statistics**: Total income, expenses, and net balance
+
+### Internationalization (i18n)
+- **Multilingual Support**: Full English and Portuguese translations across all pages
+- **Language Toggle**: Globe icon button (🌐) in the bottom-right corner of every page
+- **Persistent Preference**: Language selection saved in browser localStorage
 
 ### Network & Security
 - **Local DNS**: Access via `https://asset-manager.local` on your network
@@ -135,15 +142,14 @@ Users can reset their own password at `/forgot-password.html`:
 2. Receive a one-time code by email (8-char alphanumeric, expires in 15 minutes)
 3. Enter the code and choose a new password
 
-Requires SMTP to be configured and the admin to have set an email for the user.
+Requires SMTP to be configured and the user to have set an email in Settings.
 
 ### Admin User Management
 Admins can access the Admin Panel to:
 - Create new users with specified roles
-- Set user emails (for self-service password reset)
 - Activate/deactivate user accounts
 - Delete users (and their associated entries)
-- View user statistics
+- View user statistics, email status, and 2FA status
 
 ## Network Setup (Local DNS)
 
@@ -196,7 +202,9 @@ Available expense/income categories:
 - **Session Security**: HTTP-only, secure cookies (24-hour expiration)
 - **Data Encryption**: AES-256-CBC for stored data
 - **API Key Encryption**: Per-user Gemini keys double-encrypted (field-level + file-level AES-256-CBC)
+- **TOTP 2FA**: Time-based one-time passwords with encrypted secret storage and bcrypt-hashed backup codes
 - **Email Encryption**: User emails encrypted at rest with AES-256-CBC
+- **Email Privacy**: Admins see only email/2FA status indicators, not actual addresses
 - **Reset Code Security**: Single-use, 15-min expiry, one active per user, code-username binding verified
 - **Anti-Enumeration**: Generic responses on forgot-password; timing-safe (background processing)
 - **Input Validation**: Server-side validation for all inputs
@@ -208,7 +216,7 @@ Available expense/income categories:
 - **Users**: `data/users.json` (encrypted)
 - **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, email? }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, email?, totpSecret?, totpEnabled, backupCodes }`
 - **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
 
 ## Technical Details
@@ -217,8 +225,8 @@ Available expense/income categories:
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
 - **Database**: Encrypted JSON file storage
-- **AI Integration**: Google Gemini API (gemini-3-flash-preview)
-- **Security**: Helmet.js, bcrypt, express-session, custom AES encryption
+- **AI Integration**: Google Gemini API (gemini-3.1-pro-preview)
+- **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES encryption
 
 ### API Endpoints
 
@@ -231,8 +239,15 @@ Available expense/income categories:
 - `POST /api/reset-password` - Reset password with code
 
 #### User Settings (requires authentication)
+- `GET /api/user/email` - Get masked email status
+- `PUT /api/user/email` - Update email
+- `DELETE /api/user/email` - Remove email
 - `POST /api/user/gemini-key` - Save encrypted Gemini API key
 - `DELETE /api/user/gemini-key` - Remove saved Gemini API key
+- `GET /api/user/2fa/status` - Get 2FA status
+- `POST /api/user/2fa/setup` - Start 2FA setup (generates QR code)
+- `POST /api/user/2fa/verify` - Verify and enable 2FA
+- `POST /api/user/2fa/disable` - Disable 2FA
 
 #### Entries (requires authentication)
 - `GET /api/entries` - Retrieve user's entries
@@ -259,6 +274,7 @@ asset-management/
 │   └── entries.json     # Financial entries (encrypted)
 ├── js/
 │   ├── app.js           # Main application logic
+│   ├── i18n.js          # Internationalization (EN/PT translations)
 │   ├── login.js         # Login page logic
 │   ├── register.js      # Registration page logic
 │   └── forgot-password.js # Password reset page logic
