@@ -71,8 +71,8 @@
 
         // Bold: **text**
         s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic: *text*
-        s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        // Italic: *text* (negative lookbehind/lookahead to avoid matching inside bold tags)
+        s = s.replace(/(?<!\w)\*(?!\*)(.+?)(?<!\*)\*(?!\w)/g, '<em>$1</em>');
         // Inline code: `text`
         s = s.replace(/`(.+?)`/g, '<code>$1</code>');
 

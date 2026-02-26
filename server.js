@@ -2160,7 +2160,7 @@ function toolComparePeriods(userId, args) {
 
     const pctChange = (a, b) => {
         if (a === 0) return b === 0 ? '0%' : 'N/A';
-        return ((b - a) / Math.abs(a) * 100).toFixed(1) + '%';
+        return ((b - a) / a * 100).toFixed(1) + '%';
     };
 
     return {
