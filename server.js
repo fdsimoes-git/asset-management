@@ -578,10 +578,20 @@ migrateUsersForEmail();
 function migrateUsersForTOTP() {
     let migrated = false;
     users.forEach(user => {
+        let userUpdated = false;
         if (user.totpSecret === undefined) {
             user.totpSecret = null;
+            userUpdated = true;
+        }
+        if (user.totpEnabled === undefined) {
             user.totpEnabled = false;
+            userUpdated = true;
+        }
+        if (user.backupCodes === undefined) {
             user.backupCodes = [];
+            userUpdated = true;
+        }
+        if (userUpdated) {
             migrated = true;
         }
     });
@@ -888,7 +898,10 @@ app.post('/api/register', registerLimiter, async (req, res) => {
             role: 'user',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            isActive: true
+            isActive: true,
+            totpSecret: null,
+            totpEnabled: false,
+            backupCodes: []
         };
 
         users.push(newUser);
@@ -1213,6 +1226,10 @@ app.get('/api/user/2fa/status', requireAuth, (req, res) => {
 
 // Start 2FA setup - generate secret and QR code
 app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
+    if (req.user.totpEnabled) {
+        return res.status(400).json({ message: 'Two-factor authentication is already enabled. Disable it first before setting up again.' });
+    }
+
     const secret = otplib.generateSecret();
     const otpauth = otplib.generateURI({ label: req.user.username, issuer: 'AssetManager', secret });
 
@@ -1546,7 +1563,10 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
             role: userRole,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            isActive: true
+            isActive: true,
+            totpSecret: null,
+            totpEnabled: false,
+            backupCodes: []
         };
 
         users.push(newUser);

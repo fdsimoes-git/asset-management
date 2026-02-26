@@ -4,7 +4,7 @@ const translations = {
   en: {
     // ── Language toggle ──
     'lang.switch': 'PT',
-    'lang.switch.title': 'Mudar para Portugu\u00eas',
+    'lang.switch.title': 'Switch to Portuguese',
 
     // ── Common ──
     'common.appName': 'Asset Manager',
