@@ -1960,7 +1960,7 @@ const chatToolDeclarations = [
         parameters: {
             type: Type.OBJECT,
             properties: {
-                type: { type: Type.STRING, description: 'Filter by "income" or "expense". Defaults to "expense".' },
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
                 endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
             }
@@ -2012,7 +2012,7 @@ const chatToolDeclarations = [
             properties: {
                 keyword: { type: Type.STRING, description: 'Search keyword to match in entry descriptions (case-insensitive).' },
                 category: { type: Type.STRING, description: 'Filter by category tag.' },
-                type: { type: Type.STRING, description: 'Filter by "income" or "expense".' },
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
                 endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
                 limit: { type: Type.NUMBER, description: 'Max results to return. Default 20.' }
