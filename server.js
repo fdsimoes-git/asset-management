@@ -2366,14 +2366,16 @@ function toolEditEntry(userId, args) {
             lastEditSnapshots.delete(oldestKey);
         }
     }
-    lastEditSnapshots.set(snapshotKey, { ...entry });
-
     // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
     // Only the explicitly validated fields above can appear in `updates`.
     entries[index] = { ...entry, ...updates };
     saveEntries();
 
     const updated = entries[index];
+
+    // Store both pre-edit and post-edit snapshots so undo can verify
+    // the entry hasn't been modified via another route (e.g. the UI).
+    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...updated } });
     const result = {
         success: true,
         message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
@@ -2410,8 +2412,8 @@ function toolUndoLastEdit(userId, args) {
     }
 
     const snapshotKey = `${userId}:${entryId}`;
-    const snapshot = lastEditSnapshots.get(snapshotKey);
-    if (!snapshot) {
+    const snapshotData = lastEditSnapshots.get(snapshotKey);
+    if (!snapshotData) {
         return { error: 'No recent edit to undo for this entry. Only the most recent AI edit can be undone, and only once.' };
     }
 
@@ -2422,8 +2424,18 @@ function toolUndoLastEdit(userId, args) {
         return { error: 'Entry not found or does not belong to the current user.' };
     }
 
-    // Restore the snapshot
-    entries[index] = { ...snapshot };
+    // Verify the entry hasn't been modified since the AI edit (e.g. via the UI).
+    const current = entries[index];
+    const expected = snapshotData.after;
+    if (current.description !== expected.description || current.amount !== expected.amount
+        || current.type !== expected.type || current.month !== expected.month
+        || JSON.stringify(current.tags) !== JSON.stringify(expected.tags)) {
+        lastEditSnapshots.delete(snapshotKey);
+        return { error: 'This entry has been modified since the AI edit (possibly via the UI). Undo is no longer available to avoid overwriting those changes.' };
+    }
+
+    // Restore the pre-edit snapshot
+    entries[index] = { ...snapshotData.before };
     lastEditSnapshots.delete(snapshotKey);
     saveEntries();
 
