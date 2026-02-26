@@ -170,8 +170,8 @@
 
             const data = await res.json();
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
-            if (data.pendingEdit) {
-                renderConfirmationCard(data.pendingEdit);
+            if (data.pendingEdits && data.pendingEdits.length > 0) {
+                data.pendingEdits.forEach(pe => renderConfirmationCard(pe));
             }
         } catch (err) {
             hideLoading();
@@ -250,6 +250,8 @@
                 } else {
                     replaceCardWithMessage(card, t('chat.editConfirmed'), 'success');
                     chatMessages.push({ role: 'assistant', content: t('chat.editConfirmed') });
+                    // Refresh dashboard entries table so changes are visible immediately
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
                 }
             } catch (e) {
                 replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
@@ -262,7 +264,8 @@
             try {
                 await fetch('/api/ai/cancel-edit', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entryId: pendingEdit.entryId })
                 });
             } catch (e) { /* ignore */ }
             replaceCardWithMessage(card, t('chat.editCancelled'), 'info');

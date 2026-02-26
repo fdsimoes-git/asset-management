@@ -2054,7 +2054,7 @@ const chatToolDeclarations = [
 const lastEditSnapshots = new Map();
 const SNAPSHOT_MAX_SIZE = 1000;
 
-const pendingEdits = new Map(); // keyed by userId, one pending edit per user
+const pendingEdits = new Map(); // keyed by userId, array of pending edits
 const PENDING_EDIT_TTL_MS = 5 * 60 * 1000; // 5 min expiry
 
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
@@ -2068,8 +2068,8 @@ RULES:
 - Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
 - When showing data, use simple formatting with bold for emphasis.
 - If the user asks about something unrelated to finances, politely redirect them.
-- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry. Then call editEntry with the proposed changes. The system will automatically show a confirmation card to the user — do NOT ask them to confirm in chat. Simply describe the changes you are proposing.
-- After proposing an edit, briefly describe what you proposed. The user will confirm or cancel via buttons in the UI.
+- When the user asks to edit entries, ALWAYS use searchEntries first to find the correct entries. Then call editEntry for each entry with the proposed changes. You can call editEntry multiple times in a single turn for bulk edits. The system will automatically show confirmation cards to the user — do NOT ask them to confirm in chat. Simply describe the changes you are proposing.
+- After proposing edits, briefly describe what you proposed. The user will confirm or cancel each edit via buttons in the UI.
 - If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
@@ -2510,7 +2510,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         // Tool call loop (max 5 iterations)
         let currentContents = contents;
         let finalText = null;
-        let pendingEditData = null;
+        const pendingEditsList = [];
         const maxIterations = 5;
 
         for (let i = 0; i < maxIterations; i++) {
@@ -2568,17 +2568,24 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                             tags: validation.entry.tags || [],
                             isCoupleExpense: validation.entry.isCoupleExpense || false
                         };
-                        pendingEdits.set(req.user.id, {
+                        const editItem = {
                             entryId,
                             changes: validation.updates,
                             currentEntry,
                             createdAt: Date.now()
-                        });
-                        pendingEditData = {
+                        };
+                        // Accumulate pending edits per user (append, don't overwrite)
+                        const existing = pendingEdits.get(req.user.id) || [];
+                        // Replace if same entryId already pending, else append
+                        const idx = existing.findIndex(e => e.entryId === entryId);
+                        if (idx !== -1) existing[idx] = editItem;
+                        else existing.push(editItem);
+                        pendingEdits.set(req.user.id, existing);
+                        pendingEditsList.push({
                             entryId,
                             changes: validation.updates,
                             currentEntry
-                        };
+                        });
                         result = { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
                     }
                 } else {
@@ -2601,12 +2608,8 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
 
         const responsePayload = { reply: finalText };
-        if (pendingEditData) {
-            responsePayload.pendingEdit = {
-                entryId: pendingEditData.entryId,
-                changes: pendingEditData.changes,
-                currentEntry: pendingEditData.currentEntry
-            };
+        if (pendingEditsList.length > 0) {
+            responsePayload.pendingEdits = pendingEditsList;
         }
         res.json(responsePayload);
     } catch (error) {
@@ -2624,27 +2627,37 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
 // Confirm a pending AI edit via UI button
 app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
     const userId = req.user.id;
-    const pending = pendingEdits.get(userId);
+    const allPending = pendingEdits.get(userId);
 
-    if (!pending) {
+    if (!allPending || allPending.length === 0) {
         return res.status(404).json({ error: 'No pending edit found.' });
     }
 
-    // Check TTL
-    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
-        pendingEdits.delete(userId);
-        return res.status(410).json({ error: 'expired' });
+    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
+    if (requestedEntryId == null) {
+        return res.status(400).json({ error: 'entryId is required.' });
     }
 
-    // Optional strictness: validate entryId matches
-    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
-    if (requestedEntryId != null && requestedEntryId !== pending.entryId) {
-        return res.status(409).json({ error: 'Entry ID mismatch. A newer edit may have replaced this one.' });
+    const idx = allPending.findIndex(e => e.entryId === requestedEntryId);
+    if (idx === -1) {
+        return res.status(404).json({ error: 'No pending edit found for this entry.' });
+    }
+
+    const pending = allPending[idx];
+
+    // Check TTL
+    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
+        allPending.splice(idx, 1);
+        if (allPending.length === 0) pendingEdits.delete(userId);
+        return res.status(410).json({ error: 'expired' });
     }
 
     // Execute the edit via toolEditEntry with confirmed: true
     const result = toolEditEntry(userId, { entryId: pending.entryId, confirmed: true, ...pending.changes });
-    pendingEdits.delete(userId);
+
+    // Remove this specific pending edit
+    allPending.splice(idx, 1);
+    if (allPending.length === 0) pendingEdits.delete(userId);
 
     if (result.error) {
         return res.status(400).json({ error: result.error });
@@ -2655,7 +2668,24 @@ app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
 
 // Cancel a pending AI edit via UI button
 app.post('/api/ai/cancel-edit', requireAuth, (req, res) => {
-    pendingEdits.delete(req.user.id);
+    const userId = req.user.id;
+    const allPending = pendingEdits.get(userId);
+
+    if (!allPending || allPending.length === 0) {
+        return res.json({ success: true });
+    }
+
+    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
+    if (requestedEntryId != null) {
+        // Cancel specific edit
+        const idx = allPending.findIndex(e => e.entryId === requestedEntryId);
+        if (idx !== -1) allPending.splice(idx, 1);
+        if (allPending.length === 0) pendingEdits.delete(userId);
+    } else {
+        // Cancel all pending edits
+        pendingEdits.delete(userId);
+    }
+
     res.json({ success: true });
 });
 
