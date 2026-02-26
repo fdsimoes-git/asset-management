@@ -840,65 +840,16 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 let bulkExtractedEntries = [];
 
 // --- Gemini API Key UI Management ---
-let geminiKeyOverrideMode = false;
-
 function updateGeminiKeyUI() {
-    geminiKeyOverrideMode = false;
-    const storedDiv = document.getElementById('geminiKeyStored');
-    const inputDiv = document.getElementById('geminiKeyInput');
-    const noneDiv = document.getElementById('geminiKeyNone');
-    const cancelBtn = document.getElementById('geminiKeyCancel');
-
-    if (!storedDiv || !inputDiv || !noneDiv) return;
+    const statusDiv = document.getElementById('geminiKeyStatus');
+    if (!statusDiv) return;
 
     if (currentUser && currentUser.hasGeminiApiKey) {
-        storedDiv.style.display = 'block';
-        inputDiv.style.display = 'none';
-        noneDiv.style.display = 'none';
+        statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyStored')}</span>`;
     } else {
-        storedDiv.style.display = 'none';
-        inputDiv.style.display = 'block';
-        noneDiv.style.display = 'block';
+        statusDiv.innerHTML = `<span style="color: var(--color-text-muted);">${t('bulk.keyRequired')}</span>`;
     }
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    // Clear manual input when switching views
-    const keyInput = document.getElementById('geminiApiKeyInput');
-    if (keyInput) keyInput.value = '';
-    const saveCheckbox = document.getElementById('geminiKeySaveCheckbox');
-    if (saveCheckbox) saveCheckbox.checked = false;
 }
-
-// "Use different key" button
-document.getElementById('geminiKeyUseDifferent')?.addEventListener('click', () => {
-    geminiKeyOverrideMode = true;
-    document.getElementById('geminiKeyStored').style.display = 'none';
-    document.getElementById('geminiKeyInput').style.display = 'block';
-    document.getElementById('geminiKeyNone').style.display = 'none';
-    const cancelBtn = document.getElementById('geminiKeyCancel');
-    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
-    document.getElementById('geminiApiKeyInput')?.focus();
-});
-
-// "Cancel" button (return to stored key view)
-document.getElementById('geminiKeyCancel')?.addEventListener('click', () => {
-    updateGeminiKeyUI();
-});
-
-// "Remove saved key" button
-document.getElementById('geminiKeyRemove')?.addEventListener('click', async () => {
-    if (!confirm(t('gemini.confirmRemove'))) return;
-    try {
-        const response = await fetch('/api/user/gemini-key', { method: 'DELETE' });
-        if (response.ok) {
-            currentUser.hasGeminiApiKey = false;
-            updateGeminiKeyUI();
-        } else {
-            alert(t('gemini.removeFailed'));
-        }
-    } catch (error) {
-        alert(t('gemini.removeFailed'));
-    }
-});
 
 openBulkUploadModalBtn.addEventListener('click', () => {
     bulkUploadModal.style.display = 'block';
@@ -948,40 +899,10 @@ processBulkPdfBtn.addEventListener('click', async () => {
         return;
     }
 
-    // Read manual API key
-    const manualKeyInput = document.getElementById('geminiApiKeyInput');
-    const manualKey = manualKeyInput ? manualKeyInput.value.trim() : '';
-    const saveCheckbox = document.getElementById('geminiKeySaveCheckbox');
-    const hasStoredKey = currentUser && currentUser.hasGeminiApiKey;
-
-    // If overriding stored key, require a manual key
-    if (geminiKeyOverrideMode && !manualKey) {
-        alert(t('bulk.alertEnterKeyOrCancel'));
-        if (manualKeyInput) manualKeyInput.focus();
-        return;
-    }
-
-    // If no stored key and no manual key entered, prompt user
-    if (!hasStoredKey && !manualKey) {
+    // Validate that a Gemini API key is configured
+    if (!currentUser || !currentUser.hasGeminiApiKey) {
         alert(t('bulk.alertEnterKey'));
-        if (manualKeyInput) manualKeyInput.focus();
         return;
-    }
-
-    // If "Save" checkbox checked and manual key provided, save it first
-    if (saveCheckbox && saveCheckbox.checked && manualKey) {
-        try {
-            const saveResp = await fetch('/api/user/gemini-key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ geminiApiKey: manualKey })
-            });
-            if (saveResp.ok) {
-                currentUser.hasGeminiApiKey = true;
-            }
-        } catch (e) {
-            console.error('Failed to save API key:', e);
-        }
     }
 
     // Show loading indicator
@@ -991,9 +912,6 @@ processBulkPdfBtn.addEventListener('click', async () => {
 
     const formData = new FormData();
     formData.append('pdfFile', pdfFile);
-    if (manualKey) {
-        formData.append('geminiApiKey', manualKey);
-    }
     try {
         const response = await fetch('/api/process-pdf', {
             method: 'POST',
@@ -1656,6 +1574,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div id="settings2FASetup" style="display: none;"></div>
                     <div id="settings2FADisable" style="display: none;"></div>
                 </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.geminiSection')}</h3>
+                    <div id="settingsGeminiDisplay">
+                        ${currentUser && currentUser.hasGeminiApiKey
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.geminiSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsGeminiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.geminiChange')}</button>
+                                   <button type="button" id="settingsGeminiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.geminiRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.geminiNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsGeminiForm" style="display: ${currentUser && currentUser.hasGeminiApiKey ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsGeminiInput" placeholder="${t('settings.geminiPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.geminiHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsGeminiSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsGeminiCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -1667,6 +1612,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         wireSettingsEmail(overlay, emailData);
         wireSettings2FA(overlay, twoFAData, cleanup);
+        wireSettingsGemini(overlay);
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -1883,6 +1829,123 @@ document.addEventListener('DOMContentLoaded', () => {
                     enableBtn.disabled = false;
                     enableBtn.textContent = t('settings.enable2FA');
                 }
+            });
+        }
+    }
+
+    function wireSettingsGemini(overlay) {
+        const display = overlay.querySelector('#settingsGeminiDisplay');
+        const form = overlay.querySelector('#settingsGeminiForm');
+        const input = overlay.querySelector('#settingsGeminiInput');
+        const saveBtn = overlay.querySelector('#settingsGeminiSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsGeminiCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasKey) {
+            if (hasKey) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.geminiSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsGeminiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.geminiChange')}</button>
+                        <button type="button" id="settingsGeminiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.geminiRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.geminiNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsGeminiChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsGeminiRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('gemini.confirmRemove'))) return;
+                    try {
+                        const response = await fetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            currentUser.hasGeminiApiKey = false;
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            alert(t('settings.geminiRemoveSuccess'));
+                        } else {
+                            alert(t('gemini.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('gemini.removeFailed'));
+                    }
+                });
+            }
+        }
+
+        // Wire initial change/remove buttons if key exists
+        wireChangeAndRemove();
+
+        // Cancel button
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        // Save button
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/user/gemini-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ geminiApiKey: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasGeminiApiKey = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        alert(t('settings.geminiSaveSuccess'));
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                }
+            });
+        }
+
+        // Keyboard shortcuts
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
             });
         }
     }
