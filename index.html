@@ -1330,9 +1330,37 @@
             transform: translateY(-2px);
             box-shadow: 0 6px 30px rgba(245, 158, 11, 0.4);
         }
+        .lang-toggle {
+            position: fixed;
+            bottom: 1.25rem;
+            right: 1.25rem;
+            z-index: 999;
+            width: 2.5rem;
+            height: 2.5rem;
+            padding: 0;
+            background: var(--color-bg-elevated, #1e1e2e);
+            color: var(--color-text-secondary, #a0a0b0);
+            border: 1px solid var(--color-border, #333);
+            border-radius: 50%;
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .lang-toggle:hover {
+            background: var(--color-bg-surface, #2a2a3e);
+            border-color: var(--color-accent-primary, #f59e0b);
+            color: var(--color-accent-primary, #f59e0b);
+            transform: none;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+        }
     </style>
-</head>
 <body>
+    <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
     <div class="container">
         <header>
             <h1 data-i18n="common.assetManagement">Asset Management</h1>
@@ -1341,7 +1369,6 @@
                 <button id="openBulkUploadModal" class="bulk-upload-btn" data-i18n="dash.bulkUpload">Bulk PDF Upload</button>
                 <button id="settingsBtn" class="logout-btn" data-i18n="dash.settings">Settings</button>
                 <button id="adminPanelBtn" class="admin-btn" style="display:none;" data-i18n="dash.adminPanel">Admin Panel</button>
-                <button id="langToggleBtn" class="logout-btn" data-i18n="lang.switch" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')">PT</button>
                 <button id="logoutBtn" class="logout-btn" data-i18n="common.logout">Logout</button>
             </div>
         </header>
