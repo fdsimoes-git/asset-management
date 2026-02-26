@@ -15,26 +15,8 @@
     const sendBtn = document.getElementById('chatSendBtn');
     const closeBtn = document.getElementById('chatCloseBtn');
 
-    // Only show the FAB when the user is logged in (dashboard visible)
-    function checkVisibility() {
-        const dashboard = document.getElementById('dashboard');
-        if (dashboard && dashboard.style.display !== 'none') {
-            fab.style.display = 'flex';
-        } else {
-            fab.style.display = 'none';
-            closeChat();
-        }
-    }
-
-    // Observe dashboard visibility changes
-    const dashboard = document.getElementById('dashboard');
-    if (dashboard) {
-        const observer = new MutationObserver(checkVisibility);
-        observer.observe(dashboard, { attributes: true, attributeFilter: ['style'] });
-    }
-    // Also check periodically for initial load
-    setTimeout(checkVisibility, 500);
-    setTimeout(checkVisibility, 1500);
+    // No visibility toggle needed — index.html is the dashboard page itself.
+    // Unauthenticated users are redirected to login.html before this runs.
 
     function toggleChat() {
         if (chatOpen) {
