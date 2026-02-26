@@ -2284,10 +2284,10 @@ function toolEditEntry(userId, args) {
         return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
     }
 
-    // Validate entryId is provided
-    const entryId = args.entryId != null ? parseInt(args.entryId, 10) : NaN;
-    if (!Number.isFinite(entryId)) {
-        return { error: 'entryId is required and must be a valid number.' };
+    // Validate entryId is provided and is an integer
+    const entryId = args.entryId != null ? Number(args.entryId) : NaN;
+    if (!Number.isInteger(entryId)) {
+        return { error: 'entryId is required and must be a valid integer.' };
     }
 
     // Find the entry and validate ownership
@@ -2338,9 +2338,10 @@ function toolEditEntry(userId, args) {
 
     let rejectedTags = [];
     if (args.tags != null) {
-        const rawTags = Array.isArray(args.tags)
-            ? args.tags.map(t => String(t).toLowerCase().trim())
-            : [];
+        if (!Array.isArray(args.tags)) {
+            return { error: 'Tags must be an array of strings.' };
+        }
+        const rawTags = args.tags.map(t => String(t).toLowerCase().trim());
         const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
         rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
         if (rejectedTags.length > 0 && sanitizedTags.length === 0) {
@@ -2355,12 +2356,17 @@ function toolEditEntry(userId, args) {
     }
 
     // Save pre-edit snapshot so the user can undo this edit.
-    // Evict oldest snapshot if the map exceeds the size cap.
-    if (lastEditSnapshots.size >= SNAPSHOT_MAX_SIZE) {
+    const snapshotKey = `${userId}:${entryId}`;
+    // Delete existing key first so re-inserting moves it to most-recent position.
+    if (lastEditSnapshots.has(snapshotKey)) {
+        lastEditSnapshots.delete(snapshotKey);
+    } else if (lastEditSnapshots.size >= SNAPSHOT_MAX_SIZE) {
         const oldestKey = lastEditSnapshots.keys().next().value;
-        lastEditSnapshots.delete(oldestKey);
+        if (oldestKey !== undefined) {
+            lastEditSnapshots.delete(oldestKey);
+        }
     }
-    lastEditSnapshots.set(`${userId}:${entryId}`, { ...entry });
+    lastEditSnapshots.set(snapshotKey, { ...entry });
 
     // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
     // Only the explicitly validated fields above can appear in `updates`.
@@ -2398,9 +2404,9 @@ function toolEditEntry(userId, args) {
  * @returns {object} Restored entry on success, or `{ error }` on failure.
  */
 function toolUndoLastEdit(userId, args) {
-    const entryId = args.entryId != null ? parseInt(args.entryId, 10) : NaN;
-    if (!Number.isFinite(entryId)) {
-        return { error: 'entryId is required and must be a valid number.' };
+    const entryId = args.entryId != null ? Number(args.entryId) : NaN;
+    if (!Number.isInteger(entryId)) {
+        return { error: 'entryId is required and must be a valid integer.' };
     }
 
     const snapshotKey = `${userId}:${entryId}`;
