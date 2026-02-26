@@ -2366,16 +2366,16 @@ function toolEditEntry(userId, args) {
             lastEditSnapshots.delete(oldestKey);
         }
     }
+
+    // Build updated entry and store snapshot before persisting,
+    // so undo remains available even if saveEntries() fails.
+    const updated = { ...entry, ...updates };
+    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...updated } });
+
     // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
     // Only the explicitly validated fields above can appear in `updates`.
-    entries[index] = { ...entry, ...updates };
+    entries[index] = updated;
     saveEntries();
-
-    const updated = entries[index];
-
-    // Store both pre-edit and post-edit snapshots so undo can verify
-    // the entry hasn't been modified via another route (e.g. the UI).
-    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...updated } });
     const result = {
         success: true,
         message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
