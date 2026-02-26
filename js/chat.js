@@ -88,9 +88,11 @@
             const olMatch = line.match(/^[\s]*(\d+)[.)]\s+(.*)/);
 
             if (ulMatch) {
+                if (inOl) { html += '</ol>'; inOl = false; }
                 if (!inUl) { html += '<ul>'; inUl = true; }
                 html += '<li>' + ulMatch[1] + '</li>';
             } else if (olMatch) {
+                if (inUl) { html += '</ul>'; inUl = false; }
                 if (!inOl) { html += '<ol>'; inOl = true; }
                 html += '<li>' + olMatch[2] + '</li>';
             } else {
@@ -143,8 +145,8 @@
         showLoading();
 
         try {
-            // Send last 20 messages as history (excluding the current one we just added)
-            const history = chatMessages.slice(-21, -1);
+            // Send last 20 user messages as history (server only accepts user role)
+            const history = chatMessages.filter(m => m.role === 'user').slice(-21, -1);
 
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',
