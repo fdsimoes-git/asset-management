@@ -2015,7 +2015,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td>${user.entriesCount || 0}</td>
                 <td class="user-actions">
-                    <button class="edit-btn" onclick="resetUserPassword(${user.id})">${t('admin.resetPassword')}</button>
                     <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
                     ${user.id !== currentUser.id ?
                         `<button class="delete-btn" onclick="deleteUser(${user.id})">${t('common.delete')}</button>` : ''}
@@ -2042,98 +2041,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             alert(t('error.updateUser'));
-        }
-    };
-
-    // Show password reset modal (returns promise with password or null)
-    function showPasswordResetModal(username) {
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.className = 'modal';
-            overlay.style.display = 'block';
-            overlay.innerHTML = `
-                <div class="modal-content" style="max-width: 400px;">
-                    <span class="close" id="closePasswordModal">&times;</span>
-                    <h2>${t('admin.resetPassword')}</h2>
-                    <p style="color: var(--color-text-secondary); margin-bottom: 1.5rem;">
-                        ${t('admin.enterNewPassword')} <strong>${escapeHtml(username)}</strong>
-                    </p>
-                    <div class="form-group">
-                        <label for="resetPasswordInput">${t('admin.newPassword')}</label>
-                        <input type="password" id="resetPasswordInput" placeholder="${t('admin.minChars')}" required>
-                    </div>
-                    <button type="button" id="confirmPasswordReset" style="width: 100%; margin-top: 1rem;">${t('admin.resetPasswordBtn')}</button>
-                </div>
-            `;
-            document.body.appendChild(overlay);
-
-            const input = overlay.querySelector('#resetPasswordInput');
-            const confirmBtn = overlay.querySelector('#confirmPasswordReset');
-            const closeBtn = overlay.querySelector('#closePasswordModal');
-
-            function cleanup() {
-                document.body.removeChild(overlay);
-            }
-
-            function onConfirm() {
-                const value = input.value;
-                cleanup();
-                resolve(value || null);
-            }
-
-            function onCancel() {
-                cleanup();
-                resolve(null);
-            }
-
-            closeBtn.addEventListener('click', onCancel);
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) onCancel();
-            });
-            confirmBtn.addEventListener('click', onConfirm);
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') onConfirm();
-                if (e.key === 'Escape') onCancel();
-            });
-
-            input.focus();
-        });
-    }
-
-    // Reset user password (admin only)
-    window.resetUserPassword = async function(userId) {
-        const user = adminUsersCache[userId];
-        if (!user) {
-            alert(t('error.userNotFound'));
-            return;
-        }
-
-        const newPassword = await showPasswordResetModal(user.username);
-
-        if (!newPassword) {
-            return;
-        }
-
-        if (newPassword.length < 8) {
-            alert(t('admin.passwordMinLength'));
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/admin/users/${userId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: newPassword })
-            });
-
-            if (response.ok) {
-                alert(t('admin.passwordReset', { username: user.username }));
-            } else {
-                const data = await response.json();
-                alert(data.message || t('error.resetPassword'));
-            }
-        } catch (error) {
-            alert(t('error.resetPassword'));
         }
     };
 

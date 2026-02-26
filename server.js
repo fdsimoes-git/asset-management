@@ -1599,7 +1599,7 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
         return res.status(404).json({ message: 'User not found' });
     }
 
-    const { username, password, role, isActive } = req.body;
+    const { username, role, isActive } = req.body;
     const user = users[userIndex];
 
     // Prevent admin from demoting themselves
@@ -1621,10 +1621,6 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
             return res.status(409).json({ message: 'Username already taken' });
         }
         user.username = username;
-    }
-
-    if (password) {
-        user.passwordHash = await bcrypt.hash(password, 10);
     }
 
     if (role && ['user', 'admin'].includes(role)) {
