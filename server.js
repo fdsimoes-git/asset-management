@@ -1566,6 +1566,7 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
             username,
             passwordHash,
             role: userRole,
+            email: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             isActive: true,
