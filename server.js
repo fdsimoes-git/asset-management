@@ -2018,6 +2018,22 @@ const chatToolDeclarations = [
                 limit: { type: Type.NUMBER, description: 'Max results to return. Default 20.' }
             }
         }
+    },
+    {
+        name: 'editEntry',
+        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                entryId: { type: Type.NUMBER, description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
+                description: { type: Type.STRING, description: 'New description for the entry.' },
+                amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number).' },
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
+                month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' }
+            },
+            required: ['entryId']
+        }
     }
 ];
 
@@ -2031,7 +2047,9 @@ RULES:
 - Format currency amounts clearly.
 - Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
 - When showing data, use simple formatting with bold for emphasis.
-- If the user asks about something unrelated to finances, politely redirect them.`;
+- If the user asks about something unrelated to finances, politely redirect them.
+- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry and confirm the details with the user before making changes with editEntry. Only edit entries that belong to the current user.
+- After editing an entry, confirm the changes made and show the updated entry details.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
     return userEntries.filter(e => {
@@ -2206,6 +2224,7 @@ function toolSearchEntries(userId, args) {
 
     return {
         results: results.map(e => ({
+            id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
             type: e.type,
@@ -2217,6 +2236,85 @@ function toolSearchEntries(userId, args) {
     };
 }
 
+function toolEditEntry(userId, args) {
+    // Validate entryId is provided
+    const entryId = args.entryId != null ? parseInt(args.entryId, 10) : NaN;
+    if (!Number.isFinite(entryId)) {
+        return { error: 'entryId is required and must be a valid number.' };
+    }
+
+    // Find the entry and validate ownership
+    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
+    if (index === -1) {
+        return { error: 'Entry not found or does not belong to the current user. Use searchEntries to find valid entry IDs.' };
+    }
+
+    const entry = entries[index];
+    const updates = {};
+
+    // Validate and collect updates for each optional field
+    if (args.description != null) {
+        const desc = String(args.description).trim();
+        if (!desc) {
+            return { error: 'Description cannot be empty.' };
+        }
+        updates.description = desc;
+    }
+
+    if (args.amount != null) {
+        const amount = parseFloat(args.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return { error: 'Amount must be a positive number.' };
+        }
+        updates.amount = amount;
+    }
+
+    if (args.type != null) {
+        if (!VALID_ENTRY_TYPES.includes(args.type)) {
+            return { error: 'Type must be "income" or "expense".' };
+        }
+        updates.type = args.type;
+    }
+
+    if (args.month != null) {
+        if (!MONTH_FORMAT.test(args.month)) {
+            return { error: 'Month must be in YYYY-MM format.' };
+        }
+        updates.month = args.month;
+    }
+
+    if (args.tags != null) {
+        const sanitizedTags = Array.isArray(args.tags)
+            ? args.tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+            : [];
+        updates.tags = sanitizedTags;
+    }
+
+    // Check that at least one field is being updated
+    if (Object.keys(updates).length === 0) {
+        return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
+    }
+
+    // Apply updates
+    entries[index] = { ...entry, ...updates };
+    saveEntries();
+
+    const updated = entries[index];
+    return {
+        success: true,
+        message: 'Entry updated successfully.',
+        entry: {
+            id: updated.id,
+            description: updated.description,
+            amount: updated.amount.toFixed(2),
+            type: updated.type,
+            month: updated.month,
+            tags: updated.tags || [],
+            isCoupleExpense: updated.isCoupleExpense || false
+        }
+    };
+}
+
 function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
@@ -2225,6 +2323,7 @@ function executeTool(name, userId, args) {
         case 'getTopExpenses': return toolGetTopExpenses(userId, args);
         case 'comparePeriods': return toolComparePeriods(userId, args);
         case 'searchEntries': return toolSearchEntries(userId, args);
+        case 'editEntry': return toolEditEntry(userId, args);
         default: return { error: `Unknown tool: ${name}` };
     }
 }
