@@ -180,7 +180,7 @@
     sendBtn.addEventListener('click', sendMessage);
 
     input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter') {
             e.preventDefault();
             sendMessage();
         }

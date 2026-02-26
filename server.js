@@ -2124,7 +2124,10 @@ function toolGetTopExpenses(userId, args) {
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     if (args.category) {
-        userEntries = userEntries.filter(e => e.tags && e.tags.includes(args.category.toLowerCase()));
+        const catQuery = String(args.category).toLowerCase().trim();
+        userEntries = userEntries.filter(e =>
+            Array.isArray(e.tags) && e.tags.some(t => String(t).toLowerCase().trim() === catQuery)
+        );
     }
 
     let limit = parseInt(args.limit, 10);
@@ -2155,7 +2158,10 @@ function toolComparePeriods(userId, args) {
     const p1 = get(args.period1Start, args.period1End);
     const p2 = get(args.period2Start, args.period2End);
 
-    const pctChange = (a, b) => a === 0 ? (b === 0 ? '0%' : '+100%') : ((b - a) / Math.abs(a) * 100).toFixed(1) + '%';
+    const pctChange = (a, b) => {
+        if (a === 0) return b === 0 ? '0%' : 'N/A';
+        return ((b - a) / Math.abs(a) * 100).toFixed(1) + '%';
+    };
 
     return {
         period1: {
@@ -2179,7 +2185,12 @@ function toolSearchEntries(userId, args) {
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     if (args.type) userEntries = userEntries.filter(e => e.type === args.type);
-    if (args.category) userEntries = userEntries.filter(e => e.tags && e.tags.includes(args.category.toLowerCase()));
+    if (args.category) {
+        const catQuery = String(args.category).toLowerCase().trim();
+        userEntries = userEntries.filter(e =>
+            Array.isArray(e.tags) && e.tags.some(t => String(t).toLowerCase().trim() === catQuery)
+        );
+    }
     if (args.keyword) {
         const kw = args.keyword.toLowerCase();
         userEntries = userEntries.filter(e => e.description.toLowerCase().includes(kw));
@@ -2219,11 +2230,16 @@ function executeTool(name, userId, args) {
 
 // AI Chat endpoint
 app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
-    const { messages, message } = req.body;
+    const { messages: clientMessages, message } = req.body;
 
     if (!message || typeof message !== 'string' || !message.trim()) {
         return res.status(400).json({ error: 'Message is required.' });
     }
+
+    // Sanitize client-provided history: only accept user messages to prevent prompt injection
+    const messages = Array.isArray(clientMessages)
+        ? clientMessages.filter(m => m && m.role === 'user' && typeof m.content === 'string')
+        : [];
 
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
@@ -2244,21 +2260,14 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     try {
         const chatGenAI = new GoogleGenAI({ apiKey });
 
-        // Build contents from history + new message
+        // Build contents from sanitized history + new message
         const contents = [];
         const MAX_HISTORY_TEXT_LENGTH = 8000;
-        if (Array.isArray(messages)) {
-            // Take last 20 messages from history
-            const recent = messages.slice(-20);
-            for (const msg of recent) {
-                if ((msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string') {
-                    const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
-                    if (!text) continue;
-                    contents.push({
-                        role: msg.role === 'assistant' ? 'model' : 'user',
-                        parts: [{ text }]
-                    });
-                }
+        const recent = messages.slice(-20);
+        for (const msg of recent) {
+            const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+            if (text) {
+                contents.push({ role: 'user', parts: [{ text }] });
             }
         }
         contents.push({ role: 'user', parts: [{ text: message.trim() }] });
