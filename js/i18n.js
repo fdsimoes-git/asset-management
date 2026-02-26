@@ -369,6 +369,14 @@ const translations = {
     'chat.errorNoKey': 'No AI API key configured. Please add your Gemini API key in Settings to use the chat advisor.',
     'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
     'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
+    'chat.confirmEditTitle': 'Confirm Entry Edit',
+    'chat.confirmEdit': 'Confirm Edit',
+    'chat.cancelEdit': 'Cancel',
+    'chat.editConfirmed': 'Edit confirmed successfully!',
+    'chat.editCancelled': 'Edit cancelled.',
+    'chat.editExpired': 'This edit has expired. Please request it again.',
+    'chat.currentValue': 'Current',
+    'chat.newValue': 'New',
   },
 
   pt: {
@@ -739,6 +747,14 @@ const translations = {
     'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione sua chave Gemini API nas Configurações para usar o consultor.',
     'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
     'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
+    'chat.confirmEditTitle': 'Confirmar Edição de Entrada',
+    'chat.confirmEdit': 'Confirmar Edição',
+    'chat.cancelEdit': 'Cancelar',
+    'chat.editConfirmed': 'Edição confirmada com sucesso!',
+    'chat.editCancelled': 'Edição cancelada.',
+    'chat.editExpired': 'Esta edição expirou. Solicite novamente.',
+    'chat.currentValue': 'Atual',
+    'chat.newValue': 'Novo',
   }
 };
 

@@ -2021,19 +2021,18 @@ const chatToolDeclarations = [
     },
     {
         name: 'editEntry',
-        description: 'Edit an existing financial entry for the user. The entry must belong to the current user. Use searchEntries first to find the entry ID. Only provided fields will be updated. The "confirmed" flag must be set to true — this is a model-level assertion (not gated by UI confirmation). Always confirm details with the user in conversation before calling this tool.',
+        description: 'Propose an edit to an existing financial entry. The system will show a confirmation card to the user in the chat UI — do NOT ask the user to confirm in conversation. Just describe the changes you are proposing. Use searchEntries first to find the entry ID.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 entryId: { type: Type.NUMBER, description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
-                confirmed: { type: Type.BOOLEAN, description: 'Must be true. This is a model-level assertion — always confirm with the user in conversation before setting this.' },
                 description: { type: Type.STRING, description: 'New description for the entry (max 500 characters).' },
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
                 tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' }
             },
-            required: ['entryId', 'confirmed']
+            required: ['entryId']
         }
     },
     {
@@ -2055,6 +2054,9 @@ const chatToolDeclarations = [
 const lastEditSnapshots = new Map();
 const SNAPSHOT_MAX_SIZE = 1000;
 
+const pendingEdits = new Map(); // keyed by userId, one pending edit per user
+const PENDING_EDIT_TTL_MS = 5 * 60 * 1000; // 5 min expiry
+
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
 
 RULES:
@@ -2066,8 +2068,8 @@ RULES:
 - Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
 - When showing data, use simple formatting with bold for emphasis.
 - If the user asks about something unrelated to finances, politely redirect them.
-- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry and confirm the details with the user before making changes with editEntry. Only edit entries that belong to the current user. You must set confirmed: true when calling editEntry — the server will reject the call otherwise.
-- After editing an entry, confirm the changes made and show the updated entry details.
+- When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry. Then call editEntry with the proposed changes. The system will automatically show a confirmation card to the user — do NOT ask them to confirm in chat. Simply describe the changes you are proposing.
+- After proposing an edit, briefly describe what you proposed. The user will confirm or cancel via buttons in the UI.
 - If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
@@ -2259,38 +2261,17 @@ function toolSearchEntries(userId, args) {
 }
 
 /**
- * Edit an existing financial entry on behalf of the authenticated user.
- * Requires a `confirmed: true` flag — this is a model-level assertion, not a UI-gated
- * user confirmation. The AI is instructed via system prompt to confirm with the user
- * in conversation before calling this tool. True UI-level confirmation would require
- * frontend changes (e.g., a confirmation dialog in chat.js).
- * Only the fields provided in `args` are updated; `userId`, `id`, and `isCoupleExpense`
- * are preserved from the original entry and cannot be changed via this tool.
- *
- * @param {number} userId - The authenticated user's ID (from session).
- * @param {object} args - Tool arguments from the AI model.
- * @param {number} args.entryId - The entry to edit (required).
- * @param {boolean} args.confirmed - Must be true (required).
- * @param {string} [args.description] - New description (max 500 chars).
- * @param {number} [args.amount] - New amount (positive, max 10,000,000).
- * @param {string} [args.type] - "income" or "expense".
- * @param {string} [args.month] - YYYY-MM format.
- * @param {string[]} [args.tags] - Category tags.
- * @returns {object} Updated entry on success, or `{ error }` on failure.
+ * Validates editEntry arguments and resolves the target entry without applying changes.
+ * @param {number} userId - The authenticated user's ID.
+ * @param {object} args - Tool arguments (entryId, description, amount, type, month, tags).
+ * @returns {object} { entry, updates, entryIndex, rejectedTags } on success, or { error } on failure.
  */
-function toolEditEntry(userId, args) {
-    // Require explicit confirmation flag
-    if (args.confirmed !== true) {
-        return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
-    }
-
-    // Validate entryId is provided and is an integer
+function validateEditArgs(userId, args) {
     const entryId = args.entryId != null ? Number(args.entryId) : NaN;
     if (!Number.isInteger(entryId)) {
         return { error: 'entryId is required and must be a valid integer.' };
     }
 
-    // Find the entry and validate ownership
     const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
     if (index === -1) {
         return { error: 'Entry not found or does not belong to the current user. Use searchEntries to find valid entry IDs.' };
@@ -2299,48 +2280,33 @@ function toolEditEntry(userId, args) {
     const entry = entries[index];
     const updates = {};
 
-    // Validate and collect updates for each optional field
     if (args.description != null) {
         const desc = String(args.description).trim();
-        if (!desc) {
-            return { error: 'Description cannot be empty.' };
-        }
-        if (desc.length > 500) {
-            return { error: 'Description must be 500 characters or fewer.' };
-        }
+        if (!desc) return { error: 'Description cannot be empty.' };
+        if (desc.length > 500) return { error: 'Description must be 500 characters or fewer.' };
         updates.description = desc;
     }
 
     if (args.amount != null) {
         const amount = parseFloat(args.amount);
-        if (!Number.isFinite(amount) || amount <= 0) {
-            return { error: 'Amount must be a positive number.' };
-        }
-        if (amount > 10000000) {
-            return { error: 'Amount must not exceed 10,000,000.' };
-        }
+        if (!Number.isFinite(amount) || amount <= 0) return { error: 'Amount must be a positive number.' };
+        if (amount > 10000000) return { error: 'Amount must not exceed 10,000,000.' };
         updates.amount = amount;
     }
 
     if (args.type != null) {
-        if (!VALID_ENTRY_TYPES.includes(args.type)) {
-            return { error: 'Type must be "income" or "expense".' };
-        }
+        if (!VALID_ENTRY_TYPES.includes(args.type)) return { error: 'Type must be "income" or "expense".' };
         updates.type = args.type;
     }
 
     if (args.month != null) {
-        if (!MONTH_FORMAT.test(args.month)) {
-            return { error: 'Month must be in YYYY-MM format.' };
-        }
+        if (!MONTH_FORMAT.test(args.month)) return { error: 'Month must be in YYYY-MM format.' };
         updates.month = args.month;
     }
 
     let rejectedTags = [];
     if (args.tags != null) {
-        if (!Array.isArray(args.tags)) {
-            return { error: 'Tags must be an array of strings.' };
-        }
+        if (!Array.isArray(args.tags)) return { error: 'Tags must be an array of strings.' };
         const rawTags = args.tags.map(t => String(t).toLowerCase().trim());
         const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
         rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
@@ -2350,10 +2316,30 @@ function toolEditEntry(userId, args) {
         updates.tags = sanitizedTags;
     }
 
-    // Check that at least one field is being updated
     if (Object.keys(updates).length === 0) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
+
+    return { entry, updates, entryIndex: index, rejectedTags };
+}
+
+/**
+ * Edit an existing financial entry. Requires confirmed: true (passed by the confirm endpoint).
+ * @param {number} userId - The authenticated user's ID (from session).
+ * @param {object} args - Tool arguments from the AI model.
+ * @returns {object} Updated entry on success, or `{ error }` on failure.
+ */
+function toolEditEntry(userId, args) {
+    // Require explicit confirmation flag
+    if (args.confirmed !== true) {
+        return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
+    }
+
+    const validation = validateEditArgs(userId, args);
+    if (validation.error) return validation;
+
+    const { entry, updates, entryIndex: index, rejectedTags } = validation;
+    const entryId = entry.id;
 
     // Save pre-edit snapshot so the user can undo this edit.
     const snapshotKey = `${userId}:${entryId}`;
@@ -2524,6 +2510,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         // Tool call loop (max 5 iterations)
         let currentContents = contents;
         let finalText = null;
+        let pendingEditData = null;
         const maxIterations = 5;
 
         for (let i = 0; i < maxIterations; i++) {
@@ -2563,7 +2550,41 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             for (const fc of functionCalls) {
                 const toolName = fc.functionCall.name;
                 const toolArgs = fc.functionCall.args || {};
-                const result = executeTool(toolName, req.user.id, toolArgs);
+                let result;
+
+                if (toolName === 'editEntry') {
+                    // Intercept editEntry: validate args, store as pending, return fake response
+                    const validation = validateEditArgs(req.user.id, toolArgs);
+                    if (validation.error) {
+                        result = validation;
+                    } else {
+                        const entryId = validation.entry.id;
+                        const currentEntry = {
+                            id: validation.entry.id,
+                            description: validation.entry.description,
+                            amount: validation.entry.amount,
+                            type: validation.entry.type,
+                            month: validation.entry.month,
+                            tags: validation.entry.tags || [],
+                            isCoupleExpense: validation.entry.isCoupleExpense || false
+                        };
+                        pendingEdits.set(req.user.id, {
+                            entryId,
+                            changes: validation.updates,
+                            currentEntry,
+                            createdAt: Date.now()
+                        });
+                        pendingEditData = {
+                            entryId,
+                            changes: validation.updates,
+                            currentEntry
+                        };
+                        result = { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+                    }
+                } else {
+                    result = executeTool(toolName, req.user.id, toolArgs);
+                }
+
                 toolResultParts.push({
                     functionResponse: {
                         name: toolName,
@@ -2579,7 +2600,15 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             finalText = 'Sorry, I was unable to complete the analysis. Please try rephrasing your question.';
         }
 
-        res.json({ reply: finalText });
+        const responsePayload = { reply: finalText };
+        if (pendingEditData) {
+            responsePayload.pendingEdit = {
+                entryId: pendingEditData.entryId,
+                changes: pendingEditData.changes,
+                currentEntry: pendingEditData.currentEntry
+            };
+        }
+        res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message);
         if (error.message?.includes('API key')) {
@@ -2590,6 +2619,44 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.status(500).json({ error: 'generic' });
     }
+});
+
+// Confirm a pending AI edit via UI button
+app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
+    const userId = req.user.id;
+    const pending = pendingEdits.get(userId);
+
+    if (!pending) {
+        return res.status(404).json({ error: 'No pending edit found.' });
+    }
+
+    // Check TTL
+    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
+        pendingEdits.delete(userId);
+        return res.status(410).json({ error: 'expired' });
+    }
+
+    // Optional strictness: validate entryId matches
+    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
+    if (requestedEntryId != null && requestedEntryId !== pending.entryId) {
+        return res.status(409).json({ error: 'Entry ID mismatch. A newer edit may have replaced this one.' });
+    }
+
+    // Execute the edit via toolEditEntry with confirmed: true
+    const result = toolEditEntry(userId, { entryId: pending.entryId, confirmed: true, ...pending.changes });
+    pendingEdits.delete(userId);
+
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+
+    res.json(result);
+});
+
+// Cancel a pending AI edit via UI button
+app.post('/api/ai/cancel-edit', requireAuth, (req, res) => {
+    pendingEdits.delete(req.user.id);
+    res.json({ success: true });
 });
 
 // Set up multer for file uploads (store in memory)

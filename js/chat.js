@@ -170,10 +170,114 @@
 
             const data = await res.json();
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
+            if (data.pendingEdit) {
+                renderConfirmationCard(data.pendingEdit);
+            }
         } catch (err) {
             hideLoading();
             appendMessage('assistant', t('chat.errorGeneric'));
         }
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function formatFieldValue(key, value) {
+        if (key === 'amount') return parseFloat(value).toFixed(2);
+        if (key === 'tags' && Array.isArray(value)) return value.join(', ') || '—';
+        return String(value);
+    }
+
+    function renderConfirmationCard(pendingEdit) {
+        const card = document.createElement('div');
+        card.className = 'chat-confirm-card';
+
+        const entry = pendingEdit.currentEntry;
+        const changes = pendingEdit.changes;
+
+        // Title
+        let html = '<div class="chat-confirm-title">' + escapeHtml(t('chat.confirmEditTitle')) + '</div>';
+
+        // Current entry summary
+        html += '<div class="chat-confirm-entry">';
+        html += '<strong>' + escapeHtml(entry.description) + '</strong><br>';
+        html += escapeHtml(entry.type) + ' &middot; ' + escapeHtml(entry.month) + ' &middot; ' + escapeHtml(parseFloat(entry.amount).toFixed(2));
+        if (entry.tags && entry.tags.length) {
+            html += ' &middot; ' + escapeHtml(entry.tags.join(', '));
+        }
+        html += '</div>';
+
+        // Proposed changes
+        html += '<div class="chat-confirm-changes">';
+        for (const [key, newVal] of Object.entries(changes)) {
+            const currentVal = entry[key];
+            html += '<div class="chat-confirm-change">';
+            html += '<span class="chat-confirm-change-label">' + escapeHtml(key) + '</span>';
+            html += '<span class="chat-confirm-change-current">' + escapeHtml(formatFieldValue(key, currentVal)) + '</span>';
+            html += '<span class="chat-confirm-change-arrow">&rarr;</span>';
+            html += '<span class="chat-confirm-change-new">' + escapeHtml(formatFieldValue(key, newVal)) + '</span>';
+            html += '</div>';
+        }
+        html += '</div>';
+
+        // Buttons
+        html += '<div class="chat-confirm-actions">';
+        html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(t('chat.confirmEdit')) + '</button>';
+        html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelEdit')) + '</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        messagesEl.appendChild(card);
+
+        const confirmBtn = card.querySelector('[data-action="confirm"]');
+        const cancelBtn = card.querySelector('[data-action="cancel"]');
+
+        confirmBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                const res = await fetch('/api/ai/confirm-edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entryId: pendingEdit.entryId })
+                });
+                if (res.status === 410) {
+                    replaceCardWithMessage(card, t('chat.editExpired'), 'error');
+                } else if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    replaceCardWithMessage(card, err.error || t('chat.errorGeneric'), 'error');
+                } else {
+                    replaceCardWithMessage(card, t('chat.editConfirmed'), 'success');
+                    chatMessages.push({ role: 'assistant', content: t('chat.editConfirmed') });
+                }
+            } catch (e) {
+                replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
+            }
+        });
+
+        cancelBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                await fetch('/api/ai/cancel-edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            } catch (e) { /* ignore */ }
+            replaceCardWithMessage(card, t('chat.editCancelled'), 'info');
+            chatMessages.push({ role: 'assistant', content: t('chat.editCancelled') });
+        });
+
+        scrollToBottom();
+    }
+
+    function replaceCardWithMessage(card, text, type) {
+        const msg = document.createElement('div');
+        msg.className = 'chat-confirm-result chat-confirm-result--' + type;
+        msg.textContent = text;
+        card.replaceWith(msg);
+        scrollToBottom();
     }
 
     // Event listeners

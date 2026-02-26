@@ -1560,6 +1560,122 @@
             40% { transform: translateY(-0.4rem); opacity: 1; }
         }
 
+        .chat-confirm-card {
+            align-self: flex-start;
+            max-width: 85%;
+            border: 1px solid var(--color-accent-primary, #f59e0b);
+            border-radius: 0.75rem;
+            background: var(--color-bg-surface, #2a2a3e);
+            padding: 0.85rem 1rem;
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+        .chat-confirm-title {
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            color: var(--color-accent-primary, #f59e0b);
+            margin-bottom: 0.6rem;
+        }
+        .chat-confirm-entry {
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.4rem;
+            padding: 0.5rem 0.65rem;
+            margin-bottom: 0.6rem;
+            color: var(--color-text-secondary, #a0a0b0);
+            font-size: 0.78rem;
+        }
+        .chat-confirm-entry strong {
+            color: var(--color-text-primary, #e0e0e8);
+        }
+        .chat-confirm-changes {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-bottom: 0.7rem;
+        }
+        .chat-confirm-change {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.78rem;
+            flex-wrap: wrap;
+        }
+        .chat-confirm-change-label {
+            font-weight: 600;
+            color: var(--color-text-secondary, #a0a0b0);
+            min-width: 5rem;
+        }
+        .chat-confirm-change-current {
+            text-decoration: line-through;
+            color: var(--color-text-secondary, #a0a0b0);
+            opacity: 0.7;
+        }
+        .chat-confirm-change-arrow {
+            color: var(--color-text-secondary, #a0a0b0);
+            opacity: 0.5;
+        }
+        .chat-confirm-change-new {
+            color: #34d399;
+            font-weight: 600;
+        }
+        .chat-confirm-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .chat-confirm-btn {
+            flex: 1;
+            padding: 0.45rem 0.75rem;
+            border: none;
+            border-radius: 0.4rem;
+            background: linear-gradient(135deg, #34d399, #059669);
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .chat-confirm-btn:hover { opacity: 0.9; }
+        .chat-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chat-cancel-btn {
+            flex: 1;
+            padding: 0.45rem 0.75rem;
+            border: 1px solid var(--color-border, #333);
+            border-radius: 0.4rem;
+            background: transparent;
+            color: var(--color-text-secondary, #a0a0b0);
+            font-weight: 600;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .chat-cancel-btn:hover { opacity: 0.8; }
+        .chat-cancel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chat-confirm-result {
+            align-self: flex-start;
+            max-width: 85%;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .chat-confirm-result--success {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+        .chat-confirm-result--error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .chat-confirm-result--info {
+            background: rgba(160, 160, 176, 0.1);
+            color: var(--color-text-secondary, #a0a0b0);
+            border: 1px solid var(--color-border, #333);
+        }
+
         @media (max-width: 768px) {
             .chat-window {
                 top: auto;
@@ -1592,6 +1708,13 @@
             .chat-message-assistant {
                 font-size: 0.8rem;
                 padding: 0.5rem 0.75rem;
+            }
+            .chat-confirm-card {
+                max-width: 95%;
+                padding: 0.65rem 0.75rem;
+            }
+            .chat-confirm-change {
+                font-size: 0.72rem;
             }
         }
     </style>
