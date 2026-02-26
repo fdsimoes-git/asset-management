@@ -2156,6 +2156,7 @@ function toolGetTopExpenses(userId, args) {
 
     return {
         topExpenses: sorted.map(e => ({
+            id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
             month: e.month,
@@ -2283,29 +2284,26 @@ function toolEditEntry(userId, args) {
         updates.month = args.month;
     }
 
+    let rejectedTags = [];
     if (args.tags != null) {
         const rawTags = Array.isArray(args.tags)
             ? args.tags.map(t => String(t).toLowerCase().trim())
             : [];
         const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
-        const rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
+        rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
         if (rejectedTags.length > 0 && sanitizedTags.length === 0) {
             return { error: `None of the provided tags are valid. Valid tags are: ${VALID_TAGS.join(', ')}` };
         }
         updates.tags = sanitizedTags;
-        if (rejectedTags.length > 0) {
-            updates._rejectedTags = rejectedTags;
-        }
     }
 
     // Check that at least one field is being updated
-    if (Object.keys(updates).length === 0 || (Object.keys(updates).length === 1 && updates._rejectedTags)) {
+    if (Object.keys(updates).length === 0) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
 
-    // Apply updates (exclude internal fields)
-    const { _rejectedTags, ...cleanUpdates } = updates;
-    entries[index] = { ...entry, ...cleanUpdates };
+    // Apply updates
+    entries[index] = { ...entry, ...updates };
     saveEntries();
 
     const updated = entries[index];
@@ -2322,8 +2320,8 @@ function toolEditEntry(userId, args) {
             isCoupleExpense: updated.isCoupleExpense || false
         }
     };
-    if (_rejectedTags && _rejectedTags.length > 0) {
-        result.warning = `The following tags were not recognized and were ignored: ${_rejectedTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`;
+    if (rejectedTags.length > 0) {
+        result.warning = `The following tags were not recognized and were ignored: ${rejectedTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`;
     }
     return result;
 }
