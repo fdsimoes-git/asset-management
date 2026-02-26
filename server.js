@@ -2250,7 +2250,7 @@ function toolSearchEntries(userId, args) {
  * @param {number} args.entryId - The entry to edit (required).
  * @param {boolean} args.confirmed - Must be true (required).
  * @param {string} [args.description] - New description (max 500 chars).
- * @param {number} [args.amount] - New amount (positive, max 10 000 000).
+ * @param {number} [args.amount] - New amount (positive, max 10,000,000).
  * @param {string} [args.type] - "income" or "expense".
  * @param {string} [args.month] - YYYY-MM format.
  * @param {string[]} [args.tags] - Category tags.
