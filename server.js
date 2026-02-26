@@ -2035,8 +2035,23 @@ const chatToolDeclarations = [
             },
             required: ['entryId', 'confirmed']
         }
+    },
+    {
+        name: 'undoLastEdit',
+        description: 'Undo the most recent AI edit on a specific entry, restoring it to its previous state. Only works if the entry was edited via the editEntry tool in the current session and has not already been undone.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                entryId: { type: Type.NUMBER, description: 'The ID of the entry to undo. Must match a previously edited entry.' }
+            },
+            required: ['entryId']
+        }
     }
 ];
+
+// Stores the pre-edit snapshot for the most recent AI edit per entry, keyed by "userId:entryId".
+// Cleared on undo or server restart — only the last edit per entry is reversible.
+const lastEditSnapshots = new Map();
 
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
 
@@ -2050,7 +2065,8 @@ RULES:
 - When showing data, use simple formatting with bold for emphasis.
 - If the user asks about something unrelated to finances, politely redirect them.
 - When the user asks to edit an entry, ALWAYS use searchEntries first to find the correct entry and confirm the details with the user before making changes with editEntry. Only edit entries that belong to the current user. You must set confirmed: true when calling editEntry — the server will reject the call otherwise.
-- After editing an entry, confirm the changes made and show the updated entry details.`;
+- After editing an entry, confirm the changes made and show the updated entry details.
+- If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
     return userEntries.filter(e => {
@@ -2332,6 +2348,9 @@ function toolEditEntry(userId, args) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
 
+    // Save pre-edit snapshot so the user can undo this edit
+    lastEditSnapshots.set(`${userId}:${entryId}`, { ...entry });
+
     // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
     // Only the explicitly validated fields above can appear in `updates`.
     entries[index] = { ...entry, ...updates };
@@ -2340,7 +2359,7 @@ function toolEditEntry(userId, args) {
     const updated = entries[index];
     const result = {
         success: true,
-        message: 'Entry updated successfully.',
+        message: 'Entry updated successfully. The user can undo this edit if needed.',
         entry: {
             id: updated.id,
             description: updated.description,
@@ -2357,6 +2376,56 @@ function toolEditEntry(userId, args) {
     return result;
 }
 
+/**
+ * Undo the most recent AI edit on a specific entry, restoring the pre-edit state.
+ * Only works if a snapshot exists for this user+entry (i.e., the entry was edited via
+ * editEntry in the current server session and hasn't already been undone).
+ *
+ * @param {number} userId - The authenticated user's ID (from session).
+ * @param {object} args - Tool arguments from the AI model.
+ * @param {number} args.entryId - The entry to undo (required).
+ * @returns {object} Restored entry on success, or `{ error }` on failure.
+ */
+function toolUndoLastEdit(userId, args) {
+    const entryId = args.entryId != null ? parseInt(args.entryId, 10) : NaN;
+    if (!Number.isFinite(entryId)) {
+        return { error: 'entryId is required and must be a valid number.' };
+    }
+
+    const snapshotKey = `${userId}:${entryId}`;
+    const snapshot = lastEditSnapshots.get(snapshotKey);
+    if (!snapshot) {
+        return { error: 'No recent edit to undo for this entry. Only the most recent AI edit can be undone, and only once.' };
+    }
+
+    // Verify the entry still exists and belongs to the user
+    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
+    if (index === -1) {
+        lastEditSnapshots.delete(snapshotKey);
+        return { error: 'Entry not found or does not belong to the current user.' };
+    }
+
+    // Restore the snapshot
+    entries[index] = { ...snapshot };
+    lastEditSnapshots.delete(snapshotKey);
+    saveEntries();
+
+    const restored = entries[index];
+    return {
+        success: true,
+        message: 'Edit undone. Entry restored to its previous state.',
+        entry: {
+            id: restored.id,
+            description: restored.description,
+            amount: restored.amount.toFixed(2),
+            type: restored.type,
+            month: restored.month,
+            tags: restored.tags || [],
+            isCoupleExpense: restored.isCoupleExpense || false
+        }
+    };
+}
+
 function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
@@ -2366,6 +2435,7 @@ function executeTool(name, userId, args) {
         case 'comparePeriods': return toolComparePeriods(userId, args);
         case 'searchEntries': return toolSearchEntries(userId, args);
         case 'editEntry': return toolEditEntry(userId, args);
+        case 'undoLastEdit': return toolUndoLastEdit(userId, args);
         default: return { error: `Unknown tool: ${name}` };
     }
 }
