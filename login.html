@@ -491,7 +491,7 @@
 
         .lang-toggle {
             position: fixed;
-            bottom: 1.25rem;
+            bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
             right: 1.25rem;
             z-index: 999;
             width: 2.5rem;
@@ -593,6 +593,25 @@
                         </svg>
                         <h3 data-i18n="login.feature.categories">Smart Categories</h3>
                         <p data-i18n="login.feature.categoriesDesc">17 built-in tags for granular categorization</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            <circle cx="12" cy="16" r="1"/>
+                        </svg>
+                        <h3 data-i18n="login.feature.twoFactor">Two-Factor Auth (2FA)</h3>
+                        <p data-i18n="login.feature.twoFactorDesc">Protect your account with TOTP authenticator apps and backup codes</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            <path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/>
+                        </svg>
+                        <h3 data-i18n="login.feature.aiChat">AI Financial Advisor</h3>
+                        <p data-i18n="login.feature.aiChatDesc">Chat with an AI advisor that analyzes your real financial data</p>
                     </div>
                 </div>
             </div>
