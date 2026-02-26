@@ -71,8 +71,9 @@ if (config.paypalClientId && config.paypalClientSecret) {
     }
 }
 
-// Gemini AI model name (instances created per-request)
-const GEMINI_MODEL = 'gemini-3.1-pro-preview';
+// Gemini AI model names (instances created per-request)
+const GEMINI_MODEL = 'gemini-3-flash-preview';       // PDF processing & structured extraction
+const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be changed independently)
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -746,6 +747,15 @@ const totpLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many verification attempts. Please try again later.' }
+});
+
+const chatRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many chat messages. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
 const generalLimiter = rateLimit({
@@ -1928,6 +1938,417 @@ app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, (req, res
 // Serve the main application
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+// ============ AI CHAT FINANCIAL ADVISOR ============
+
+const chatToolDeclarations = [
+    {
+        name: 'getFinancialSummary',
+        description: 'Get total income, total expenses, net balance, and savings rate for the user, optionally filtered by date range.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                startMonth: { type: Type.STRING, description: 'Start month in YYYY-MM format (inclusive). Omit for all time.' },
+                endMonth: { type: Type.STRING, description: 'End month in YYYY-MM format (inclusive). Omit for all time.' }
+            }
+        }
+    },
+    {
+        name: 'getCategoryBreakdown',
+        description: 'Get spending or income broken down by category tag, with totals and percentages.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
+                startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+            }
+        }
+    },
+    {
+        name: 'getMonthlyTrends',
+        description: 'Get month-by-month income, expenses, and net amounts, plus averages.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+            }
+        }
+    },
+    {
+        name: 'getTopExpenses',
+        description: 'Get the largest expense entries, optionally filtered by category or date range.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                limit: { type: Type.NUMBER, description: 'Number of top entries to return. Default 10.' },
+                category: { type: Type.STRING, description: 'Filter by category tag (e.g. "food", "transport").' },
+                startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+            }
+        }
+    },
+    {
+        name: 'comparePeriods',
+        description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                period1Start: { type: Type.STRING, description: 'First period start month YYYY-MM.' },
+                period1End: { type: Type.STRING, description: 'First period end month YYYY-MM.' },
+                period2Start: { type: Type.STRING, description: 'Second period start month YYYY-MM.' },
+                period2End: { type: Type.STRING, description: 'Second period end month YYYY-MM.' }
+            },
+            required: ['period1Start', 'period1End', 'period2Start', 'period2End']
+        }
+    },
+    {
+        name: 'searchEntries',
+        description: 'Search the user\'s financial entries by keyword in description or by category tag.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                keyword: { type: Type.STRING, description: 'Search keyword to match in entry descriptions (case-insensitive).' },
+                category: { type: Type.STRING, description: 'Filter by category tag.' },
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
+                startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
+                limit: { type: Type.NUMBER, description: 'Max results to return. Default 20.' }
+            }
+        }
+    }
+];
+
+const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
+
+RULES:
+- ALWAYS use the available tools to look up the user's actual financial data before answering questions. Never guess or make up numbers.
+- Be concise: 2-4 short paragraphs max.
+- Be encouraging but honest. If spending is high, say so tactfully.
+- Respond in the same language the user writes in.
+- Format currency amounts clearly.
+- Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
+- When showing data, use simple formatting with bold for emphasis.
+- If the user asks about something unrelated to finances, politely redirect them.`;
+
+function filterByDateRange(userEntries, startMonth, endMonth) {
+    return userEntries.filter(e => {
+        if (startMonth && e.month < startMonth) return false;
+        if (endMonth && e.month > endMonth) return false;
+        return true;
+    });
+}
+
+function toolGetFinancialSummary(userId, args) {
+    let userEntries = entries.filter(e => e.userId === userId);
+    userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+
+    const totalIncome = userEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
+    const totalExpenses = userEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    const balance = totalIncome - totalExpenses;
+    const savingsRate = totalIncome > 0 ? ((balance / totalIncome) * 100).toFixed(1) : 0;
+
+    return {
+        totalIncome: totalIncome.toFixed(2),
+        totalExpenses: totalExpenses.toFixed(2),
+        balance: balance.toFixed(2),
+        savingsRate: `${savingsRate}%`,
+        entryCount: userEntries.length,
+        period: {
+            from: args.startMonth || 'all time',
+            to: args.endMonth || 'all time'
+        }
+    };
+}
+
+function toolGetCategoryBreakdown(userId, args) {
+    const type = args.type || 'expense';
+    let userEntries = entries.filter(e => e.userId === userId && e.type === type);
+    userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+
+    const total = userEntries.reduce((s, e) => s + e.amount, 0);
+    const byCategory = {};
+
+    userEntries.forEach(e => {
+        const cat = (e.tags && e.tags[0]) || 'uncategorized';
+        byCategory[cat] = (byCategory[cat] || 0) + e.amount;
+    });
+
+    const breakdown = Object.entries(byCategory)
+        .map(([category, amount]) => ({
+            category,
+            amount: amount.toFixed(2),
+            percentage: total > 0 ? ((amount / total) * 100).toFixed(1) + '%' : '0%'
+        }))
+        .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount));
+
+    return { type, total: total.toFixed(2), breakdown };
+}
+
+function toolGetMonthlyTrends(userId, args) {
+    let userEntries = entries.filter(e => e.userId === userId);
+    userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+
+    const byMonth = {};
+    userEntries.forEach(e => {
+        if (!byMonth[e.month]) byMonth[e.month] = { income: 0, expenses: 0 };
+        if (e.type === 'income') byMonth[e.month].income += e.amount;
+        else byMonth[e.month].expenses += e.amount;
+    });
+
+    const months = Object.keys(byMonth).sort();
+    const trends = months.map(m => ({
+        month: m,
+        income: byMonth[m].income.toFixed(2),
+        expenses: byMonth[m].expenses.toFixed(2),
+        net: (byMonth[m].income - byMonth[m].expenses).toFixed(2)
+    }));
+
+    const totalIncome = months.reduce((s, m) => s + byMonth[m].income, 0);
+    const totalExpenses = months.reduce((s, m) => s + byMonth[m].expenses, 0);
+    const count = months.length || 1;
+
+    return {
+        months: trends,
+        averages: {
+            income: (totalIncome / count).toFixed(2),
+            expenses: (totalExpenses / count).toFixed(2),
+            net: ((totalIncome - totalExpenses) / count).toFixed(2)
+        }
+    };
+}
+
+function toolGetTopExpenses(userId, args) {
+    let userEntries = entries.filter(e => e.userId === userId && e.type === 'expense');
+    userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+
+    if (args.category) {
+        const catQuery = String(args.category).toLowerCase().trim();
+        userEntries = userEntries.filter(e =>
+            Array.isArray(e.tags) && e.tags.some(t => String(t).toLowerCase().trim() === catQuery)
+        );
+    }
+
+    let limit = parseInt(args.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 10;
+    limit = Math.min(limit, 50);
+    const sorted = userEntries.sort((a, b) => b.amount - a.amount).slice(0, limit);
+
+    return {
+        topExpenses: sorted.map(e => ({
+            description: e.description,
+            amount: e.amount.toFixed(2),
+            month: e.month,
+            category: (e.tags && e.tags[0]) || 'uncategorized'
+        })),
+        count: sorted.length
+    };
+}
+
+function toolComparePeriods(userId, args) {
+    const get = (start, end) => {
+        let ue = entries.filter(e => e.userId === userId);
+        ue = filterByDateRange(ue, start, end);
+        const income = ue.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
+        const expenses = ue.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+        return { income, expenses, net: income - expenses, entryCount: ue.length };
+    };
+
+    const p1 = get(args.period1Start, args.period1End);
+    const p2 = get(args.period2Start, args.period2End);
+
+    const pctChange = (a, b) => {
+        if (a === 0) return b === 0 ? '0%' : 'N/A';
+        return ((b - a) / a * 100).toFixed(1) + '%';
+    };
+
+    return {
+        period1: {
+            range: `${args.period1Start} to ${args.period1End}`,
+            income: p1.income.toFixed(2), expenses: p1.expenses.toFixed(2), net: p1.net.toFixed(2), entryCount: p1.entryCount
+        },
+        period2: {
+            range: `${args.period2Start} to ${args.period2End}`,
+            income: p2.income.toFixed(2), expenses: p2.expenses.toFixed(2), net: p2.net.toFixed(2), entryCount: p2.entryCount
+        },
+        changes: {
+            income: pctChange(p1.income, p2.income),
+            expenses: pctChange(p1.expenses, p2.expenses),
+            net: pctChange(p1.net, p2.net)
+        }
+    };
+}
+
+function toolSearchEntries(userId, args) {
+    let userEntries = entries.filter(e => e.userId === userId);
+    userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+
+    if (args.type) userEntries = userEntries.filter(e => e.type === args.type);
+    if (args.category) {
+        const catQuery = String(args.category).toLowerCase().trim();
+        userEntries = userEntries.filter(e =>
+            Array.isArray(e.tags) && e.tags.some(t => String(t).toLowerCase().trim() === catQuery)
+        );
+    }
+    if (args.keyword && typeof args.keyword === 'string') {
+        const kw = args.keyword.trim().toLowerCase();
+        userEntries = userEntries.filter(e => e.description.toLowerCase().includes(kw));
+    }
+
+    let limit = 20;
+    if (args.limit != null) {
+        const parsed = parseInt(args.limit, 10);
+        if (Number.isFinite(parsed) && parsed > 0) limit = Math.min(parsed, 100);
+    }
+    const results = userEntries.slice(0, limit);
+
+    return {
+        results: results.map(e => ({
+            description: e.description,
+            amount: e.amount.toFixed(2),
+            type: e.type,
+            month: e.month,
+            category: (e.tags && e.tags[0]) || 'uncategorized'
+        })),
+        totalMatches: userEntries.length,
+        showing: results.length
+    };
+}
+
+function executeTool(name, userId, args) {
+    switch (name) {
+        case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
+        case 'getCategoryBreakdown': return toolGetCategoryBreakdown(userId, args);
+        case 'getMonthlyTrends': return toolGetMonthlyTrends(userId, args);
+        case 'getTopExpenses': return toolGetTopExpenses(userId, args);
+        case 'comparePeriods': return toolComparePeriods(userId, args);
+        case 'searchEntries': return toolSearchEntries(userId, args);
+        default: return { error: `Unknown tool: ${name}` };
+    }
+}
+
+// AI Chat endpoint
+const MAX_CHAT_MESSAGE_LENGTH = 8000;
+
+app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
+    const { messages: clientMessages, message: rawMessage } = req.body;
+
+    if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim()) {
+        return res.status(400).json({ error: 'Message is required.' });
+    }
+
+    const message = rawMessage.trim();
+    if (message.length > MAX_CHAT_MESSAGE_LENGTH) {
+        return res.status(413).json({ error: 'Message is too long.' });
+    }
+
+    // Sanitize client-provided history: only accept user messages to prevent prompt injection
+    const messages = Array.isArray(clientMessages)
+        ? clientMessages.filter(m => m && m.role === 'user' && typeof m.content === 'string')
+        : [];
+
+    // Resolve API key: stored user key → server .env key
+    let apiKey = null;
+    if (req.user.geminiApiKey) {
+        try {
+            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+        } catch (e) {
+            console.error('Failed to decrypt stored Gemini API key for chat:', e.message);
+        }
+    }
+    if (!apiKey) {
+        apiKey = config.geminiApiKey;
+    }
+    if (!apiKey) {
+        return res.status(400).json({ error: 'no_api_key' });
+    }
+
+    try {
+        const chatGenAI = new GoogleGenAI({ apiKey });
+
+        // Build contents from sanitized history + new message
+        const contents = [];
+        const MAX_HISTORY_TEXT_LENGTH = 8000;
+        const recent = messages.slice(-20);
+        for (const msg of recent) {
+            const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+            if (text) {
+                contents.push({ role: 'user', parts: [{ text }] });
+            }
+        }
+        contents.push({ role: 'user', parts: [{ text: message }] });
+
+        // Tool call loop (max 5 iterations)
+        let currentContents = contents;
+        let finalText = null;
+        const maxIterations = 5;
+
+        for (let i = 0; i < maxIterations; i++) {
+            const response = await chatGenAI.models.generateContent({
+                model: GEMINI_CHAT_MODEL,
+                contents: currentContents,
+                config: {
+                    temperature: 0.7,
+                    tools: [{ functionDeclarations: chatToolDeclarations }],
+                    systemInstruction: chatSystemPrompt
+                }
+            });
+
+            const candidate = response.candidates?.[0];
+            if (!candidate || !candidate.content) {
+                finalText = response.text || 'Sorry, I could not generate a response.';
+                break;
+            }
+
+            const parts = candidate.content.parts || [];
+            const functionCalls = parts.filter(p => p.functionCall);
+
+            if (functionCalls.length === 0) {
+                // No tool calls — extract text response
+                const textParts = parts.filter(p => p.text);
+                finalText = textParts.map(p => p.text).join('\n') || 'Sorry, I could not generate a response.';
+                break;
+            }
+
+            // Execute tool calls and feed results back
+            currentContents = [
+                ...currentContents,
+                { role: 'model', parts }
+            ];
+
+            const toolResultParts = [];
+            for (const fc of functionCalls) {
+                const toolName = fc.functionCall.name;
+                const toolArgs = fc.functionCall.args || {};
+                const result = executeTool(toolName, req.user.id, toolArgs);
+                toolResultParts.push({
+                    functionResponse: {
+                        name: toolName,
+                        response: result
+                    }
+                });
+            }
+
+            currentContents.push({ role: 'user', parts: toolResultParts });
+        }
+
+        if (!finalText) {
+            finalText = 'Sorry, I was unable to complete the analysis. Please try rephrasing your question.';
+        }
+
+        res.json({ reply: finalText });
+    } catch (error) {
+        console.error('AI Chat error:', error.message);
+        if (error.message?.includes('API key')) {
+            return res.status(400).json({ error: 'Invalid API key.' });
+        }
+        if (error.message?.includes('quota')) {
+            return res.status(429).json({ error: 'API quota exceeded. Please try again later.' });
+        }
+        res.status(500).json({ error: 'generic' });
+    }
 });
 
 // Set up multer for file uploads (store in memory)

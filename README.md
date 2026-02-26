@@ -1,6 +1,6 @@
 # Asset Management Web Application
 
-A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents using Google Gemini AI.
+A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor, both powered by Google Gemini AI.
 
 ## Features
 
@@ -38,6 +38,13 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Bulk Import**: Process multiple expenses from a single document with preview and editing
 - **Per-User API Keys**: Each user can store their own encrypted Gemini API key or enter one manually per session
 - **Key Priority Chain**: Manual input > user's stored key > global env var fallback
+
+### AI Financial Advisor
+- **Chat Interface**: Floating chat widget on the dashboard for real-time financial advice
+- **Data-Driven Insights**: AI analyzes your actual income, expenses, and spending patterns
+- **Function Calling**: Gemini uses 6 server-side tools (summary, category breakdown, trends, top expenses, period comparison, search)
+- **Conversation History**: Chat context maintained during the session for follow-up questions
+- **Rate Limited**: 30 messages per 15-minute window per user
 
 #### Bulk Import Workflow
 1. Click "Bulk PDF Upload" in the header
@@ -225,7 +232,7 @@ Available expense/income categories:
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
 - **Database**: Encrypted JSON file storage
-- **AI Integration**: Google Gemini API (gemini-3.1-pro-preview)
+- **AI Integration**: Google Gemini API (gemini-3-flash-preview)
 - **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES encryption
 
 ### API Endpoints
@@ -255,6 +262,7 @@ Available expense/income categories:
 - `PUT /api/entries/:id` - Update entry
 - `DELETE /api/entries/:id` - Delete entry
 - `POST /api/process-pdf` - Process PDF with AI (accepts optional `geminiApiKey` field)
+- `POST /api/ai/chat` - AI financial advisor chat (rate limited: 30/15min)
 
 #### Admin (requires admin role)
 - `GET /api/admin/users` - List all users
@@ -277,6 +285,7 @@ asset-management/
 │   ├── i18n.js          # Internationalization (EN/PT translations)
 │   ├── login.js         # Login page logic
 │   ├── register.js      # Registration page logic
+│   ├── chat.js          # AI financial advisor chat module
 │   └── forgot-password.js # Password reset page logic
 ├── server.js            # Main server application
 ├── config.js            # Centralized config with startup validation
@@ -335,4 +344,4 @@ The script will:
 
 ---
 
-**Note**: This system is designed for personal/family financial management. For production use with many users, consider implementing rate limiting, a proper database system, and additional security measures.
+**Note**: This system is designed for personal/family financial management. For production use with many users, consider implementing a proper database system and additional security measures.

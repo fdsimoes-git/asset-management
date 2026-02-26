@@ -735,8 +735,14 @@
             }
 
             .header-buttons button {
+                flex: 1 1 auto;
+                min-width: 0;
                 font-size: 0.7rem;
                 padding: 0.6rem 0.9rem;
+                white-space: normal;
+                text-align: center;
+                line-height: 1.3;
+                word-break: break-word;
             }
 
             .view-mode-toggle {
@@ -796,9 +802,20 @@
                 min-width: 0;
                 padding: 0.6rem 0.5rem;
                 font-size: 0.65rem;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                white-space: normal;
+                text-align: center;
                 letter-spacing: 0.02em;
+                line-height: 1.3;
+            }
+
+            button {
+                white-space: normal;
+                text-align: center;
+            }
+
+            .edit-btn, .delete-btn {
+                padding: 0.35rem 0.5rem;
+                font-size: 0.6rem;
             }
 
             main {
@@ -815,12 +832,13 @@
             }
 
             th, td {
-                padding: 0.6rem 0.75rem;
+                padding: 0.6rem 0.5rem;
             }
 
             .modal-content {
                 padding: 1.5rem;
                 width: 95%;
+                max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem);
             }
         }
 
@@ -1345,7 +1363,7 @@
         }
         .lang-toggle {
             position: fixed;
-            bottom: 1.25rem;
+            bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
             right: 1.25rem;
             z-index: 999;
             width: 2.5rem;
@@ -1371,10 +1389,232 @@
             transform: none;
             box-shadow: 0 2px 12px rgba(0,0,0,0.25);
         }
+
+        /* ── AI Chat Widget ── */
+        .chat-fab {
+            position: fixed;
+            bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+            right: 1.25rem;
+            z-index: 998;
+            width: 3.5rem;
+            height: 3.5rem;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .chat-fab:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 24px rgba(245, 158, 11, 0.5);
+        }
+        .chat-fab svg { width: 1.5rem; height: 1.5rem; }
+
+        .chat-window {
+            display: none;
+            position: fixed;
+            bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
+            right: 1.25rem;
+            width: 400px;
+            height: 500px;
+            z-index: 997;
+            background: var(--color-bg-elevated, #1e1e2e);
+            border: 1px solid var(--color-border, #333);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-window.open { display: flex; }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            background: var(--color-bg-surface, #2a2a3e);
+            border-bottom: 1px solid var(--color-border, #333);
+        }
+        .chat-header-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--color-accent-primary, #f59e0b);
+        }
+        .chat-close-btn {
+            background: none;
+            border: none;
+            color: var(--color-text-secondary, #a0a0b0);
+            cursor: pointer;
+            font-size: 1.25rem;
+            line-height: 1;
+            padding: 0.25rem;
+            border-radius: 0.25rem;
+            transition: color 0.15s;
+        }
+        .chat-close-btn:hover { color: var(--color-text-primary, #e0e0e8); }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .chat-message-user,
+        .chat-message-assistant {
+            max-width: 85%;
+            padding: 0.6rem 0.85rem;
+            border-radius: 0.75rem;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+        .chat-message-user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #1a1a2e;
+        }
+        .chat-message-assistant {
+            align-self: flex-start;
+            background: var(--color-bg-surface, #2a2a3e);
+            color: var(--color-text-primary, #e0e0e8);
+            border: 1px solid var(--color-border, #333);
+        }
+        .chat-message-assistant strong { color: var(--color-accent-primary, #f59e0b); }
+        .chat-message-assistant ul,
+        .chat-message-assistant ol { margin: 0.3rem 0; padding-left: 1.25rem; }
+        .chat-message-assistant li { margin-bottom: 0.15rem; }
+        .chat-message-assistant code {
+            background: rgba(0,0,0,0.3);
+            padding: 0.1rem 0.35rem;
+            border-radius: 0.2rem;
+            font-size: 0.8rem;
+        }
+
+        .chat-input-area {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem 1rem;
+            border-top: 1px solid var(--color-border, #333);
+            background: var(--color-bg-surface, #2a2a3e);
+        }
+        .chat-input-area input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--color-border, #333);
+            border-radius: 0.5rem;
+            background: var(--color-bg-primary, #16161e);
+            color: var(--color-text-primary, #e0e0e8);
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .chat-input-area input:focus {
+            border-color: var(--color-accent-primary, #f59e0b);
+        }
+        .chat-input-area button {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #1a1a2e;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            white-space: nowrap;
+        }
+        .chat-input-area button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chat-loading {
+            align-self: flex-start;
+            display: flex;
+            gap: 0.3rem;
+            padding: 0.6rem 0.85rem;
+            background: var(--color-bg-surface, #2a2a3e);
+            border: 1px solid var(--color-border, #333);
+            border-radius: 0.75rem;
+        }
+        .chat-loading-dot {
+            width: 0.45rem;
+            height: 0.45rem;
+            background: var(--color-text-secondary, #a0a0b0);
+            border-radius: 50%;
+            animation: chatDotBounce 1.2s infinite;
+        }
+        .chat-loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .chat-loading-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes chatDotBounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+            40% { transform: translateY(-0.4rem); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .chat-window {
+                top: auto;
+                left: 0.5rem;
+                right: 0.5rem;
+                bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+                width: auto;
+                height: 55vh;
+                max-height: 400px;
+                border-radius: 0.75rem;
+                z-index: 1001;
+            }
+            .chat-close-btn {
+                font-size: 1.5rem;
+                padding: 0.4rem;
+                min-width: 2.5rem;
+                min-height: 2.5rem;
+            }
+            .chat-input-area {
+                padding-bottom: 0.75rem;
+            }
+            .chat-input-area input {
+                font-size: 16px;
+            }
+            .chat-messages {
+                padding: 0.75rem;
+                gap: 0.5rem;
+            }
+            .chat-message-user,
+            .chat-message-assistant {
+                font-size: 0.8rem;
+                padding: 0.5rem 0.75rem;
+            }
+        }
     </style>
 </head>
 <body>
     <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
+
+    <!-- AI Chat Widget -->
+    <button id="chatFab" class="chat-fab" data-i18n-title="chat.title" data-i18n-aria-label="chat.title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <div id="chatWindow" class="chat-window">
+        <div class="chat-header">
+            <span class="chat-header-title" data-i18n="chat.title">AI Financial Advisor</span>
+            <button id="chatCloseBtn" class="chat-close-btn" data-i18n-title="chat.close" data-i18n-aria-label="chat.close">&times;</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" data-i18n-placeholder="chat.placeholder" data-i18n-aria-label="chat.placeholder" placeholder="Ask about your finances..." autocomplete="off" />
+            <button id="chatSendBtn" data-i18n="chat.send">Send</button>
+        </div>
+    </div>
+
     <div class="container">
         <header>
             <h1 data-i18n="common.assetManagement">Asset Management</h1>
@@ -1805,5 +2045,6 @@
     </script>
     <script src="/js/i18n.js"></script>
     <script src="/js/app.js"></script>
+    <script src="/js/chat.js"></script>
 </body>
 </html>

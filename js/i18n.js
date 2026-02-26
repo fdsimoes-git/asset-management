@@ -271,6 +271,10 @@ const translations = {
     'login.feature.mobileDesc': 'Full iOS app for managing finances on the go',
     'login.feature.categories': 'Smart Categories',
     'login.feature.categoriesDesc': '17 built-in tags for granular categorization',
+    'login.feature.twoFactor': 'Two-Factor Auth (2FA)',
+    'login.feature.twoFactorDesc': 'Protect your account with TOTP authenticator apps and backup codes',
+    'login.feature.aiChat': 'AI Financial Advisor',
+    'login.feature.aiChatDesc': 'Chat with an AI advisor that analyzes your real financial data',
     'login.welcome': 'Welcome Back',
     'login.subtitle': 'Sign in to manage your assets',
     'login.usernamePlaceholder': 'Enter your username',
@@ -349,6 +353,17 @@ const translations = {
     'forgot.errorPasswordMatch': 'Passwords do not match.',
     'forgot.errorGeneric': 'An error occurred. Please try again.',
     'forgot.errorResetFailed': 'Failed to reset password.',
+
+    // ── AI Chat ──
+    'chat.title': 'AI Financial Advisor',
+    'chat.placeholder': 'Ask about your finances...',
+    'chat.send': 'Send',
+    'chat.close': 'Close',
+    'chat.welcome': 'Hello! I\'m your AI financial advisor. I can analyze your income, expenses, and spending patterns to help you make better financial decisions.',
+    'chat.welcomeExamples': 'For example:\n- "How much did I spend last month?"\n- "What are my biggest expenses?"\n- "Compare January vs February"',
+    'chat.errorNoKey': 'No AI API key configured. Please add your Gemini API key in Settings to use the chat advisor.',
+    'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
+    'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
   },
 
   pt: {
@@ -620,7 +635,11 @@ const translations = {
     'login.feature.mobile': 'App Nativo',
     'login.feature.mobileDesc': 'App iOS completo para gerenciar finan\u00e7as em qualquer lugar',
     'login.feature.categories': 'Categorias Inteligentes',
-    'login.feature.categoriesDesc': '17 tags integradas para categoriza\u00e7\u00e3o detalhada',
+    'login.feature.categoriesDesc': '17 tags integradas para categorização detalhada',
+    'login.feature.twoFactor': 'Autenticação em Dois Fatores (2FA)',
+    'login.feature.twoFactorDesc': 'Proteja sua conta com apps autenticadores TOTP e códigos de backup',
+    'login.feature.aiChat': 'Consultor Financeiro IA',
+    'login.feature.aiChatDesc': 'Converse com um consultor IA que analisa seus dados financeiros reais',
     'login.welcome': 'Bem-vindo de Volta',
     'login.subtitle': 'Entre para gerenciar seus ativos',
     'login.usernamePlaceholder': 'Digite seu usu\u00e1rio',
@@ -699,6 +718,17 @@ const translations = {
     'forgot.errorPasswordMatch': 'As senhas n\u00e3o coincidem.',
     'forgot.errorGeneric': 'Ocorreu um erro. Por favor, tente novamente.',
     'forgot.errorResetFailed': 'Falha ao redefinir a senha.',
+
+    // ── AI Chat ──
+    'chat.title': 'Consultor Financeiro IA',
+    'chat.placeholder': 'Pergunte sobre suas finanças...',
+    'chat.send': 'Enviar',
+    'chat.close': 'Fechar',
+    'chat.welcome': 'Olá! Sou seu consultor financeiro com IA. Posso analisar sua renda, despesas e padrões de gastos para ajudá-lo a tomar melhores decisões financeiras.',
+    'chat.welcomeExamples': 'Por exemplo:\n- "Quanto gastei no mês passado?"\n- "Quais são minhas maiores despesas?"\n- "Compare janeiro com fevereiro"',
+    'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione sua chave Gemini API nas Configurações para usar o consultor.',
+    'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
+    'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
   }
 };
 
@@ -739,6 +769,11 @@ function applyTranslations() {
   document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
     var key = el.getAttribute('data-i18n-title');
     if (key) el.title = t(key);
+  });
+  // Aria labels
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(function(el) {
+    var key = el.getAttribute('data-i18n-aria-label');
+    if (key) el.setAttribute('aria-label', t(key));
   });
   // Update html lang attribute
   document.documentElement.lang = getLang() === 'pt' ? 'pt-BR' : 'en';
