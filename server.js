@@ -2192,8 +2192,8 @@ function toolSearchEntries(userId, args) {
             Array.isArray(e.tags) && e.tags.some(t => String(t).toLowerCase().trim() === catQuery)
         );
     }
-    if (args.keyword) {
-        const kw = args.keyword.toLowerCase();
+    if (args.keyword && typeof args.keyword === 'string') {
+        const kw = args.keyword.trim().toLowerCase();
         userEntries = userEntries.filter(e => e.description.toLowerCase().includes(kw));
     }
 
