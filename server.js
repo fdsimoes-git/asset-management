@@ -2284,23 +2284,32 @@ function toolEditEntry(userId, args) {
     }
 
     if (args.tags != null) {
-        const sanitizedTags = Array.isArray(args.tags)
-            ? args.tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        const rawTags = Array.isArray(args.tags)
+            ? args.tags.map(t => String(t).toLowerCase().trim())
             : [];
+        const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
+        const rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
+        if (rejectedTags.length > 0 && sanitizedTags.length === 0) {
+            return { error: `None of the provided tags are valid. Valid tags are: ${VALID_TAGS.join(', ')}` };
+        }
         updates.tags = sanitizedTags;
+        if (rejectedTags.length > 0) {
+            updates._rejectedTags = rejectedTags;
+        }
     }
 
     // Check that at least one field is being updated
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 0 || (Object.keys(updates).length === 1 && updates._rejectedTags)) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
     }
 
-    // Apply updates
-    entries[index] = { ...entry, ...updates };
+    // Apply updates (exclude internal fields)
+    const { _rejectedTags, ...cleanUpdates } = updates;
+    entries[index] = { ...entry, ...cleanUpdates };
     saveEntries();
 
     const updated = entries[index];
-    return {
+    const result = {
         success: true,
         message: 'Entry updated successfully.',
         entry: {
@@ -2313,6 +2322,10 @@ function toolEditEntry(userId, args) {
             isCoupleExpense: updated.isCoupleExpense || false
         }
     };
+    if (_rejectedTags && _rejectedTags.length > 0) {
+        result.warning = `The following tags were not recognized and were ignored: ${_rejectedTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`;
+    }
+    return result;
 }
 
 function executeTool(name, userId, args) {
