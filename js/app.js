@@ -846,8 +846,8 @@ function updateAiKeyUI() {
 
     const provider = currentUser && currentUser.aiProvider || 'gemini';
     const hasKey = provider === 'openai'
-        ? (currentUser && currentUser.hasOpenaiApiKey)
-        : (currentUser && currentUser.hasGeminiApiKey);
+        ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : (currentUser && currentUser.hasGeminiKeyAvailable);
 
     if (hasKey) {
         statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyStored')}</span>`;
@@ -907,8 +907,8 @@ processBulkPdfBtn.addEventListener('click', async () => {
     // Validate that an AI API key is configured for the selected provider
     const provider = currentUser && currentUser.aiProvider || 'gemini';
     const hasKey = provider === 'openai'
-        ? (currentUser && currentUser.hasOpenaiApiKey)
-        : (currentUser && currentUser.hasGeminiApiKey);
+        ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : (currentUser && currentUser.hasGeminiKeyAvailable);
     if (!currentUser || !hasKey) {
         alert(t('bulk.alertEnterKey'));
         return;
@@ -1933,11 +1933,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const response = await fetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
+                            const data = await response.json();
                             currentUser.hasGeminiApiKey = false;
+                            currentUser.hasGeminiKeyAvailable = data.hasGeminiKeyAvailable || false;
                             rebuildDisplay(false);
                             form.style.display = 'block';
                             cancelBtn.style.display = 'none';
                             input.value = '';
+                            updateAiKeyUI();
                             alert(t('settings.geminiRemoveSuccess'));
                         } else {
                             alert(t('gemini.removeFailed'));
@@ -1979,11 +1982,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (response.ok) {
                         currentUser.hasGeminiApiKey = true;
+                        currentUser.hasGeminiKeyAvailable = true;
                         rebuildDisplay(true);
                         display.style.display = '';
                         form.style.display = 'none';
                         cancelBtn.style.display = 'none';
                         input.value = '';
+                        updateAiKeyUI();
                         alert(t('settings.geminiSaveSuccess'));
                     } else {
                         const data = await response.json();
@@ -2050,7 +2055,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const response = await fetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
+                            const data = await response.json();
                             currentUser.hasOpenaiApiKey = false;
+                            currentUser.hasOpenaiKeyAvailable = data.hasOpenaiKeyAvailable || false;
                             rebuildDisplay(false);
                             form.style.display = 'block';
                             cancelBtn.style.display = 'none';
@@ -2094,6 +2101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (response.ok) {
                         currentUser.hasOpenaiApiKey = true;
+                        currentUser.hasOpenaiKeyAvailable = true;
                         rebuildDisplay(true);
                         display.style.display = '';
                         form.style.display = 'none';

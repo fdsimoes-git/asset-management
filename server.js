@@ -1043,6 +1043,8 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerUsername: null,
         hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData),
         hasOpenaiApiKey: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData),
+        hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
+        hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
         aiProvider: req.user.aiProvider || 'gemini',
         has2FA: !!req.user.totpEnabled
     };
@@ -1077,7 +1079,7 @@ app.post('/api/user/gemini-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true });
+    res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true, hasGeminiKeyAvailable: true });
 });
 
 // Remove saved Gemini API key
@@ -1086,7 +1088,7 @@ app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false });
+    res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false, hasGeminiKeyAvailable: !!config.geminiApiKey });
 });
 
 // Save OpenAI API key (encrypted)
@@ -1106,7 +1108,7 @@ app.post('/api/user/openai-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true });
+    res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true, hasOpenaiKeyAvailable: true });
 });
 
 // Remove saved OpenAI API key
@@ -1115,7 +1117,7 @@ app.delete('/api/user/openai-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false });
+    res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false, hasOpenaiKeyAvailable: !!config.openaiApiKey });
 });
 
 // Save AI provider preference
