@@ -69,6 +69,10 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
+        // Headings: ### h3, ## h2, # h1 (check longer prefixes first)
+        s = s.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+        s = s.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+        s = s.replace(/^# (.+)$/gm, '<h3>$1</h3>');
         // Bold: **text**
         s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         // Italic: *text* (negative lookbehind/lookahead to avoid matching inside bold tags)
@@ -100,6 +104,8 @@
                 if (inOl) { html += '</ol>'; inOl = false; }
                 if (line.trim() === '') {
                     html += '<br>';
+                } else if (/^<h[34]>/.test(line)) {
+                    html += line;
                 } else {
                     html += line + '<br>';
                 }
