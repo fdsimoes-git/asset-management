@@ -201,7 +201,7 @@
         card.className = 'chat-confirm-card';
 
         // Title
-        var titleText = isBulk
+        const titleText = isBulk
             ? t('chat.confirmEditTitleCount', { count: pendingEdits.length })
             : t('chat.confirmEditTitle');
         let html = '<div class="chat-confirm-title">' + escapeHtml(titleText) + '</div>';
@@ -235,7 +235,7 @@
         }
 
         // Buttons
-        var confirmLabel = isBulk ? t('chat.confirmAllEdits') : t('chat.confirmEdit');
+        const confirmLabel = isBulk ? t('chat.confirmAllEdits') : t('chat.confirmEdit');
         html += '<div class="chat-confirm-actions">';
         html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(confirmLabel) + '</button>';
         html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelEdit')) + '</button>';
@@ -251,20 +251,29 @@
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
             try {
-                let hasError = false;
+                let succeeded = 0;
+                let failed = 0;
+                let expired = false;
                 for (const pe of pendingEdits) {
                     const res = await fetch('/api/ai/confirm-edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ entryId: pe.entryId })
                     });
-                    if (res.status === 410) { hasError = true; }
-                    else if (!res.ok) { hasError = true; }
+                    if (res.status === 410) { failed++; expired = true; }
+                    else if (!res.ok) { failed++; }
+                    else { succeeded++; }
                 }
-                if (hasError) {
-                    replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
+                if (failed > 0 && succeeded === 0) {
+                    const errorMsg = expired ? t('chat.editExpired') : t('chat.errorGeneric');
+                    replaceCardWithMessage(card, errorMsg, 'error');
+                } else if (failed > 0 && succeeded > 0) {
+                    const msg = t('chat.partialEditsConfirmed', { succeeded, failed });
+                    replaceCardWithMessage(card, msg, 'error');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
                 } else {
-                    var msg = isBulk ? t('chat.allEditsConfirmed') : t('chat.editConfirmed');
+                    const msg = isBulk ? t('chat.allEditsConfirmed') : t('chat.editConfirmed');
                     replaceCardWithMessage(card, msg, 'success');
                     chatMessages.push({ role: 'assistant', content: msg });
                     if (typeof window.loadEntries === 'function') window.loadEntries();
@@ -278,13 +287,15 @@
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
             try {
-                // Cancel all pending edits in one call (no entryId = cancel all)
-                await fetch('/api/ai/cancel-edit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
+                for (const pe of pendingEdits) {
+                    await fetch('/api/ai/cancel-edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pe.entryId })
+                    });
+                }
             } catch (e) { /* ignore */ }
-            var msg = isBulk ? t('chat.allEditsCancelled') : t('chat.editCancelled');
+            const msg = isBulk ? t('chat.allEditsCancelled') : t('chat.editCancelled');
             replaceCardWithMessage(card, msg, 'info');
             chatMessages.push({ role: 'assistant', content: msg });
         });

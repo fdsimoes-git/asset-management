@@ -2057,6 +2057,19 @@ const SNAPSHOT_MAX_SIZE = 1000;
 const pendingEdits = new Map(); // keyed by userId, array of pending edits
 const PENDING_EDIT_TTL_MS = 5 * 60 * 1000; // 5 min expiry
 
+// Periodically remove expired pending edits to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, edits] of pendingEdits.entries()) {
+        const active = edits.filter(e => now - e.createdAt <= PENDING_EDIT_TTL_MS);
+        if (active.length === 0) {
+            pendingEdits.delete(userId);
+        } else if (active.length !== edits.length) {
+            pendingEdits.set(userId, active);
+        }
+    }
+}, 60 * 1000);
+
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
 
 RULES:
@@ -2640,7 +2653,16 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
 });
 
 // Confirm a pending AI edit via UI button
-app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
+const editActionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, (req, res) => {
     const userId = req.user.id;
     const allPending = pendingEdits.get(userId);
 
@@ -2649,8 +2671,8 @@ app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
     }
 
     const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
-    if (requestedEntryId == null) {
-        return res.status(400).json({ error: 'entryId is required.' });
+    if (requestedEntryId == null || !Number.isInteger(requestedEntryId)) {
+        return res.status(400).json({ error: 'entryId must be a valid integer.' });
     }
 
     const idx = allPending.findIndex(e => e.entryId === requestedEntryId);
@@ -2682,7 +2704,7 @@ app.post('/api/ai/confirm-edit', requireAuth, (req, res) => {
 });
 
 // Cancel a pending AI edit via UI button
-app.post('/api/ai/cancel-edit', requireAuth, (req, res) => {
+app.post('/api/ai/cancel-edit', requireAuth, editActionLimiter, (req, res) => {
     const userId = req.user.id;
     const allPending = pendingEdits.get(userId);
 
