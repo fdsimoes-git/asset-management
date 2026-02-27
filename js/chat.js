@@ -145,8 +145,8 @@
         showLoading();
 
         try {
-            // Send last 20 user messages as history (server only accepts user role)
-            const history = chatMessages.filter(m => m.role === 'user').slice(-21, -1);
+            // Send last 20 messages (user + assistant) as conversation context
+            const history = chatMessages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-21, -1);
 
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',

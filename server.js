@@ -2471,9 +2471,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         return res.status(413).json({ error: 'Message is too long.' });
     }
 
-    // Sanitize client-provided history: only accept user messages to prevent prompt injection
+    // Sanitize client-provided history: accept user and assistant messages for conversation context.
+    // Assistant messages are mapped to Gemini's 'model' role. Both are length-capped.
     const messages = Array.isArray(clientMessages)
-        ? clientMessages.filter(m => m && m.role === 'user' && typeof m.content === 'string')
+        ? clientMessages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         : [];
 
     // Resolve API key: stored user key → server .env key
@@ -2495,17 +2496,31 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     try {
         const chatGenAI = new GoogleGenAI({ apiKey });
 
-        // Build contents from sanitized history + new message
+        // Build contents from sanitized history + new message.
+        // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
+        // messages to satisfy Gemini's alternating-turn requirement.
         const contents = [];
         const MAX_HISTORY_TEXT_LENGTH = 8000;
         const recent = messages.slice(-20);
         for (const msg of recent) {
             const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
-            if (text) {
-                contents.push({ role: 'user', parts: [{ text }] });
+            if (!text) continue;
+            const role = msg.role === 'assistant' ? 'model' : 'user';
+            const last = contents[contents.length - 1];
+            if (last && last.role === role) {
+                // Merge consecutive same-role messages into one turn
+                last.parts[0].text += '\n' + text;
+            } else {
+                contents.push({ role, parts: [{ text }] });
             }
         }
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Ensure the new message is a user turn (merge if last history was also user)
+        const lastEntry = contents[contents.length - 1];
+        if (lastEntry && lastEntry.role === 'user') {
+            lastEntry.parts[0].text += '\n' + message;
+        } else {
+            contents.push({ role: 'user', parts: [{ text: message }] });
+        }
 
         // Tool call loop (max 5 iterations)
         let currentContents = contents;
