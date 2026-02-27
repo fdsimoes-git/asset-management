@@ -2018,8 +2018,58 @@ const chatToolDeclarations = [
                 limit: { type: Type.NUMBER, description: 'Max results to return. Default 20.' }
             }
         }
+    },
+    {
+        name: 'editEntry',
+        description: 'Propose an edit to an existing financial entry. The system will show a confirmation card to the user in the chat UI — do NOT ask the user to confirm in conversation. Just describe the changes you are proposing. Use searchEntries first to find the entry ID.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                entryId: { type: Type.NUMBER, description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
+                description: { type: Type.STRING, description: 'New description for the entry (max 500 characters).' },
+                amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
+                type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
+                month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense.' }
+            },
+            required: ['entryId']
+        }
+    },
+    {
+        name: 'undoLastEdit',
+        description: 'Undo the most recent AI edit on a specific entry, restoring it to its previous state. Only works if the entry was edited via the editEntry tool in the current session and has not already been undone.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                entryId: { type: Type.NUMBER, description: 'The ID of the entry to undo. Must match a previously edited entry.' }
+            },
+            required: ['entryId']
+        }
     }
 ];
+
+// Stores the pre-edit snapshot for the most recent AI edit per entry, keyed by "userId:entryId".
+// Cleared on undo or server restart — only the last edit per entry is reversible.
+// Capped at 1000 entries; oldest snapshots are evicted when the limit is reached.
+const lastEditSnapshots = new Map();
+const SNAPSHOT_MAX_SIZE = 1000;
+
+const pendingEdits = new Map(); // keyed by userId, array of pending edits
+const PENDING_EDIT_TTL_MS = 5 * 60 * 1000; // 5 min expiry
+
+// Periodically remove expired pending edits to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, edits] of pendingEdits.entries()) {
+        const active = edits.filter(e => now - e.createdAt <= PENDING_EDIT_TTL_MS);
+        if (active.length === 0) {
+            pendingEdits.delete(userId);
+        } else if (active.length !== edits.length) {
+            pendingEdits.set(userId, active);
+        }
+    }
+}, 60 * 1000);
 
 const chatSystemPrompt = `You are a personal financial advisor assistant. You help users understand their finances by analyzing their real data.
 
@@ -2031,7 +2081,10 @@ RULES:
 - Format currency amounts clearly.
 - Do NOT give specific investment advice, tax advice, or legal advice. You can suggest general financial principles.
 - When showing data, use simple formatting with bold for emphasis.
-- If the user asks about something unrelated to finances, politely redirect them.`;
+- If the user asks about something unrelated to finances, politely redirect them.
+- When the user asks to edit entries, ALWAYS use searchEntries first to find the correct entries. Then call editEntry for each entry with the proposed changes. You can call editEntry multiple times in a single turn for bulk edits. The system will automatically show confirmation cards to the user — do NOT ask them to confirm in chat. Simply describe the changes you are proposing.
+- After proposing edits, briefly describe what you proposed. The user will confirm or cancel each edit via buttons in the UI.
+- If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
     return userEntries.filter(e => {
@@ -2138,6 +2191,8 @@ function toolGetTopExpenses(userId, args) {
 
     return {
         topExpenses: sorted.map(e => ({
+            // id is intentionally included so the editEntry tool can reference entries by ID
+            id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
             month: e.month,
@@ -2206,6 +2261,8 @@ function toolSearchEntries(userId, args) {
 
     return {
         results: results.map(e => ({
+            // id is intentionally included so the editEntry tool can reference entries by ID
+            id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
             type: e.type,
@@ -2217,6 +2274,192 @@ function toolSearchEntries(userId, args) {
     };
 }
 
+/**
+ * Validates editEntry arguments and resolves the target entry without applying changes.
+ * @param {number} userId - The authenticated user's ID.
+ * @param {object} args - Tool arguments (entryId, description, amount, type, month, tags).
+ * @returns {object} { entry, updates, entryIndex, rejectedTags } on success, or { error } on failure.
+ */
+function validateEditArgs(userId, args) {
+    const entryId = args.entryId != null ? Number(args.entryId) : NaN;
+    if (!Number.isInteger(entryId)) {
+        return { error: 'entryId is required and must be a valid integer.' };
+    }
+
+    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
+    if (index === -1) {
+        return { error: 'Entry not found or does not belong to the current user. Use searchEntries to find valid entry IDs.' };
+    }
+
+    const entry = entries[index];
+    const updates = {};
+
+    if (args.description != null) {
+        const desc = String(args.description).trim();
+        if (!desc) return { error: 'Description cannot be empty.' };
+        if (desc.length > 500) return { error: 'Description must be 500 characters or fewer.' };
+        updates.description = desc;
+    }
+
+    if (args.amount != null) {
+        const amount = parseFloat(args.amount);
+        if (!Number.isFinite(amount) || amount <= 0) return { error: 'Amount must be a positive number.' };
+        if (amount > 10000000) return { error: 'Amount must not exceed 10,000,000.' };
+        updates.amount = amount;
+    }
+
+    if (args.type != null) {
+        if (!VALID_ENTRY_TYPES.includes(args.type)) return { error: 'Type must be "income" or "expense".' };
+        updates.type = args.type;
+    }
+
+    if (args.month != null) {
+        if (!MONTH_FORMAT.test(args.month)) return { error: 'Month must be in YYYY-MM format.' };
+        updates.month = args.month;
+    }
+
+    let rejectedTags = [];
+    if (args.tags != null) {
+        if (!Array.isArray(args.tags)) return { error: 'Tags must be an array of strings.' };
+        const rawTags = args.tags.map(t => String(t).toLowerCase().trim());
+        const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
+        rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
+        if (rejectedTags.length > 0 && sanitizedTags.length === 0) {
+            return { error: `None of the provided tags are valid. Valid tags are: ${VALID_TAGS.join(', ')}` };
+        }
+        updates.tags = sanitizedTags;
+    }
+
+    if (args.isCoupleExpense != null) {
+        updates.isCoupleExpense = Boolean(args.isCoupleExpense);
+    }
+
+    if (Object.keys(updates).length === 0) {
+        return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags, isCoupleExpense.' };
+    }
+
+    return { entry, updates, entryIndex: index, rejectedTags };
+}
+
+/**
+ * Edit an existing financial entry. Requires confirmed: true (passed by the confirm endpoint).
+ * @param {number} userId - The authenticated user's ID (from session).
+ * @param {object} args - Tool arguments from the AI model.
+ * @returns {object} Updated entry on success, or `{ error }` on failure.
+ */
+function toolEditEntry(userId, args) {
+    // Require explicit confirmation flag
+    if (args.confirmed !== true) {
+        return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
+    }
+
+    const validation = validateEditArgs(userId, args);
+    if (validation.error) return validation;
+
+    const { entry, updates, entryIndex: index, rejectedTags } = validation;
+    const entryId = entry.id;
+
+    // Save pre-edit snapshot so the user can undo this edit.
+    const snapshotKey = `${userId}:${entryId}`;
+    // Delete existing key first so re-inserting moves it to most-recent position.
+    if (lastEditSnapshots.has(snapshotKey)) {
+        lastEditSnapshots.delete(snapshotKey);
+    } else if (lastEditSnapshots.size >= SNAPSHOT_MAX_SIZE) {
+        const oldestKey = lastEditSnapshots.keys().next().value;
+        if (oldestKey !== undefined) {
+            lastEditSnapshots.delete(oldestKey);
+        }
+    }
+
+    // Build updated entry and store snapshot before persisting,
+    // so undo remains available even if saveEntries() fails.
+    const updated = { ...entry, ...updates };
+    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...updated } });
+
+    // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
+    // Only the explicitly validated fields above can appear in `updates`.
+    entries[index] = updated;
+    saveEntries();
+    const result = {
+        success: true,
+        message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
+        entry: {
+            id: updated.id,
+            description: updated.description,
+            amount: updated.amount.toFixed(2),
+            type: updated.type,
+            month: updated.month,
+            tags: updated.tags || [],
+            isCoupleExpense: updated.isCoupleExpense || false
+        }
+    };
+    if (rejectedTags.length > 0) {
+        result.warning = `The following tags were not recognized and were ignored: ${rejectedTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`;
+    }
+    return result;
+}
+
+/**
+ * Undo the most recent AI edit on a specific entry, restoring the pre-edit state.
+ * Only works if a snapshot exists for this user+entry (i.e., the entry was edited via
+ * editEntry in the current server session and hasn't already been undone).
+ *
+ * @param {number} userId - The authenticated user's ID (from session).
+ * @param {object} args - Tool arguments from the AI model.
+ * @param {number} args.entryId - The entry to undo (required).
+ * @returns {object} Restored entry on success, or `{ error }` on failure.
+ */
+function toolUndoLastEdit(userId, args) {
+    const entryId = args.entryId != null ? Number(args.entryId) : NaN;
+    if (!Number.isInteger(entryId)) {
+        return { error: 'entryId is required and must be a valid integer.' };
+    }
+
+    const snapshotKey = `${userId}:${entryId}`;
+    const snapshotData = lastEditSnapshots.get(snapshotKey);
+    if (!snapshotData) {
+        return { error: 'No recent edit to undo for this entry. Only the most recent AI edit can be undone, and only once.' };
+    }
+
+    // Verify the entry still exists and belongs to the user
+    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
+    if (index === -1) {
+        lastEditSnapshots.delete(snapshotKey);
+        return { error: 'Entry not found or does not belong to the current user.' };
+    }
+
+    // Verify the entry hasn't been modified since the AI edit (e.g. via the UI).
+    const current = entries[index];
+    const expected = snapshotData.after;
+    if (current.description !== expected.description || current.amount !== expected.amount
+        || current.type !== expected.type || current.month !== expected.month
+        || JSON.stringify(current.tags) !== JSON.stringify(expected.tags)
+        || current.isCoupleExpense !== expected.isCoupleExpense) {
+        lastEditSnapshots.delete(snapshotKey);
+        return { error: 'This entry has been modified since the AI edit (possibly via the UI). Undo is no longer available to avoid overwriting those changes.' };
+    }
+
+    // Restore the pre-edit snapshot
+    entries[index] = { ...snapshotData.before };
+    lastEditSnapshots.delete(snapshotKey);
+    saveEntries();
+
+    const restored = entries[index];
+    return {
+        success: true,
+        message: 'Edit undone. Entry restored to its previous state.',
+        entry: {
+            id: restored.id,
+            description: restored.description,
+            amount: restored.amount.toFixed(2),
+            type: restored.type,
+            month: restored.month,
+            tags: restored.tags || [],
+            isCoupleExpense: restored.isCoupleExpense || false
+        }
+    };
+}
+
 function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
@@ -2225,6 +2468,8 @@ function executeTool(name, userId, args) {
         case 'getTopExpenses': return toolGetTopExpenses(userId, args);
         case 'comparePeriods': return toolComparePeriods(userId, args);
         case 'searchEntries': return toolSearchEntries(userId, args);
+        case 'editEntry': return toolEditEntry(userId, args);
+        case 'undoLastEdit': return toolUndoLastEdit(userId, args);
         default: return { error: `Unknown tool: ${name}` };
     }
 }
@@ -2244,9 +2489,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         return res.status(413).json({ error: 'Message is too long.' });
     }
 
-    // Sanitize client-provided history: only accept user messages to prevent prompt injection
+    // Sanitize client-provided history: accept user and assistant messages for conversation context.
+    // Assistant messages are mapped to Gemini's 'model' role. Both are length-capped.
     const messages = Array.isArray(clientMessages)
-        ? clientMessages.filter(m => m && m.role === 'user' && typeof m.content === 'string')
+        ? clientMessages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         : [];
 
     // Resolve API key: stored user key → server .env key
@@ -2268,21 +2514,36 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     try {
         const chatGenAI = new GoogleGenAI({ apiKey });
 
-        // Build contents from sanitized history + new message
+        // Build contents from sanitized history + new message.
+        // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
+        // messages to satisfy Gemini's alternating-turn requirement.
         const contents = [];
         const MAX_HISTORY_TEXT_LENGTH = 8000;
         const recent = messages.slice(-20);
         for (const msg of recent) {
             const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
-            if (text) {
-                contents.push({ role: 'user', parts: [{ text }] });
+            if (!text) continue;
+            const role = msg.role === 'assistant' ? 'model' : 'user';
+            const last = contents[contents.length - 1];
+            if (last && last.role === role) {
+                // Merge consecutive same-role messages into one turn
+                last.parts[0].text += '\n' + text;
+            } else {
+                contents.push({ role, parts: [{ text }] });
             }
         }
-        contents.push({ role: 'user', parts: [{ text: message }] });
+        // Ensure the new message is a user turn (merge if last history was also user)
+        const lastEntry = contents[contents.length - 1];
+        if (lastEntry && lastEntry.role === 'user') {
+            lastEntry.parts[0].text += '\n' + message;
+        } else {
+            contents.push({ role: 'user', parts: [{ text: message }] });
+        }
 
         // Tool call loop (max 5 iterations)
         let currentContents = contents;
         let finalText = null;
+        const pendingEditsList = [];
         const maxIterations = 5;
 
         for (let i = 0; i < maxIterations; i++) {
@@ -2322,7 +2583,48 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             for (const fc of functionCalls) {
                 const toolName = fc.functionCall.name;
                 const toolArgs = fc.functionCall.args || {};
-                const result = executeTool(toolName, req.user.id, toolArgs);
+                let result;
+
+                if (toolName === 'editEntry') {
+                    // Intercept editEntry: validate args, store as pending, return fake response
+                    const validation = validateEditArgs(req.user.id, toolArgs);
+                    if (validation.error) {
+                        result = validation;
+                    } else {
+                        const entryId = validation.entry.id;
+                        const currentEntry = {
+                            id: validation.entry.id,
+                            description: validation.entry.description,
+                            amount: validation.entry.amount,
+                            type: validation.entry.type,
+                            month: validation.entry.month,
+                            tags: validation.entry.tags || [],
+                            isCoupleExpense: validation.entry.isCoupleExpense || false
+                        };
+                        const editItem = {
+                            entryId,
+                            changes: validation.updates,
+                            currentEntry,
+                            createdAt: Date.now()
+                        };
+                        // Accumulate pending edits per user (append, don't overwrite)
+                        const existing = pendingEdits.get(req.user.id) || [];
+                        // Replace if same entryId already pending, else append
+                        const idx = existing.findIndex(e => e.entryId === entryId);
+                        if (idx !== -1) existing[idx] = editItem;
+                        else existing.push(editItem);
+                        pendingEdits.set(req.user.id, existing);
+                        pendingEditsList.push({
+                            entryId,
+                            changes: validation.updates,
+                            currentEntry
+                        });
+                        result = { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+                    }
+                } else {
+                    result = executeTool(toolName, req.user.id, toolArgs);
+                }
+
                 toolResultParts.push({
                     functionResponse: {
                         name: toolName,
@@ -2338,7 +2640,11 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             finalText = 'Sorry, I was unable to complete the analysis. Please try rephrasing your question.';
         }
 
-        res.json({ reply: finalText });
+        const responsePayload = { reply: finalText };
+        if (pendingEditsList.length > 0) {
+            responsePayload.pendingEdits = pendingEditsList;
+        }
+        res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message);
         if (error.message?.includes('API key')) {
@@ -2349,6 +2655,80 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.status(500).json({ error: 'generic' });
     }
+});
+
+// Confirm a pending AI edit via UI button
+const editActionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, (req, res) => {
+    const userId = req.user.id;
+    const allPending = pendingEdits.get(userId);
+
+    if (!allPending || allPending.length === 0) {
+        return res.status(404).json({ error: 'No pending edit found.' });
+    }
+
+    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
+    if (requestedEntryId == null || !Number.isInteger(requestedEntryId)) {
+        return res.status(400).json({ error: 'entryId must be a valid integer.' });
+    }
+
+    const idx = allPending.findIndex(e => e.entryId === requestedEntryId);
+    if (idx === -1) {
+        return res.status(404).json({ error: 'No pending edit found for this entry.' });
+    }
+
+    const pending = allPending[idx];
+
+    // Check TTL
+    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
+        allPending.splice(idx, 1);
+        if (allPending.length === 0) pendingEdits.delete(userId);
+        return res.status(410).json({ error: 'expired' });
+    }
+
+    // Execute the edit via toolEditEntry with confirmed: true
+    const result = toolEditEntry(userId, { entryId: pending.entryId, confirmed: true, ...pending.changes });
+
+    // Remove this specific pending edit
+    allPending.splice(idx, 1);
+    if (allPending.length === 0) pendingEdits.delete(userId);
+
+    if (result.error) {
+        return res.status(400).json({ error: result.error });
+    }
+
+    res.json(result);
+});
+
+// Cancel a pending AI edit via UI button
+app.post('/api/ai/cancel-edit', requireAuth, editActionLimiter, (req, res) => {
+    const userId = req.user.id;
+    const allPending = pendingEdits.get(userId);
+
+    if (!allPending || allPending.length === 0) {
+        return res.json({ success: true });
+    }
+
+    const requestedEntryId = req.body.entryId != null ? Number(req.body.entryId) : null;
+    if (requestedEntryId != null) {
+        // Cancel specific edit
+        const idx = allPending.findIndex(e => e.entryId === requestedEntryId);
+        if (idx !== -1) allPending.splice(idx, 1);
+        if (allPending.length === 0) pendingEdits.delete(userId);
+    } else {
+        // Cancel all pending edits
+        pendingEdits.delete(userId);
+    }
+
+    res.json({ success: true });
 });
 
 // Set up multer for file uploads (store in memory)

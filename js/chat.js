@@ -69,6 +69,10 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
+        // Headings: ### h3, ## h2, # h1 (check longer prefixes first)
+        s = s.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+        s = s.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+        s = s.replace(/^# (.+)$/gm, '<h3>$1</h3>');
         // Bold: **text**
         s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         // Italic: *text* (negative lookbehind/lookahead to avoid matching inside bold tags)
@@ -100,6 +104,8 @@
                 if (inOl) { html += '</ol>'; inOl = false; }
                 if (line.trim() === '') {
                     html += '<br>';
+                } else if (/^<h[34]>/.test(line)) {
+                    html += line;
                 } else {
                     html += line + '<br>';
                 }
@@ -145,8 +151,8 @@
         showLoading();
 
         try {
-            // Send last 20 user messages as history (server only accepts user role)
-            const history = chatMessages.filter(m => m.role === 'user').slice(-21, -1);
+            // Send last 20 messages (user + assistant) as conversation context
+            const history = chatMessages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-21, -1);
 
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',
@@ -170,10 +176,139 @@
 
             const data = await res.json();
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
+            if (data.pendingEdits && data.pendingEdits.length > 0) {
+                renderConfirmationCard(data.pendingEdits);
+            }
         } catch (err) {
             hideLoading();
             appendMessage('assistant', t('chat.errorGeneric'));
         }
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function formatFieldValue(key, value) {
+        if (key === 'amount') return parseFloat(value).toFixed(2);
+        if (key === 'tags' && Array.isArray(value)) return value.join(', ') || '—';
+        return String(value);
+    }
+
+    function renderConfirmationCard(pendingEdits) {
+        const isBulk = pendingEdits.length > 1;
+        const card = document.createElement('div');
+        card.className = 'chat-confirm-card';
+
+        // Title
+        const titleText = isBulk
+            ? t('chat.confirmEditTitleCount', { count: pendingEdits.length })
+            : t('chat.confirmEditTitle');
+        let html = '<div class="chat-confirm-title">' + escapeHtml(titleText) + '</div>';
+
+        // Render each entry and its changes
+        for (const pe of pendingEdits) {
+            const entry = pe.currentEntry;
+            const changes = pe.changes;
+
+            html += '<div class="chat-confirm-entry-group">';
+            html += '<div class="chat-confirm-entry">';
+            html += '<strong>' + escapeHtml(entry.description) + '</strong><br>';
+            html += escapeHtml(entry.type) + ' &middot; ' + escapeHtml(entry.month) + ' &middot; ' + escapeHtml(parseFloat(entry.amount).toFixed(2));
+            if (entry.tags && entry.tags.length) {
+                html += ' &middot; ' + escapeHtml(entry.tags.join(', '));
+            }
+            html += '</div>';
+
+            html += '<div class="chat-confirm-changes">';
+            for (const [key, newVal] of Object.entries(changes)) {
+                const currentVal = entry[key];
+                html += '<div class="chat-confirm-change">';
+                html += '<span class="chat-confirm-change-label">' + escapeHtml(key) + '</span>';
+                html += '<span class="chat-confirm-change-current">' + escapeHtml(formatFieldValue(key, currentVal)) + '</span>';
+                html += '<span class="chat-confirm-change-arrow">&rarr;</span>';
+                html += '<span class="chat-confirm-change-new">' + escapeHtml(formatFieldValue(key, newVal)) + '</span>';
+                html += '</div>';
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+
+        // Buttons
+        const confirmLabel = isBulk ? t('chat.confirmAllEdits') : t('chat.confirmEdit');
+        html += '<div class="chat-confirm-actions">';
+        html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(confirmLabel) + '</button>';
+        html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelEdit')) + '</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        messagesEl.appendChild(card);
+
+        const confirmBtn = card.querySelector('[data-action="confirm"]');
+        const cancelBtn = card.querySelector('[data-action="cancel"]');
+
+        confirmBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                let succeeded = 0;
+                let failed = 0;
+                let expired = false;
+                for (const pe of pendingEdits) {
+                    const res = await fetch('/api/ai/confirm-edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pe.entryId })
+                    });
+                    if (res.status === 410) { failed++; expired = true; }
+                    else if (!res.ok) { failed++; }
+                    else { succeeded++; }
+                }
+                if (failed > 0 && succeeded === 0) {
+                    const errorMsg = expired ? t('chat.editExpired') : t('chat.errorGeneric');
+                    replaceCardWithMessage(card, errorMsg, 'error');
+                } else if (failed > 0 && succeeded > 0) {
+                    const msg = t('chat.partialEditsConfirmed', { succeeded, failed });
+                    replaceCardWithMessage(card, msg, 'error');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                } else {
+                    const msg = isBulk ? t('chat.allEditsConfirmed') : t('chat.editConfirmed');
+                    replaceCardWithMessage(card, msg, 'success');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                }
+            } catch (e) {
+                replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
+            }
+        });
+
+        cancelBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                for (const pe of pendingEdits) {
+                    await fetch('/api/ai/cancel-edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pe.entryId })
+                    });
+                }
+            } catch (e) { /* ignore */ }
+            const msg = isBulk ? t('chat.allEditsCancelled') : t('chat.editCancelled');
+            replaceCardWithMessage(card, msg, 'info');
+            chatMessages.push({ role: 'assistant', content: msg });
+        });
+
+        scrollToBottom();
+    }
+
+    function replaceCardWithMessage(card, text, type) {
+        const msg = document.createElement('div');
+        msg.className = 'chat-confirm-result chat-confirm-result--' + type;
+        msg.textContent = text;
+        card.replaceWith(msg);
+        scrollToBottom();
     }
 
     // Event listeners

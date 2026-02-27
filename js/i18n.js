@@ -123,13 +123,8 @@ const translations = {
     // ── Bulk upload modal ──
     'bulk.title': 'Bulk Upload from PDF',
     'bulk.selectFile': 'Select PDF File',
-    'bulk.savedKeyUsed': 'Saved API key will be used',
-    'bulk.useDifferent': 'Use different key',
-    'bulk.removeSaved': 'Remove saved key',
-    'bulk.geminiKey': 'Gemini API Key',
-    'bulk.geminiPlaceholder': 'Enter your Gemini API key',
-    'bulk.saveKey': 'Save this key for future use',
-    'bulk.keyRequired': 'A Gemini API key is required to process PDFs with AI. Enter your key above.',
+    'bulk.keyStored': 'Saved API key will be used',
+    'bulk.keyRequired': 'A Gemini API key is required. Configure it in Settings.',
     'bulk.uploadProcess': 'Upload and Process',
     'bulk.processing': 'Processing...',
     'bulk.analyzing': 'Analyzing PDF with AI...',
@@ -141,8 +136,7 @@ const translations = {
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Please select a PDF file.',
     'bulk.alertTooLarge': 'File is too large. Maximum size is 10MB.',
-    'bulk.alertEnterKey': 'Please enter a Gemini API key to process PDFs.',
-    'bulk.alertEnterKeyOrCancel': 'Please enter a Gemini API key or click Cancel to use your saved key.',
+    'bulk.alertEnterKey': 'No Gemini API key configured. Please add one in Settings.',
     'bulk.alertValidMonth': 'Please enter a valid month in YYYY-MM format',
     'bulk.alertValidAmount': 'Please enter a valid positive amount',
     'bulk.alertEnterDesc': 'Please enter a description',
@@ -215,6 +209,17 @@ const translations = {
     'settings.done': 'Done',
     'settings.disable2FAConfirm': 'Enter your current authenticator code to disable 2FA',
     'settings.confirmDisable': 'Confirm Disable',
+
+    // ── Gemini API Key settings ──
+    'settings.geminiSection': 'Gemini API Key',
+    'settings.geminiSaved': 'API key saved',
+    'settings.geminiChange': 'Change',
+    'settings.geminiRemove': 'Remove',
+    'settings.geminiNone': 'No API key configured',
+    'settings.geminiPlaceholder': 'Enter your Gemini API key',
+    'settings.geminiHelp': 'Used for AI-powered PDF processing and financial advisor chat. Get your key at aistudio.google.com.',
+    'settings.geminiSaveSuccess': 'Gemini API key saved successfully',
+    'settings.geminiRemoveSuccess': 'Gemini API key removed',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Couple Management',
@@ -364,6 +369,19 @@ const translations = {
     'chat.errorNoKey': 'No AI API key configured. Please add your Gemini API key in Settings to use the chat advisor.',
     'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
     'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
+    'chat.confirmEditTitle': 'Confirm Entry Edit',
+    'chat.confirmEditTitleCount': 'Confirm Edits ({count} entries)',
+    'chat.confirmEdit': 'Confirm Edit',
+    'chat.confirmAllEdits': 'Confirm All',
+    'chat.cancelEdit': 'Cancel',
+    'chat.editConfirmed': 'Edit confirmed successfully!',
+    'chat.allEditsConfirmed': 'All edits confirmed successfully!',
+    'chat.partialEditsConfirmed': '{succeeded} edit(s) confirmed, {failed} failed. Please retry the failed ones.',
+    'chat.editCancelled': 'Edit cancelled.',
+    'chat.allEditsCancelled': 'All edits cancelled.',
+    'chat.editExpired': 'This edit has expired. Please request it again.',
+    'chat.currentValue': 'Current',
+    'chat.newValue': 'New',
   },
 
   pt: {
@@ -488,13 +506,8 @@ const translations = {
     // ── Bulk upload modal ──
     'bulk.title': 'Upload em Lote via PDF',
     'bulk.selectFile': 'Selecionar Arquivo PDF',
-    'bulk.savedKeyUsed': 'Chave API salva ser\u00e1 utilizada',
-    'bulk.useDifferent': 'Usar outra chave',
-    'bulk.removeSaved': 'Remover chave salva',
-    'bulk.geminiKey': 'Chave API Gemini',
-    'bulk.geminiPlaceholder': 'Insira sua chave API Gemini',
-    'bulk.saveKey': 'Salvar esta chave para uso futuro',
-    'bulk.keyRequired': 'Uma chave API Gemini \u00e9 necess\u00e1ria para processar PDFs com IA. Insira sua chave acima.',
+    'bulk.keyStored': 'Chave API salva ser\u00e1 utilizada',
+    'bulk.keyRequired': 'Uma chave API Gemini \u00e9 necess\u00e1ria. Configure em Ajustes.',
     'bulk.uploadProcess': 'Enviar e Processar',
     'bulk.processing': 'Processando...',
     'bulk.analyzing': 'Analisando PDF com IA...',
@@ -506,8 +519,7 @@ const translations = {
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Por favor, selecione um arquivo PDF.',
     'bulk.alertTooLarge': 'Arquivo muito grande. Tamanho m\u00e1ximo \u00e9 10MB.',
-    'bulk.alertEnterKey': 'Por favor, insira uma chave API Gemini para processar PDFs.',
-    'bulk.alertEnterKeyOrCancel': 'Por favor, insira uma chave API Gemini ou clique em Cancelar para usar sua chave salva.',
+    'bulk.alertEnterKey': 'Nenhuma chave API Gemini configurada. Adicione uma em Ajustes.',
     'bulk.alertValidMonth': 'Por favor, insira um m\u00eas v\u00e1lido no formato AAAA-MM',
     'bulk.alertValidAmount': 'Por favor, insira um valor positivo v\u00e1lido',
     'bulk.alertEnterDesc': 'Por favor, insira uma descri\u00e7\u00e3o',
@@ -580,6 +592,17 @@ const translations = {
     'settings.done': 'Concluir',
     'settings.disable2FAConfirm': 'Digite o c\u00f3digo atual do autenticador para desativar 2FA',
     'settings.confirmDisable': 'Confirmar Desativa\u00e7\u00e3o',
+
+    // ── Gemini API Key settings ──
+    'settings.geminiSection': 'Chave API Gemini',
+    'settings.geminiSaved': 'Chave API salva',
+    'settings.geminiChange': 'Alterar',
+    'settings.geminiRemove': 'Remover',
+    'settings.geminiNone': 'Nenhuma chave API configurada',
+    'settings.geminiPlaceholder': 'Digite sua chave API Gemini',
+    'settings.geminiHelp': 'Usada para processamento de PDF com IA e consultor financeiro. Obtenha em aistudio.google.com.',
+    'settings.geminiSaveSuccess': 'Chave API Gemini salva com sucesso',
+    'settings.geminiRemoveSuccess': 'Chave API Gemini removida',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Gerenciamento de Casais',
@@ -729,6 +752,19 @@ const translations = {
     'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione sua chave Gemini API nas Configurações para usar o consultor.',
     'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
     'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
+    'chat.confirmEditTitle': 'Confirmar Edição de Entrada',
+    'chat.confirmEditTitleCount': 'Confirmar Edições ({count} entradas)',
+    'chat.confirmEdit': 'Confirmar Edição',
+    'chat.confirmAllEdits': 'Confirmar Tudo',
+    'chat.cancelEdit': 'Cancelar',
+    'chat.editConfirmed': 'Edição confirmada com sucesso!',
+    'chat.allEditsConfirmed': 'Todas as edições confirmadas com sucesso!',
+    'chat.partialEditsConfirmed': '{succeeded} edição(ões) confirmada(s), {failed} falharam. Tente novamente as que falharam.',
+    'chat.editCancelled': 'Edição cancelada.',
+    'chat.allEditsCancelled': 'Todas as edições canceladas.',
+    'chat.editExpired': 'Esta edição expirou. Solicite novamente.',
+    'chat.currentValue': 'Atual',
+    'chat.newValue': 'Novo',
   }
 };
 
