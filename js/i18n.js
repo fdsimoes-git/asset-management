@@ -240,6 +240,15 @@ const translations = {
     'settings.aiProviderSaveSuccess': 'AI provider preference saved',
     'settings.aiProviderSaveError': 'Failed to save AI provider preference',
 
+    // ── AI Model settings ──
+    'settings.aiModelLabel': 'AI Model',
+    'settings.aiModelDefault': 'Default (recommended)',
+    'settings.aiModelLoading': 'Loading models...',
+    'settings.aiModelSaveSuccess': 'AI model preference saved',
+    'settings.aiModelSaveError': 'Failed to save AI model preference',
+    'settings.aiModelFetchError': 'Could not load models',
+    'settings.aiModelUnavailable': 'unavailable',
+
     // ── OpenAI key (gemini-style alerts) ──
     'openai.confirmRemove': 'Remove your saved OpenAI API key?',
     'openai.removeFailed': 'Failed to remove API key.',
@@ -649,6 +658,15 @@ const translations = {
     'settings.aiProviderOpenai': 'OpenAI',
     'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
     'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
+
+    // ── AI Model settings ──
+    'settings.aiModelLabel': 'Modelo de IA',
+    'settings.aiModelDefault': 'Padrão (recomendado)',
+    'settings.aiModelLoading': 'Carregando modelos...',
+    'settings.aiModelSaveSuccess': 'Preferência de modelo de IA salva',
+    'settings.aiModelSaveError': 'Falha ao salvar preferência de modelo de IA',
+    'settings.aiModelFetchError': 'Não foi possível carregar modelos',
+    'settings.aiModelUnavailable': 'indisponível',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Gerenciamento de Casais',

@@ -1652,6 +1652,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         </label>
                         <button type="button" id="settingsAiProviderSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
                     </div>
+
+                    <div id="aiModelSection" style="margin-top: 1rem; display: none;">
+                        <p style="margin: 0 0 0.5rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiModelLabel')}</p>
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <select id="aiModelSelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body); min-width: 200px;">
+                                <option value="">${t('settings.aiModelDefault')}</option>
+                            </select>
+                            <button type="button" id="settingsAiModelSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <span id="aiModelLoading" style="display: none; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiModelLoading')}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -1667,6 +1678,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsGemini(overlay);
         wireSettingsOpenai(overlay);
         wireSettingsAiProvider(overlay);
+        wireSettingsAiModel(overlay);
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -2144,7 +2156,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (response.ok) {
                     currentUser.aiProvider = provider;
+                    currentUser.aiModel = null;
                     updateAiKeyUI();
+                    overlay.dispatchEvent(new CustomEvent('providerChanged'));
                     alert(t('settings.aiProviderSaveSuccess'));
                 } else {
                     alert(t('settings.aiProviderSaveError'));
@@ -2153,6 +2167,86 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(t('settings.aiProviderSaveError'));
             }
         });
+    }
+
+    function wireSettingsAiModel(overlay) {
+        const section = overlay.querySelector('#aiModelSection');
+        const select = overlay.querySelector('#aiModelSelect');
+        const saveBtn = overlay.querySelector('#settingsAiModelSaveBtn');
+        const loading = overlay.querySelector('#aiModelLoading');
+        if (!section || !select || !saveBtn) return;
+
+        async function loadModels() {
+            loading.style.display = 'inline';
+            select.disabled = true;
+            try {
+                const response = await fetch('/api/ai/models', { credentials: 'include' });
+                if (!response.ok) throw new Error('fetch failed');
+                const data = await response.json();
+
+                // Clear existing options (keep default)
+                select.innerHTML = `<option value="">${t('settings.aiModelDefault')}</option>`;
+
+                if (data.models.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                const modelIds = new Set(data.models.map(m => m.id));
+
+                // If user has a selected model that's not in the list, show it as unavailable
+                if (data.selectedModel && !modelIds.has(data.selectedModel)) {
+                    const opt = document.createElement('option');
+                    opt.value = data.selectedModel;
+                    opt.textContent = `${data.selectedModel} (${t('settings.aiModelUnavailable')})`;
+                    select.appendChild(opt);
+                }
+
+                for (const model of data.models) {
+                    const opt = document.createElement('option');
+                    opt.value = model.id;
+                    opt.textContent = model.name;
+                    select.appendChild(opt);
+                }
+
+                select.value = data.selectedModel || '';
+                section.style.display = 'block';
+            } catch (e) {
+                section.style.display = 'none';
+            } finally {
+                loading.style.display = 'none';
+                select.disabled = false;
+            }
+        }
+
+        saveBtn.addEventListener('click', async () => {
+            const aiModel = select.value || null;
+            try {
+                const response = await fetch('/api/user/ai-model', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aiModel }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser.aiModel = data.aiModel;
+                    alert(t('settings.aiModelSaveSuccess'));
+                } else {
+                    alert(t('settings.aiModelSaveError'));
+                }
+            } catch (e) {
+                alert(t('settings.aiModelSaveError'));
+            }
+        });
+
+        // Reload models when provider changes
+        overlay.addEventListener('providerChanged', () => {
+            select.value = '';
+            loadModels();
+        });
+
+        loadModels();
     }
 
     // Fetch current user info on load

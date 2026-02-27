@@ -80,6 +80,24 @@ const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be
 const OPENAI_MODEL = 'gpt-3.5-turbo';       // PDF processing & structured extraction
 const OPENAI_CHAT_MODEL = 'gpt-3.5-turbo';  // AI chat advisor (can be changed independently)
 
+// Model list cache for /api/ai/models endpoint
+const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
+const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+/**
+ * Resolve AI model: user preference → hardcoded default.
+ * @param {object} user - user object
+ * @param {'openai'|'gemini'} provider
+ * @param {'chat'|'pdf'} usage
+ */
+function resolveModel(user, provider, usage) {
+    if (user.aiModel) return user.aiModel;
+    if (provider === 'openai') {
+        return usage === 'chat' ? OPENAI_CHAT_MODEL : OPENAI_MODEL;
+    }
+    return usage === 'chat' ? GEMINI_CHAT_MODEL : GEMINI_MODEL;
+}
+
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
 
@@ -1046,6 +1064,7 @@ app.get('/api/user', requireAuth, (req, res) => {
         hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
         hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
         aiProvider: req.user.aiProvider || 'gemini',
+        aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled
     };
 
@@ -1129,10 +1148,106 @@ app.put('/api/user/ai-provider', requireAuth, (req, res) => {
     }
 
     req.user.aiProvider = aiProvider;
+    req.user.aiModel = null;
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'AI provider saved.', aiProvider });
+    res.json({ message: 'AI provider saved.', aiProvider, aiModel: null });
+});
+
+// List available AI models for the user's current provider
+app.get('/api/ai/models', requireAuth, async (req, res) => {
+    const provider = req.user.aiProvider || 'gemini';
+
+    // Resolve API key: stored user key → server .env key
+    let apiKey = null;
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try { apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.openaiApiKey;
+    } else {
+        if (req.user.geminiApiKey) {
+            try { apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
+    }
+
+    if (!apiKey) {
+        return res.json({ provider, models: [], selectedModel: null });
+    }
+
+    // Cache key: provider + truncated hash of API key
+    const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+    const cacheKey = provider + ':' + keyHash;
+
+    // Check cache
+    const cached = modelListCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < MODEL_CACHE_TTL) {
+        return res.json({ provider, models: cached.models, selectedModel: req.user.aiModel || null });
+    }
+
+    try {
+        let models = [];
+
+        if (provider === 'openai') {
+            const openaiClient = new OpenAI({ apiKey });
+            const list = await openaiClient.models.list();
+            const includePattern = /^(gpt-|o[0-9]|chatgpt-)/;
+            const excludePattern = /instruct|realtime|audio|search|embedding/i;
+            for await (const model of list) {
+                if (includePattern.test(model.id) && !excludePattern.test(model.id)) {
+                    models.push({ id: model.id, name: model.id });
+                }
+            }
+        } else {
+            const listGenAI = new GoogleGenAI({ apiKey });
+            const pager = await listGenAI.models.list({ pageSize: 100 });
+            for (const model of pager.page) {
+                if (!model.supportedActions || !model.supportedActions.includes('generateContent')) continue;
+                if (/embedding/i.test(model.name)) continue;
+                // model.name is "models/gemini-..." — extract the short id
+                const id = model.name.replace(/^models\//, '');
+                const displayName = model.displayName || id;
+                models.push({ id, name: displayName });
+            }
+        }
+
+        models.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Evict expired entries if cache is too large
+        if (modelListCache.size >= 50) {
+            const now = Date.now();
+            for (const [k, v] of modelListCache) {
+                if (now - v.timestamp >= MODEL_CACHE_TTL) modelListCache.delete(k);
+            }
+        }
+
+        modelListCache.set(cacheKey, { models, timestamp: Date.now() });
+        res.json({ provider, models, selectedModel: req.user.aiModel || null });
+    } catch (err) {
+        console.error('Failed to list AI models:', err.message);
+        res.status(500).json({ message: 'Failed to fetch model list.' });
+    }
+});
+
+// Save AI model preference
+app.put('/api/user/ai-model', requireAuth, (req, res) => {
+    const { aiModel } = req.body;
+
+    if (aiModel !== null && aiModel !== undefined && aiModel !== '') {
+        if (typeof aiModel !== 'string' || aiModel.length > 100) {
+            return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
+        }
+        req.user.aiModel = aiModel;
+    } else {
+        req.user.aiModel = null;
+    }
+
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ aiModel: req.user.aiModel || null });
 });
 
 // ============ 2FA VERIFICATION (LOGIN STEP 2) ============
@@ -2754,7 +2869,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             let currentMessages = openaiMessages;
             for (let i = 0; i < maxIterations; i++) {
                 const response = await openaiClient.chat.completions.create({
-                    model: OPENAI_CHAT_MODEL,
+                    model: resolveModel(req.user, 'openai', 'chat'),
                     messages: currentMessages,
                     tools: openaiToolDeclarations,
                     tool_choice: 'auto',
@@ -2827,7 +2942,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             let currentContents = contents;
             for (let i = 0; i < maxIterations; i++) {
                 const response = await chatGenAI.models.generateContent({
-                    model: GEMINI_CHAT_MODEL,
+                    model: resolveModel(req.user, 'gemini', 'chat'),
                     contents: currentContents,
                     config: {
                         temperature: 0.7,
@@ -3071,7 +3186,7 @@ ${text}`;
             const openaiClient = new OpenAI({ apiKey });
             try {
                 const response = await openaiClient.chat.completions.create({
-                    model: OPENAI_MODEL,
+                    model: resolveModel(req.user, 'openai', 'pdf'),
                     messages: [{ role: 'user', content: prompt }],
                     response_format: { type: 'json_object' },
                     temperature: 0.2
@@ -3132,7 +3247,7 @@ ${text}`;
             let response;
             try {
                 response = await requestGenAI.models.generateContent({
-                    model: GEMINI_MODEL,
+                    model: resolveModel(req.user, 'gemini', 'pdf'),
                     contents: prompt,
                     config: {
                         responseMimeType: 'application/json',
