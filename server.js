@@ -2703,7 +2703,12 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         return res.status(400).json({ error: 'no_api_key' });
     }
 
-    // Shared helper: handle editEntry tool call interception
+    // Shared helper: handle editEntry tool call interception.
+    // Validates the proposed edit, stores it as a pending edit for UI confirmation,
+    // and returns a result message for the AI to relay to the user.
+    // @param {object} toolArgs - Raw arguments from the AI tool call.
+    // @param {Array}  pendingEditsList - Accumulator for pending edits to include in the response.
+    // @returns {object} - Result to return to the AI as the tool response.
     function handleEditEntryCall(toolArgs, pendingEditsList) {
         const validation = validateEditArgs(req.user.id, toolArgs);
         if (validation.error) return validation;
@@ -2770,7 +2775,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                 for (const toolCall of assistantMsg.tool_calls) {
                     const toolName = toolCall.function.name;
                     let toolArgs = {};
-                    try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (_) {}
+                    try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
+                        console.error(`Failed to parse OpenAI tool args for ${toolCall.function.name}:`, parseErr.message, 'Raw:', toolCall.function.arguments);
+                    }
                     let result;
                     if (toolName === 'editEntry') {
                         result = handleEditEntryCall(toolArgs, pendingEditsList);

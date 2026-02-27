@@ -841,7 +841,7 @@ let bulkExtractedEntries = [];
 
 // --- AI Key/Provider UI Management ---
 function updateAiKeyUI() {
-    const statusDiv = document.getElementById('geminiKeyStatus');
+    const statusDiv = document.getElementById('aiKeyStatus');
     if (!statusDiv) return;
 
     const provider = currentUser && currentUser.aiProvider || 'gemini';
