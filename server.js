@@ -2030,7 +2030,8 @@ const chatToolDeclarations = [
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
-                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' }
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense.' }
             },
             required: ['entryId']
         }
@@ -2329,8 +2330,12 @@ function validateEditArgs(userId, args) {
         updates.tags = sanitizedTags;
     }
 
+    if (args.isCoupleExpense != null) {
+        updates.isCoupleExpense = Boolean(args.isCoupleExpense);
+    }
+
     if (Object.keys(updates).length === 0) {
-        return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags.' };
+        return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags, isCoupleExpense.' };
     }
 
     return { entry, updates, entryIndex: index, rejectedTags };
