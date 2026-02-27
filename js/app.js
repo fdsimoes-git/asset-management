@@ -2055,6 +2055,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             form.style.display = 'block';
                             cancelBtn.style.display = 'none';
                             input.value = '';
+                            updateAiKeyUI();
                             alert(t('settings.openaiRemoveSuccess'));
                         } else {
                             alert(t('openai.removeFailed'));
@@ -2098,6 +2099,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         form.style.display = 'none';
                         cancelBtn.style.display = 'none';
                         input.value = '';
+                        updateAiKeyUI();
                         alert(t('settings.openaiSaveSuccess'));
                     } else {
                         const data = await response.json();
@@ -2134,6 +2136,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (response.ok) {
                     currentUser.aiProvider = provider;
+                    updateAiKeyUI();
                     alert(t('settings.aiProviderSaveSuccess'));
                 } else {
                     alert(t('settings.aiProviderSaveError'));

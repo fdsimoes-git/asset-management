@@ -3273,7 +3273,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
     // Verify OpenAI API configuration
     if (config.openaiApiKey) {
-        console.log(`OpenAI AI configured with model: ${OPENAI_MODEL}`);
+        console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
+        const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
+        openaiStartup.models.list().then(() => {
+            console.log('OpenAI API key verified successfully.');
+        }).catch((error) => {
+            console.warn('Warning: OpenAI API key may be invalid:', error.message);
+        });
     } else {
         console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
     }
