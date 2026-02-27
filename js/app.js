@@ -839,12 +839,17 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 
 let bulkExtractedEntries = [];
 
-// --- Gemini API Key UI Management ---
-function updateGeminiKeyUI() {
+// --- AI Key/Provider UI Management ---
+function updateAiKeyUI() {
     const statusDiv = document.getElementById('geminiKeyStatus');
     if (!statusDiv) return;
 
-    if (currentUser && currentUser.hasGeminiApiKey) {
+    const provider = currentUser && currentUser.aiProvider || 'gemini';
+    const hasKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiApiKey)
+        : (currentUser && currentUser.hasGeminiApiKey);
+
+    if (hasKey) {
         statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyStored')}</span>`;
     } else {
         statusDiv.innerHTML = `<span style="color: var(--color-text-muted);">${t('bulk.keyRequired')}</span>`;
@@ -863,7 +868,7 @@ openBulkUploadModalBtn.addEventListener('click', () => {
     if (bulkCoupleHeader) {
         bulkCoupleHeader.style.display = hasPartner ? '' : 'none';
     }
-    updateGeminiKeyUI();
+    updateAiKeyUI();
 });
 
 closeBulkUploadModalBtn.addEventListener('click', () => {
@@ -899,8 +904,12 @@ processBulkPdfBtn.addEventListener('click', async () => {
         return;
     }
 
-    // Validate that a Gemini API key is configured
-    if (!currentUser || !currentUser.hasGeminiApiKey) {
+    // Validate that an AI API key is configured for the selected provider
+    const provider = currentUser && currentUser.aiProvider || 'gemini';
+    const hasKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiApiKey)
+        : (currentUser && currentUser.hasGeminiApiKey);
+    if (!currentUser || !hasKey) {
         alert(t('bulk.alertEnterKey'));
         return;
     }
@@ -1601,6 +1610,49 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.openaiSection')}</h3>
+                    <div id="settingsOpenaiDisplay">
+                        ${currentUser && currentUser.hasOpenaiApiKey
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.openaiSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsOpenaiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiChange')}</button>
+                                   <button type="button" id="settingsOpenaiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.openaiNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsOpenaiForm" style="display: ${currentUser && currentUser.hasOpenaiApiKey ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsOpenaiInput" placeholder="${t('settings.openaiPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.openaiHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsOpenaiSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsOpenaiCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.aiProviderSection')}</h3>
+                    <p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiProviderLabel')}</p>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderGemini" value="gemini" ${(!currentUser || !currentUser.aiProvider || currentUser.aiProvider === 'gemini') ? 'checked' : ''}>
+                            ${t('settings.aiProviderGemini')}
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderOpenai" value="openai" ${(currentUser && currentUser.aiProvider === 'openai') ? 'checked' : ''}>
+                            ${t('settings.aiProviderOpenai')}
+                        </label>
+                        <button type="button" id="settingsAiProviderSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -1613,6 +1665,8 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsEmail(overlay, emailData);
         wireSettings2FA(overlay, twoFAData, cleanup);
         wireSettingsGemini(overlay);
+        wireSettingsOpenai(overlay);
+        wireSettingsAiProvider(overlay);
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -1950,7 +2004,145 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ============ ADMIN PANEL FUNCTIONALITY ============
+    function wireSettingsOpenai(overlay) {
+        const display = overlay.querySelector('#settingsOpenaiDisplay');
+        const form = overlay.querySelector('#settingsOpenaiForm');
+        const input = overlay.querySelector('#settingsOpenaiInput');
+        const saveBtn = overlay.querySelector('#settingsOpenaiSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsOpenaiCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasKey) {
+            if (hasKey) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.openaiSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsOpenaiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiChange')}</button>
+                        <button type="button" id="settingsOpenaiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.openaiNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsOpenaiChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsOpenaiRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('openai.confirmRemove'))) return;
+                    try {
+                        const response = await fetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            currentUser.hasOpenaiApiKey = false;
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            alert(t('settings.openaiRemoveSuccess'));
+                        } else {
+                            alert(t('openai.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('openai.removeFailed'));
+                    }
+                });
+            }
+        }
+
+        wireChangeAndRemove();
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/user/openai-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ openaiApiKey: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasOpenaiApiKey = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        alert(t('settings.openaiSaveSuccess'));
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                }
+            });
+        }
+
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+            });
+        }
+    }
+
+    function wireSettingsAiProvider(overlay) {
+        const saveBtn = overlay.querySelector('#settingsAiProviderSaveBtn');
+        if (!saveBtn) return;
+
+        saveBtn.addEventListener('click', async () => {
+            const selected = overlay.querySelector('input[name="aiProvider"]:checked');
+            if (!selected) return;
+            const provider = selected.value;
+            try {
+                const response = await fetch('/api/user/ai-provider', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aiProvider: provider }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    currentUser.aiProvider = provider;
+                    alert(t('settings.aiProviderSaveSuccess'));
+                } else {
+                    alert(t('settings.aiProviderSaveError'));
+                }
+            } catch (e) {
+                alert(t('settings.aiProviderSaveError'));
+            }
+        });
+    }
 
     // Fetch current user info on load
     async function fetchCurrentUser() {

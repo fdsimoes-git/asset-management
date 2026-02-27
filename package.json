@@ -23,6 +23,7 @@
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.1",
+    "openai": "^6.25.0",
     "otplib": "^13.3.0",
     "pdf-parse": "^1.1.1",
     "qrcode": "^1.5.4"

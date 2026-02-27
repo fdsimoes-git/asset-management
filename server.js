@@ -12,6 +12,7 @@ const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
+const OpenAI = require('openai');
 const nodemailer = require('nodemailer');
 const otplib = require('otplib');
 const QRCode = require('qrcode');
@@ -74,6 +75,10 @@ if (config.paypalClientId && config.paypalClientSecret) {
 // Gemini AI model names (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';       // PDF processing & structured extraction
 const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be changed independently)
+
+// OpenAI model names
+const OPENAI_MODEL = 'gpt-4o-mini';       // PDF processing & structured extraction
+const OPENAI_CHAT_MODEL = 'gpt-4o-mini';  // AI chat advisor (can be changed independently)
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -1037,6 +1042,8 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerLinkedAt: null,
         partnerUsername: null,
         hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData),
+        hasOpenaiApiKey: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData),
+        aiProvider: req.user.aiProvider || 'gemini',
         has2FA: !!req.user.totpEnabled
     };
 
@@ -1080,6 +1087,50 @@ app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
     saveUsers();
 
     res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false });
+});
+
+// Save OpenAI API key (encrypted)
+app.post('/api/user/openai-key', requireAuth, (req, res) => {
+    const { openaiApiKey } = req.body;
+
+    if (!openaiApiKey || typeof openaiApiKey !== 'string') {
+        return res.status(400).json({ message: 'API key is required.' });
+    }
+
+    const trimmed = openaiApiKey.trim();
+    if (trimmed.length < 30 || trimmed.length > 200) {
+        return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
+    }
+
+    req.user.openaiApiKey = encryptString(trimmed);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true });
+});
+
+// Remove saved OpenAI API key
+app.delete('/api/user/openai-key', requireAuth, (req, res) => {
+    delete req.user.openaiApiKey;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false });
+});
+
+// Save AI provider preference
+app.put('/api/user/ai-provider', requireAuth, (req, res) => {
+    const { aiProvider } = req.body;
+
+    if (!aiProvider || !['gemini', 'openai'].includes(aiProvider)) {
+        return res.status(400).json({ message: 'aiProvider must be "gemini" or "openai".' });
+    }
+
+    req.user.aiProvider = aiProvider;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'AI provider saved.', aiProvider });
 });
 
 // ============ 2FA VERIFICATION (LOGIN STEP 2) ============
@@ -2049,7 +2100,137 @@ const chatToolDeclarations = [
     }
 ];
 
-// Stores the pre-edit snapshot for the most recent AI edit per entry, keyed by "userId:entryId".
+// OpenAI tool declarations (same functionality, OpenAI function-calling format)
+const openaiToolDeclarations = [
+    {
+        type: 'function',
+        function: {
+            name: 'getFinancialSummary',
+            description: 'Get total income, total expenses, net balance, and savings rate for the user, optionally filtered by date range.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    startMonth: { type: 'string', description: 'Start month in YYYY-MM format (inclusive). Omit for all time.' },
+                    endMonth: { type: 'string', description: 'End month in YYYY-MM format (inclusive). Omit for all time.' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getCategoryBreakdown',
+            description: 'Get spending or income broken down by category tag, with totals and percentages.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getMonthlyTrends',
+            description: 'Get month-by-month income, expenses, and net amounts, plus averages.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getTopExpenses',
+            description: 'Get the largest expense entries, optionally filtered by category or date range.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    limit: { type: 'number', description: 'Number of top entries to return. Default 10.' },
+                    category: { type: 'string', description: 'Filter by category tag (e.g. "food", "transport").' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'comparePeriods',
+            description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    period1Start: { type: 'string', description: 'First period start month YYYY-MM.' },
+                    period1End: { type: 'string', description: 'First period end month YYYY-MM.' },
+                    period2Start: { type: 'string', description: 'Second period start month YYYY-MM.' },
+                    period2End: { type: 'string', description: 'Second period end month YYYY-MM.' }
+                },
+                required: ['period1Start', 'period1End', 'period2Start', 'period2End']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'searchEntries',
+            description: 'Search the user\'s financial entries by keyword in description or by category tag.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    keyword: { type: 'string', description: 'Search keyword to match in entry descriptions (case-insensitive).' },
+                    category: { type: 'string', description: 'Filter by category tag.' },
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    limit: { type: 'number', description: 'Max results to return. Default 20.' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'editEntry',
+            description: 'Propose an edit to an existing financial entry. The system will show a confirmation card to the user in the chat UI — do NOT ask the user to confirm in conversation. Just describe the changes you are proposing. Use searchEntries first to find the entry ID.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    entryId: { type: 'number', description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
+                    description: { type: 'string', description: 'New description for the entry (max 500 characters).' },
+                    amount: { type: 'number', description: 'New amount for the entry (positive number, max 10000000).' },
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
+                    month: { type: 'string', description: 'New month in YYYY-MM format.' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                    isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense.' }
+                },
+                required: ['entryId']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'undoLastEdit',
+            description: 'Undo the most recent AI edit on a specific entry, restoring it to its previous state. Only works if the entry was edited via the editEntry tool in the current session and has not already been undone.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    entryId: { type: 'number', description: 'The ID of the entry to undo. Must match a previously edited entry.' }
+                },
+                required: ['entryId']
+            }
+        }
+    }
+];
 // Cleared on undo or server restart — only the last edit per entry is reversible.
 // Capped at 1000 entries; oldest snapshots are evicted when the limit is reached.
 const lastEditSnapshots = new Map();
@@ -2490,150 +2671,197 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     }
 
     // Sanitize client-provided history: accept user and assistant messages for conversation context.
-    // Assistant messages are mapped to Gemini's 'model' role. Both are length-capped.
     const messages = Array.isArray(clientMessages)
         ? clientMessages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         : [];
 
+    // Determine provider: use user's stored preference (default gemini)
+    const provider = req.user.aiProvider || 'gemini';
+
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
-    if (req.user.geminiApiKey) {
-        try {
-            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
-        } catch (e) {
-            console.error('Failed to decrypt stored Gemini API key for chat:', e.message);
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try {
+                apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored OpenAI API key for chat:', e.message);
+            }
         }
-    }
-    if (!apiKey) {
-        apiKey = config.geminiApiKey;
+        if (!apiKey) apiKey = config.openaiApiKey;
+    } else {
+        if (req.user.geminiApiKey) {
+            try {
+                apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Gemini API key for chat:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
     }
     if (!apiKey) {
         return res.status(400).json({ error: 'no_api_key' });
     }
 
+    // Shared helper: handle editEntry tool call interception
+    function handleEditEntryCall(toolArgs, pendingEditsList) {
+        const validation = validateEditArgs(req.user.id, toolArgs);
+        if (validation.error) return validation;
+        const entryId = validation.entry.id;
+        const currentEntry = {
+            id: validation.entry.id,
+            description: validation.entry.description,
+            amount: validation.entry.amount,
+            type: validation.entry.type,
+            month: validation.entry.month,
+            tags: validation.entry.tags || [],
+            isCoupleExpense: validation.entry.isCoupleExpense || false
+        };
+        const editItem = { entryId, changes: validation.updates, currentEntry, createdAt: Date.now() };
+        const existing = pendingEdits.get(req.user.id) || [];
+        const idx = existing.findIndex(e => e.entryId === entryId);
+        if (idx !== -1) existing[idx] = editItem;
+        else existing.push(editItem);
+        pendingEdits.set(req.user.id, existing);
+        pendingEditsList.push({ entryId, changes: validation.updates, currentEntry });
+        return { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+    }
+
     try {
-        const chatGenAI = new GoogleGenAI({ apiKey });
-
-        // Build contents from sanitized history + new message.
-        // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
-        // messages to satisfy Gemini's alternating-turn requirement.
-        const contents = [];
-        const MAX_HISTORY_TEXT_LENGTH = 8000;
-        const recent = messages.slice(-20);
-        for (const msg of recent) {
-            const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
-            if (!text) continue;
-            const role = msg.role === 'assistant' ? 'model' : 'user';
-            const last = contents[contents.length - 1];
-            if (last && last.role === role) {
-                // Merge consecutive same-role messages into one turn
-                last.parts[0].text += '\n' + text;
-            } else {
-                contents.push({ role, parts: [{ text }] });
-            }
-        }
-        // Ensure the new message is a user turn (merge if last history was also user)
-        const lastEntry = contents[contents.length - 1];
-        if (lastEntry && lastEntry.role === 'user') {
-            lastEntry.parts[0].text += '\n' + message;
-        } else {
-            contents.push({ role: 'user', parts: [{ text: message }] });
-        }
-
-        // Tool call loop (max 5 iterations)
-        let currentContents = contents;
         let finalText = null;
         const pendingEditsList = [];
         const maxIterations = 5;
 
-        for (let i = 0; i < maxIterations; i++) {
-            const response = await chatGenAI.models.generateContent({
-                model: GEMINI_CHAT_MODEL,
-                contents: currentContents,
-                config: {
-                    temperature: 0.7,
-                    tools: [{ functionDeclarations: chatToolDeclarations }],
-                    systemInstruction: chatSystemPrompt
+        if (provider === 'openai') {
+            // ── OpenAI branch ──────────────────────────────────────────
+            const openaiClient = new OpenAI({ apiKey });
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const openaiMessages = [{ role: 'system', content: chatSystemPrompt }];
+            for (const msg of messages.slice(-20)) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                openaiMessages.push({ role: msg.role, content: text });
+            }
+            openaiMessages.push({ role: 'user', content: message });
+
+            let currentMessages = openaiMessages;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await openaiClient.chat.completions.create({
+                    model: OPENAI_CHAT_MODEL,
+                    messages: currentMessages,
+                    tools: openaiToolDeclarations,
+                    tool_choice: 'auto',
+                    temperature: 0.7
+                });
+
+                const choice = response.choices[0];
+                if (!choice) { finalText = 'Sorry, I could not generate a response.'; break; }
+
+                const assistantMsg = choice.message;
+                currentMessages = [...currentMessages, assistantMsg];
+
+                if (choice.finish_reason !== 'tool_calls' || !assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+                    finalText = assistantMsg.content || 'Sorry, I could not generate a response.';
+                    break;
                 }
-            });
 
-            const candidate = response.candidates?.[0];
-            if (!candidate || !candidate.content) {
-                finalText = response.text || 'Sorry, I could not generate a response.';
-                break;
-            }
-
-            const parts = candidate.content.parts || [];
-            const functionCalls = parts.filter(p => p.functionCall);
-
-            if (functionCalls.length === 0) {
-                // No tool calls — extract text response
-                const textParts = parts.filter(p => p.text);
-                finalText = textParts.map(p => p.text).join('\n') || 'Sorry, I could not generate a response.';
-                break;
-            }
-
-            // Execute tool calls and feed results back
-            currentContents = [
-                ...currentContents,
-                { role: 'model', parts }
-            ];
-
-            const toolResultParts = [];
-            for (const fc of functionCalls) {
-                const toolName = fc.functionCall.name;
-                const toolArgs = fc.functionCall.args || {};
-                let result;
-
-                if (toolName === 'editEntry') {
-                    // Intercept editEntry: validate args, store as pending, return fake response
-                    const validation = validateEditArgs(req.user.id, toolArgs);
-                    if (validation.error) {
-                        result = validation;
+                // Execute tool calls
+                const toolResultMessages = [];
+                for (const toolCall of assistantMsg.tool_calls) {
+                    const toolName = toolCall.function.name;
+                    let toolArgs = {};
+                    try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (_) {}
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
                     } else {
-                        const entryId = validation.entry.id;
-                        const currentEntry = {
-                            id: validation.entry.id,
-                            description: validation.entry.description,
-                            amount: validation.entry.amount,
-                            type: validation.entry.type,
-                            month: validation.entry.month,
-                            tags: validation.entry.tags || [],
-                            isCoupleExpense: validation.entry.isCoupleExpense || false
-                        };
-                        const editItem = {
-                            entryId,
-                            changes: validation.updates,
-                            currentEntry,
-                            createdAt: Date.now()
-                        };
-                        // Accumulate pending edits per user (append, don't overwrite)
-                        const existing = pendingEdits.get(req.user.id) || [];
-                        // Replace if same entryId already pending, else append
-                        const idx = existing.findIndex(e => e.entryId === entryId);
-                        if (idx !== -1) existing[idx] = editItem;
-                        else existing.push(editItem);
-                        pendingEdits.set(req.user.id, existing);
-                        pendingEditsList.push({
-                            entryId,
-                            changes: validation.updates,
-                            currentEntry
-                        });
-                        result = { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+                        result = executeTool(toolName, req.user.id, toolArgs);
                     }
-                } else {
-                    result = executeTool(toolName, req.user.id, toolArgs);
+                    toolResultMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(result)
+                    });
                 }
+                currentMessages = [...currentMessages, ...toolResultMessages];
+            }
+        } else {
+            // ── Gemini branch ──────────────────────────────────────────
+            const chatGenAI = new GoogleGenAI({ apiKey });
 
-                toolResultParts.push({
-                    functionResponse: {
-                        name: toolName,
-                        response: result
+            // Build contents from sanitized history + new message.
+            // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
+            // messages to satisfy Gemini's alternating-turn requirement.
+            const contents = [];
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const recent = messages.slice(-20);
+            for (const msg of recent) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                const role = msg.role === 'assistant' ? 'model' : 'user';
+                const last = contents[contents.length - 1];
+                if (last && last.role === role) {
+                    // Merge consecutive same-role messages into one turn
+                    last.parts[0].text += '\n' + text;
+                } else {
+                    contents.push({ role, parts: [{ text }] });
+                }
+            }
+            // Ensure the new message is a user turn (merge if last history was also user)
+            const lastEntry = contents[contents.length - 1];
+            if (lastEntry && lastEntry.role === 'user') {
+                lastEntry.parts[0].text += '\n' + message;
+            } else {
+                contents.push({ role: 'user', parts: [{ text: message }] });
+            }
+
+            let currentContents = contents;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await chatGenAI.models.generateContent({
+                    model: GEMINI_CHAT_MODEL,
+                    contents: currentContents,
+                    config: {
+                        temperature: 0.7,
+                        tools: [{ functionDeclarations: chatToolDeclarations }],
+                        systemInstruction: chatSystemPrompt
                     }
                 });
-            }
 
-            currentContents.push({ role: 'user', parts: toolResultParts });
+                const candidate = response.candidates?.[0];
+                if (!candidate || !candidate.content) {
+                    finalText = response.text || 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                const parts = candidate.content.parts || [];
+                const functionCalls = parts.filter(p => p.functionCall);
+
+                if (functionCalls.length === 0) {
+                    // No tool calls — extract text response
+                    const textParts = parts.filter(p => p.text);
+                    finalText = textParts.map(p => p.text).join('\n') || 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                // Execute tool calls and feed results back
+                currentContents = [...currentContents, { role: 'model', parts }];
+
+                const toolResultParts = [];
+                for (const fc of functionCalls) {
+                    const toolName = fc.functionCall.name;
+                    const toolArgs = fc.functionCall.args || {};
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResultParts.push({
+                        functionResponse: { name: toolName, response: result }
+                    });
+                }
+                currentContents.push({ role: 'user', parts: toolResultParts });
+            }
         }
 
         if (!finalText) {
@@ -2647,10 +2875,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message);
-        if (error.message?.includes('API key')) {
+        if (error.message?.includes('API key') || error.status === 401) {
             return res.status(400).json({ error: 'Invalid API key.' });
         }
-        if (error.message?.includes('quota')) {
+        if (error.message?.includes('quota') || error.status === 429) {
             return res.status(429).json({ error: 'API quota exceeded. Please try again later.' });
         }
         res.status(500).json({ error: 'generic' });
@@ -2749,7 +2977,7 @@ const upload = multer({
     }
 });
 
-// PDF processing endpoint with Gemini AI (for web interface)
+// PDF processing endpoint with AI (Gemini or OpenAI, based on user preference)
 app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => {
     upload.single('pdfFile')(req, res, (err) => {
         if (err instanceof multer.MulterError) {
@@ -2768,25 +2996,36 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         return res.status(400).json({ message: 'No PDF file uploaded.' });
     }
 
-    // Resolve API key: manual > stored > .env fallback
+    // Determine provider: use user's stored preference (default gemini)
+    const provider = req.user.aiProvider || 'gemini';
+
+    // Resolve API key: stored user key → server .env key
     let apiKey = null;
-    if (req.body.geminiApiKey && req.body.geminiApiKey.trim()) {
-        apiKey = req.body.geminiApiKey.trim();
-    } else if (req.user.geminiApiKey) {
-        try {
-            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
-        } catch (e) {
-            console.error('Failed to decrypt stored Gemini API key:', e.message);
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try {
+                apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored OpenAI API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.openaiApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No OpenAI API key available. Please add one in Settings.' });
+        }
+    } else {
+        if (req.user.geminiApiKey) {
+            try {
+                apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Gemini API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in Settings.' });
         }
     }
-    if (!apiKey) {
-        apiKey = config.geminiApiKey;
-    }
-    if (!apiKey) {
-        return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in the bulk upload dialog.' });
-    }
-
-    const requestGenAI = new GoogleGenAI({ apiKey });
 
     try {
         // Parse the PDF buffer
@@ -2801,47 +3040,6 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-        // Define the response schema for structured output
-        const responseSchema = {
-            type: Type.OBJECT,
-            properties: {
-                entries: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            month: {
-                                type: Type.STRING,
-                                description: 'Transaction date in YYYY-MM format'
-                            },
-                            amount: {
-                                type: Type.NUMBER,
-                                description: 'Transaction amount as positive number'
-                            },
-                            description: {
-                                type: Type.STRING,
-                                description: 'Description of the transaction'
-                            },
-                            tag: {
-                                type: Type.STRING,
-                                enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
-                                       'healthcare', 'education', 'shopping', 'subscription', 'housing',
-                                       'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
-                                description: 'Category tag for the transaction'
-                            },
-                            type: {
-                                type: Type.STRING,
-                                enum: ['expense', 'income'],
-                                description: 'Transaction type'
-                            }
-                        },
-                        required: ['month', 'amount', 'description', 'tag', 'type']
-                    }
-                }
-            },
-            required: ['entries']
-        };
-
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
 
@@ -2851,36 +3049,99 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
+- tag must be one of: food, groceries, transport, travel, entertainment, utilities, healthcare, education, shopping, subscription, housing, salary, freelance, investment, transfer, wedding, other
+- Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
 DOCUMENT:
 ${text}`;
 
-        // Call Gemini API with structured output
-        console.log('Starting Gemini API call...');
-        console.log('Prompt length:', prompt.length, 'chars');
-        let response;
-        try {
-            response = await requestGenAI.models.generateContent({
-                model: GEMINI_MODEL,
-                contents: prompt,
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: responseSchema,
+        let aiResponse;
+
+        if (provider === 'openai') {
+            console.log('Starting OpenAI API call...');
+            const openaiClient = new OpenAI({ apiKey });
+            try {
+                const response = await openaiClient.chat.completions.create({
+                    model: OPENAI_MODEL,
+                    messages: [{ role: 'user', content: prompt }],
+                    response_format: { type: 'json_object' },
                     temperature: 0.2
-                }
-            });
-        } catch (geminiError) {
-            console.error('Gemini API error details:', geminiError.message);
-            console.error('Gemini API error cause:', geminiError.cause);
-            console.error('Full error:', JSON.stringify(geminiError, Object.getOwnPropertyNames(geminiError)));
-            throw geminiError;
+                });
+                aiResponse = response.choices[0]?.message?.content || '{}';
+            } catch (openaiError) {
+                console.error('OpenAI API error details:', openaiError.message);
+                throw openaiError;
+            }
+            console.log('=== OPENAI RESPONSE ===');
+            console.log(aiResponse);
+            console.log('=== END OPENAI RESPONSE ===');
+        } else {
+            // Define the response schema for Gemini structured output
+            const responseSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    entries: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                month: {
+                                    type: Type.STRING,
+                                    description: 'Transaction date in YYYY-MM format'
+                                },
+                                amount: {
+                                    type: Type.NUMBER,
+                                    description: 'Transaction amount as positive number'
+                                },
+                                description: {
+                                    type: Type.STRING,
+                                    description: 'Description of the transaction'
+                                },
+                                tag: {
+                                    type: Type.STRING,
+                                    enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
+                                           'healthcare', 'education', 'shopping', 'subscription', 'housing',
+                                           'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
+                                    description: 'Category tag for the transaction'
+                                },
+                                type: {
+                                    type: Type.STRING,
+                                    enum: ['expense', 'income'],
+                                    description: 'Transaction type'
+                                }
+                            },
+                            required: ['month', 'amount', 'description', 'tag', 'type']
+                        }
+                    }
+                },
+                required: ['entries']
+            };
+
+            const requestGenAI = new GoogleGenAI({ apiKey });
+            console.log('Starting Gemini API call...');
+            console.log('Prompt length:', prompt.length, 'chars');
+            let response;
+            try {
+                response = await requestGenAI.models.generateContent({
+                    model: GEMINI_MODEL,
+                    contents: prompt,
+                    config: {
+                        responseMimeType: 'application/json',
+                        responseSchema: responseSchema,
+                        temperature: 0.2
+                    }
+                });
+            } catch (geminiError) {
+                console.error('Gemini API error details:', geminiError.message);
+                console.error('Gemini API error cause:', geminiError.cause);
+                console.error('Full error:', JSON.stringify(geminiError, Object.getOwnPropertyNames(geminiError)));
+                throw geminiError;
+            }
+            aiResponse = response.text;
+            console.log('=== GEMINI RESPONSE ===');
+            console.log(aiResponse);
+            console.log('=== END GEMINI RESPONSE ===');
         }
-
-        const aiResponse = response.text;
-
-        console.log('=== GEMINI RESPONSE ===');
-        console.log(aiResponse);
-        console.log('=== END GEMINI RESPONSE ===');
 
         // Parse the structured JSON response
         let entries = [];
@@ -2942,14 +3203,14 @@ ${text}`;
 
         res.json(entries);
     } catch (error) {
-        console.error('Error processing PDF with Gemini:', error);
+        console.error('Error processing PDF with AI:', error);
 
         // Provide more specific error messages
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
-        if (error.message?.includes('API key')) {
-            errorMessage = 'Invalid Gemini API key. Please check your API key and try again.';
-        } else if (error.message?.includes('quota')) {
-            errorMessage = 'Gemini API quota exceeded. Please try again later.';
+        if (error.message?.includes('API key') || error.status === 401) {
+            errorMessage = `Invalid ${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key. Please check your API key and try again.`;
+        } else if (error.message?.includes('quota') || error.status === 429) {
+            errorMessage = `${provider === 'openai' ? 'OpenAI' : 'Gemini'} API quota exceeded. Please try again later.`;
         } else if (error.message?.includes('safety')) {
             errorMessage = 'Content was blocked by safety filters.';
         }
@@ -3000,6 +3261,13 @@ app.listen(PORT, '0.0.0.0', () => {
             console.warn('Warning: Gemini API key may be invalid:', error.message);
         });
     } else {
-        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys or manually provided keys.');
+        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
+    }
+
+    // Verify OpenAI API configuration
+    if (config.openaiApiKey) {
+        console.log(`OpenAI AI configured with model: ${OPENAI_MODEL}`);
+    } else {
+        console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
     }
 });
