@@ -77,8 +77,8 @@ const GEMINI_MODEL = 'gemini-3-flash-preview';       // PDF processing & structu
 const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be changed independently)
 
 // OpenAI model names
-const OPENAI_MODEL = 'gpt-4.1-mini';       // PDF processing & structured extraction
-const OPENAI_CHAT_MODEL = 'gpt-4.1-mini';  // AI chat advisor (can be changed independently)
+const OPENAI_MODEL = 'gpt-3.5-turbo';       // PDF processing & structured extraction
+const OPENAI_CHAT_MODEL = 'gpt-3.5-turbo';  // AI chat advisor (can be changed independently)
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
