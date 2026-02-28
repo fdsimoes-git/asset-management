@@ -233,11 +233,23 @@ const translations = {
     'settings.openaiSaveSuccess': 'OpenAI API key saved successfully',
     'settings.openaiRemoveSuccess': 'OpenAI API key removed',
 
+    // ── Anthropic API Key settings ──
+    'settings.anthropicSection': 'Anthropic API Key',
+    'settings.anthropicSaved': 'API key saved',
+    'settings.anthropicChange': 'Change',
+    'settings.anthropicRemove': 'Remove',
+    'settings.anthropicNone': 'No API key configured',
+    'settings.anthropicPlaceholder': 'Enter your Anthropic API key (sk-ant-...)',
+    'settings.anthropicHelp': 'Used for AI-powered PDF processing and financial advisor chat when Anthropic is selected. Get your key at console.anthropic.com.',
+    'settings.anthropicSaveSuccess': 'Anthropic API key saved successfully',
+    'settings.anthropicRemoveSuccess': 'Anthropic API key removed',
+
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'AI Provider',
     'settings.aiProviderLabel': 'Select which AI provider to use for PDF processing and chat',
     'settings.aiProviderGemini': 'Google Gemini',
     'settings.aiProviderOpenai': 'OpenAI',
+    'settings.aiProviderAnthropic': 'Anthropic Claude',
     'settings.aiProviderSaveSuccess': 'AI provider preference saved',
     'settings.aiProviderSaveError': 'Failed to save AI provider preference',
 
@@ -253,6 +265,10 @@ const translations = {
     // ── OpenAI key (gemini-style alerts) ──
     'openai.confirmRemove': 'Remove your saved OpenAI API key?',
     'openai.removeFailed': 'Failed to remove API key.',
+
+    // ── Anthropic key ──
+    'anthropic.confirmRemove': 'Remove your saved Anthropic API key?',
+    'anthropic.removeFailed': 'Failed to remove API key.',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Couple Management',
@@ -582,6 +598,10 @@ const translations = {
     'openai.confirmRemove': 'Remover sua chave API OpenAI salva?',
     'openai.removeFailed': 'Falha ao remover chave API.',
 
+    // ── Anthropic key ──
+    'anthropic.confirmRemove': 'Remover sua chave API Anthropic salva?',
+    'anthropic.removeFailed': 'Falha ao remover chave API.',
+
     // ── Logout ──
     'logout.failed': 'Falha ao sair.',
 
@@ -653,11 +673,23 @@ const translations = {
     'settings.openaiSaveSuccess': 'Chave API OpenAI salva com sucesso',
     'settings.openaiRemoveSuccess': 'Chave API OpenAI removida',
 
+    // ── Anthropic API Key settings ──
+    'settings.anthropicSection': 'Chave API Anthropic',
+    'settings.anthropicSaved': 'Chave API salva',
+    'settings.anthropicChange': 'Alterar',
+    'settings.anthropicRemove': 'Remover',
+    'settings.anthropicNone': 'Nenhuma chave API configurada',
+    'settings.anthropicPlaceholder': 'Digite sua chave API Anthropic (sk-ant-...)',
+    'settings.anthropicHelp': 'Usada para processamento de PDF com IA e consultor financeiro quando Anthropic está selecionado. Obtenha em console.anthropic.com.',
+    'settings.anthropicSaveSuccess': 'Chave API Anthropic salva com sucesso',
+    'settings.anthropicRemoveSuccess': 'Chave API Anthropic removida',
+
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'Provedor de IA',
     'settings.aiProviderLabel': 'Selecione o provedor de IA para processamento de PDF e chat',
     'settings.aiProviderGemini': 'Google Gemini',
     'settings.aiProviderOpenai': 'OpenAI',
+    'settings.aiProviderAnthropic': 'Anthropic Claude',
     'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
     'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
 

@@ -847,9 +847,13 @@ function updateAiKeyUI() {
     const provider = currentUser && currentUser.aiProvider || 'gemini';
     const hasUserKey = provider === 'openai'
         ? (currentUser && currentUser.hasOpenaiApiKey)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicApiKey)
         : (currentUser && currentUser.hasGeminiApiKey);
     const hasKey = provider === 'openai'
         ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicKeyAvailable)
         : (currentUser && currentUser.hasGeminiKeyAvailable);
 
     if (hasUserKey) {
@@ -1644,6 +1648,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.anthropicSection')}</h3>
+                    <div id="settingsAnthropicDisplay">
+                        ${currentUser && currentUser.hasAnthropicApiKey
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.anthropicSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsAnthropicChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicChange')}</button>
+                                   <button type="button" id="settingsAnthropicRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.anthropicNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsAnthropicForm" style="display: ${currentUser && currentUser.hasAnthropicApiKey ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsAnthropicInput" placeholder="${t('settings.anthropicPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.anthropicHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsAnthropicSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsAnthropicCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 2rem;">
                     <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.aiProviderSection')}</h3>
                     <p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiProviderLabel')}</p>
                     <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
@@ -1654,6 +1685,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
                             <input type="radio" name="aiProvider" id="aiProviderOpenai" value="openai" ${(currentUser && currentUser.aiProvider === 'openai') ? 'checked' : ''}>
                             ${t('settings.aiProviderOpenai')}
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderAnthropic" value="anthropic" ${(currentUser && currentUser.aiProvider === 'anthropic') ? 'checked' : ''}>
+                            ${t('settings.aiProviderAnthropic')}
                         </label>
                         <button type="button" id="settingsAiProviderSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
                     </div>
@@ -1682,6 +1717,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettings2FA(overlay, twoFAData, cleanup);
         wireSettingsGemini(overlay);
         wireSettingsOpenai(overlay);
+        wireSettingsAnthropic(overlay);
         wireSettingsAiProvider(overlay);
         wireSettingsAiModel(overlay);
     }
@@ -2126,6 +2162,124 @@ document.addEventListener('DOMContentLoaded', () => {
                         input.value = '';
                         updateAiKeyUI();
                         alert(t('settings.openaiSaveSuccess'));
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                }
+            });
+        }
+
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+            });
+        }
+    }
+
+    function wireSettingsAnthropic(overlay) {
+        const display = overlay.querySelector('#settingsAnthropicDisplay');
+        const form = overlay.querySelector('#settingsAnthropicForm');
+        const input = overlay.querySelector('#settingsAnthropicInput');
+        const saveBtn = overlay.querySelector('#settingsAnthropicSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsAnthropicCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasKey) {
+            if (hasKey) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.anthropicSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsAnthropicChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicChange')}</button>
+                        <button type="button" id="settingsAnthropicRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.anthropicNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsAnthropicChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsAnthropicRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('anthropic.confirmRemove'))) return;
+                    try {
+                        const response = await fetch('/api/user/anthropic-key', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            currentUser.hasAnthropicApiKey = false;
+                            currentUser.hasAnthropicKeyAvailable = data.hasAnthropicKeyAvailable || false;
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            updateAiKeyUI();
+                            alert(t('settings.anthropicRemoveSuccess'));
+                        } else {
+                            alert(t('anthropic.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('anthropic.removeFailed'));
+                    }
+                });
+            }
+        }
+
+        wireChangeAndRemove();
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/user/anthropic-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ anthropicApiKey: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasAnthropicApiKey = true;
+                        currentUser.hasAnthropicKeyAvailable = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        updateAiKeyUI();
+                        alert(t('settings.anthropicSaveSuccess'));
                     } else {
                         const data = await response.json();
                         alert(data.message || t('error.generic'));

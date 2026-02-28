@@ -13,6 +13,7 @@ const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
 const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const nodemailer = require('nodemailer');
 const otplib = require('otplib');
 const QRCode = require('qrcode');
@@ -80,6 +81,10 @@ const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be
 const OPENAI_MODEL = 'gpt-3.5-turbo';       // PDF processing & structured extraction
 const OPENAI_CHAT_MODEL = 'gpt-3.5-turbo';  // AI chat advisor (can be changed independently)
 
+// Anthropic model names
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6';       // PDF processing & structured extraction
+const ANTHROPIC_CHAT_MODEL = 'claude-sonnet-4-6';  // AI chat advisor (can be changed independently)
+
 // Model list cache for /api/ai/models endpoint
 const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
 const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
@@ -94,6 +99,9 @@ function resolveModel(user, provider, usage) {
     if (user.aiModel) return user.aiModel;
     if (provider === 'openai') {
         return usage === 'chat' ? OPENAI_CHAT_MODEL : OPENAI_MODEL;
+    }
+    if (provider === 'anthropic') {
+        return usage === 'chat' ? ANTHROPIC_CHAT_MODEL : ANTHROPIC_MODEL;
     }
     return usage === 'chat' ? GEMINI_CHAT_MODEL : GEMINI_MODEL;
 }
@@ -1061,8 +1069,10 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerUsername: null,
         hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData),
         hasOpenaiApiKey: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData),
+        hasAnthropicApiKey: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData),
         hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
         hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
+        hasAnthropicKeyAvailable: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData) || !!config.anthropicApiKey,
         aiProvider: req.user.aiProvider || 'gemini',
         aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled
@@ -1139,12 +1149,41 @@ app.delete('/api/user/openai-key', requireAuth, (req, res) => {
     res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false, hasOpenaiKeyAvailable: !!config.openaiApiKey });
 });
 
+// Save Anthropic API key (encrypted)
+app.post('/api/user/anthropic-key', requireAuth, (req, res) => {
+    const { anthropicApiKey } = req.body;
+
+    if (!anthropicApiKey || typeof anthropicApiKey !== 'string') {
+        return res.status(400).json({ message: 'API key is required.' });
+    }
+
+    const trimmed = anthropicApiKey.trim();
+    if (trimmed.length < 30 || trimmed.length > 200) {
+        return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
+    }
+
+    req.user.anthropicApiKey = encryptString(trimmed);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Anthropic API key saved successfully.', hasAnthropicApiKey: true, hasAnthropicKeyAvailable: true });
+});
+
+// Remove saved Anthropic API key
+app.delete('/api/user/anthropic-key', requireAuth, (req, res) => {
+    delete req.user.anthropicApiKey;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Anthropic API key removed.', hasAnthropicApiKey: false, hasAnthropicKeyAvailable: !!config.anthropicApiKey });
+});
+
 // Save AI provider preference
 app.put('/api/user/ai-provider', requireAuth, (req, res) => {
     const { aiProvider } = req.body;
 
-    if (!aiProvider || !['gemini', 'openai'].includes(aiProvider)) {
-        return res.status(400).json({ message: 'aiProvider must be "gemini" or "openai".' });
+    if (!aiProvider || !['gemini', 'openai', 'anthropic'].includes(aiProvider)) {
+        return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", or "anthropic".' });
     }
 
     req.user.aiProvider = aiProvider;
@@ -1166,6 +1205,11 @@ app.get('/api/ai/models', requireAuth, async (req, res) => {
             try { apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv); } catch (e) { /* ignore */ }
         }
         if (!apiKey) apiKey = config.openaiApiKey;
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try { apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
     } else {
         if (req.user.geminiApiKey) {
             try { apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv); } catch (e) { /* ignore */ }
@@ -1199,6 +1243,13 @@ app.get('/api/ai/models', requireAuth, async (req, res) => {
                 if (includePattern.test(model.id) && !excludePattern.test(model.id)) {
                     models.push({ id: model.id, name: model.id });
                 }
+            }
+        } else if (provider === 'anthropic') {
+            const anthropicClient = new Anthropic({ apiKey });
+            const response = await anthropicClient.models.list({ limit: 100 });
+            for (const model of response.data) {
+                const displayName = model.display_name || model.id;
+                models.push({ id: model.id, name: displayName });
             }
         } else {
             const listGenAI = new GoogleGenAI({ apiKey });
@@ -2353,6 +2404,14 @@ const openaiToolDeclarations = [
         }
     }
 ];
+
+// Anthropic tool declarations — same tools, restructured for Anthropic's format
+const anthropicToolDeclarations = openaiToolDeclarations.map(tool => ({
+    name: tool.function.name,
+    description: tool.function.description,
+    input_schema: tool.function.parameters
+}));
+
 // Cleared on undo or server restart — only the last edit per entry is reversible.
 // Capped at 1000 entries; oldest snapshots are evicted when the limit is reached.
 const lastEditSnapshots = new Map();
@@ -2811,6 +2870,15 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             }
         }
         if (!apiKey) apiKey = config.openaiApiKey;
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try {
+                apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Anthropic API key for chat:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
     } else {
         if (req.user.geminiApiKey) {
             try {
@@ -2913,6 +2981,59 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                     });
                 }
                 currentMessages = [...currentMessages, ...toolResultMessages];
+            }
+        } else if (provider === 'anthropic') {
+            // ── Anthropic branch ─────────────────────────────────────
+            const anthropicClient = new Anthropic({ apiKey });
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const anthropicMessages = [];
+            for (const msg of messages.slice(-20)) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                anthropicMessages.push({ role: msg.role, content: text });
+            }
+            anthropicMessages.push({ role: 'user', content: message });
+
+            let currentMessages = anthropicMessages;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await anthropicClient.messages.create({
+                    model: resolveModel(req.user, 'anthropic', 'chat'),
+                    max_tokens: 4096,
+                    system: chatSystemPrompt,
+                    messages: currentMessages,
+                    tools: anthropicToolDeclarations,
+                    temperature: 0.7
+                });
+
+                if (response.stop_reason !== 'tool_use') {
+                    const textBlock = response.content.find(b => b.type === 'text');
+                    finalText = textBlock ? textBlock.text : 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                // Extract tool_use blocks and execute them
+                const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+                const toolResults = [];
+                for (const toolUse of toolUseBlocks) {
+                    const toolName = toolUse.name;
+                    const toolArgs = toolUse.input || {};
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResults.push({
+                        type: 'tool_result',
+                        tool_use_id: toolUse.id,
+                        content: JSON.stringify(result)
+                    });
+                }
+                currentMessages = [
+                    ...currentMessages,
+                    { role: 'assistant', content: response.content },
+                    { role: 'user', content: toolResults }
+                ];
             }
         } else {
             // ── Gemini branch ──────────────────────────────────────────
@@ -3142,6 +3263,18 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         if (!apiKey) {
             return res.status(400).json({ message: 'No OpenAI API key available. Please add one in Settings.' });
         }
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try {
+                apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Anthropic API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No Anthropic API key available. Please add one in Settings.' });
+        }
     } else {
         if (req.user.geminiApiKey) {
             try {
@@ -3202,6 +3335,22 @@ ${text}`;
                 throw openaiError;
             }
             console.log('OpenAI response received, length:', aiResponse.length);
+        } else if (provider === 'anthropic') {
+            console.log('Starting Anthropic API call...');
+            const anthropicClient = new Anthropic({ apiKey });
+            try {
+                const response = await anthropicClient.messages.create({
+                    model: resolveModel(req.user, 'anthropic', 'pdf'),
+                    max_tokens: 4096,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.2
+                });
+                aiResponse = response.content[0]?.text || '{}';
+            } catch (anthropicError) {
+                console.error('Anthropic API error details:', anthropicError.message);
+                throw anthropicError;
+            }
+            console.log('Anthropic response received, length:', aiResponse.length);
         } else {
             // Define the response schema for Gemini structured output
             const responseSchema = {
@@ -3333,11 +3482,12 @@ ${text}`;
         // Provide more specific error messages with appropriate status codes
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
         let statusCode = 500;
+        const providerName = provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Gemini';
         if (error.message?.includes('API key') || error.status === 401) {
-            errorMessage = `Invalid ${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key. Please check your API key and try again.`;
+            errorMessage = `Invalid ${providerName} API key. Please check your API key and try again.`;
             statusCode = 400;
         } else if (error.message?.includes('quota') || error.status === 429) {
-            errorMessage = `${provider === 'openai' ? 'OpenAI' : 'Gemini'} API quota exceeded. Please try again later.`;
+            errorMessage = `${providerName} API quota exceeded. Please try again later.`;
             statusCode = 429;
         } else if (error.message?.includes('safety')) {
             errorMessage = 'Content was blocked by safety filters.';
@@ -3403,5 +3553,18 @@ app.listen(PORT, '0.0.0.0', () => {
         });
     } else {
         console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
+    }
+
+    // Verify Anthropic API configuration
+    if (config.anthropicApiKey) {
+        console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
+        const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
+        anthropicStartup.models.list({ limit: 1 }).then(() => {
+            console.log('Anthropic API key verified successfully.');
+        }).catch((error) => {
+            console.warn('Warning: Anthropic API key may be invalid:', error.message);
+        });
+    } else {
+        console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
     }
 });
