@@ -2973,7 +2973,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                     const toolName = toolCall.function.name;
                     let toolArgs = {};
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
-                        console.error(`Failed to parse OpenAI tool args for ${toolCall.function.name}:`, parseErr.message, 'Raw:', toolCall.function.arguments);
+                        console.error(`Failed to parse OpenAI tool args for ${toolName}:`, parseErr.message);
                     }
                     let result;
                     if (toolName === 'editEntry') {
@@ -3149,10 +3149,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     } catch (error) {
         console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
         if (error.message?.includes('API key') || error.message?.includes('authentication') || error.status === 401) {
-            return res.status(400).json({ error: 'Invalid API key.' });
+            return res.status(400).json({ error: 'invalid_api_key' });
         }
         if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
-            return res.status(429).json({ error: 'API quota exceeded. Please try again later.' });
+            return res.status(429).json({ error: 'quota_exceeded' });
         }
         res.status(500).json({ error: 'generic' });
     }
@@ -3250,7 +3250,7 @@ const upload = multer({
     }
 });
 
-// PDF processing endpoint with AI (Gemini or OpenAI, based on user preference)
+// PDF processing endpoint with AI (Gemini, OpenAI, or Anthropic based on user preference)
 app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => {
     upload.single('pdfFile')(req, res, (err) => {
         if (err instanceof multer.MulterError) {
@@ -3440,10 +3440,15 @@ ${text}`;
             console.log('Gemini response received, length:', aiResponse.length);
         }
 
+        // Strip markdown code fences if present (Anthropic may wrap JSON in ```json...```)
+        let cleanedResponse = aiResponse.trim();
+        const fenceMatch = cleanedResponse.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+        if (fenceMatch) cleanedResponse = fenceMatch[1].trim();
+
         // Parse the structured JSON response
         let entries = [];
         try {
-            const parsed = JSON.parse(aiResponse);
+            const parsed = JSON.parse(cleanedResponse);
 
             // Extract entries from the response
             if (parsed.entries && Array.isArray(parsed.entries)) {
