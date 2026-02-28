@@ -92,7 +92,7 @@ const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
 /**
  * Resolve AI model: user preference → hardcoded default.
  * @param {object} user - user object
- * @param {'openai'|'gemini'} provider
+ * @param {'openai'|'gemini'|'anthropic'} provider
  * @param {'chat'|'pdf'} usage
  */
 function resolveModel(user, provider, usage) {
@@ -1289,15 +1289,22 @@ app.get('/api/ai/models', requireAuth, async (req, res) => {
 
 // Save AI model preference
 app.put('/api/user/ai-model', requireAuth, (req, res) => {
-    const { aiModel } = req.body;
+    const { aiModel: rawAiModel } = req.body;
 
-    if (aiModel !== null && aiModel !== undefined && aiModel !== '') {
-        if (typeof aiModel !== 'string' || aiModel.length > 100) {
+    if (rawAiModel === null || rawAiModel === undefined || rawAiModel === '') {
+        req.user.aiModel = null;
+    } else {
+        if (typeof rawAiModel !== 'string') {
             return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
         }
-        req.user.aiModel = aiModel;
-    } else {
-        req.user.aiModel = null;
+        const aiModel = rawAiModel.trim();
+        if (aiModel === '') {
+            req.user.aiModel = null;
+        } else if (aiModel.length > 100) {
+            return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
+        } else {
+            req.user.aiModel = aiModel;
+        }
     }
 
     req.user.updatedAt = new Date().toISOString();

@@ -917,6 +917,8 @@ processBulkPdfBtn.addEventListener('click', async () => {
     const provider = currentUser && currentUser.aiProvider || 'gemini';
     const hasKey = provider === 'openai'
         ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicKeyAvailable)
         : (currentUser && currentUser.hasGeminiKeyAvailable);
     if (!currentUser || !hasKey) {
         alert(t('bulk.alertEnterKey'));
