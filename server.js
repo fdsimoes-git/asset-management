@@ -3144,7 +3144,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         if (error.message?.includes('API key') || error.message?.includes('authentication') || error.status === 401) {
             return res.status(400).json({ error: 'Invalid API key.' });
         }
-        if (error.message?.includes('quota') || error.status === 429) {
+        if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
             return res.status(429).json({ error: 'API quota exceeded. Please try again later.' });
         }
         res.status(500).json({ error: 'generic' });
@@ -3502,7 +3502,7 @@ ${text}`;
         if (error.message?.includes('API key') || error.status === 401) {
             errorMessage = `Invalid ${providerName} API key. Please check your API key and try again.`;
             statusCode = 400;
-        } else if (error.message?.includes('quota') || error.status === 429) {
+        } else if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
             errorMessage = `${providerName} API quota exceeded. Please try again later.`;
             statusCode = 429;
         } else if (error.message?.includes('safety')) {
