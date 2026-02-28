@@ -1215,11 +1215,16 @@ app.get('/api/ai/models', requireAuth, async (req, res) => {
 
         models.sort((a, b) => a.name.localeCompare(b.name));
 
-        // Evict expired entries if cache is too large
+        // Enforce hard cap: evict expired first, then oldest if still over limit
         if (modelListCache.size >= 50) {
             const now = Date.now();
             for (const [k, v] of modelListCache) {
                 if (now - v.timestamp >= MODEL_CACHE_TTL) modelListCache.delete(k);
+            }
+            // Still over limit — remove oldest entries
+            while (modelListCache.size >= 50) {
+                const oldestKey = modelListCache.keys().next().value;
+                modelListCache.delete(oldestKey);
             }
         }
 
@@ -3196,9 +3201,7 @@ ${text}`;
                 console.error('OpenAI API error details:', openaiError.message);
                 throw openaiError;
             }
-            console.log('=== OPENAI RESPONSE ===');
-            console.log(aiResponse);
-            console.log('=== END OPENAI RESPONSE ===');
+            console.log('OpenAI response received, length:', aiResponse.length);
         } else {
             // Define the response schema for Gemini structured output
             const responseSchema = {
@@ -3262,9 +3265,7 @@ ${text}`;
                 throw geminiError;
             }
             aiResponse = response.text;
-            console.log('=== GEMINI RESPONSE ===');
-            console.log(aiResponse);
-            console.log('=== END GEMINI RESPONSE ===');
+            console.log('Gemini response received, length:', aiResponse.length);
         }
 
         // Parse the structured JSON response
@@ -3329,17 +3330,20 @@ ${text}`;
     } catch (error) {
         console.error('Error processing PDF with AI:', error);
 
-        // Provide more specific error messages
+        // Provide more specific error messages with appropriate status codes
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
+        let statusCode = 500;
         if (error.message?.includes('API key') || error.status === 401) {
             errorMessage = `Invalid ${provider === 'openai' ? 'OpenAI' : 'Gemini'} API key. Please check your API key and try again.`;
+            statusCode = 400;
         } else if (error.message?.includes('quota') || error.status === 429) {
             errorMessage = `${provider === 'openai' ? 'OpenAI' : 'Gemini'} API quota exceeded. Please try again later.`;
+            statusCode = 429;
         } else if (error.message?.includes('safety')) {
             errorMessage = 'Content was blocked by safety filters.';
         }
 
-        res.status(500).json({ message: errorMessage });
+        res.status(statusCode).json({ message: errorMessage });
     }
 });
 

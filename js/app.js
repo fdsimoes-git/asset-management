@@ -845,12 +845,17 @@ function updateAiKeyUI() {
     if (!statusDiv) return;
 
     const provider = currentUser && currentUser.aiProvider || 'gemini';
+    const hasUserKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiApiKey)
+        : (currentUser && currentUser.hasGeminiApiKey);
     const hasKey = provider === 'openai'
         ? (currentUser && currentUser.hasOpenaiKeyAvailable)
         : (currentUser && currentUser.hasGeminiKeyAvailable);
 
-    if (hasKey) {
+    if (hasUserKey) {
         statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyStored')}</span>`;
+    } else if (hasKey) {
+        statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyConfigured')}</span>`;
     } else {
         statusDiv.innerHTML = `<span style="color: var(--color-text-muted);">${t('bulk.keyRequired')}</span>`;
     }
