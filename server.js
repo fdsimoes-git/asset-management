@@ -2990,9 +2990,25 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
             for (const msg of messages.slice(-20)) {
                 const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
                 if (!text) continue;
-                anthropicMessages.push({ role: msg.role, content: text });
+                const last = anthropicMessages[anthropicMessages.length - 1];
+                if (last && last.role === msg.role) {
+                    // Merge consecutive same-role messages (Anthropic requires alternating roles)
+                    last.content += '\n' + text;
+                } else {
+                    anthropicMessages.push({ role: msg.role, content: text });
+                }
             }
-            anthropicMessages.push({ role: 'user', content: message });
+            // Ensure first message is from user (Anthropic requirement)
+            while (anthropicMessages.length > 0 && anthropicMessages[0].role !== 'user') {
+                anthropicMessages.shift();
+            }
+            // Append new user message (merge if last history was also user)
+            const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+            if (lastMsg && lastMsg.role === 'user') {
+                lastMsg.content += '\n' + message;
+            } else {
+                anthropicMessages.push({ role: 'user', content: message });
+            }
 
             let currentMessages = anthropicMessages;
             for (let i = 0; i < maxIterations; i++) {
@@ -3124,8 +3140,8 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.json(responsePayload);
     } catch (error) {
-        console.error('AI Chat error:', error.message);
-        if (error.message?.includes('API key') || error.status === 401) {
+        console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
+        if (error.message?.includes('API key') || error.message?.includes('authentication') || error.status === 401) {
             return res.status(400).json({ error: 'Invalid API key.' });
         }
         if (error.message?.includes('quota') || error.status === 429) {
