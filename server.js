@@ -89,6 +89,13 @@ const ANTHROPIC_CHAT_MODEL = 'claude-sonnet-4-6';  // AI chat advisor (can be ch
 const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
 const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
+const ALLOWED_AI_PROVIDERS = ['gemini', 'openai', 'anthropic'];
+
+/** Normalize stored provider to an allowed value, defaulting to gemini. */
+function resolveProvider(user) {
+    return ALLOWED_AI_PROVIDERS.includes(user.aiProvider) ? user.aiProvider : 'gemini';
+}
+
 /**
  * Resolve AI model: user preference → hardcoded default.
  * @param {object} user - user object
@@ -1073,7 +1080,7 @@ app.get('/api/user', requireAuth, (req, res) => {
         hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
         hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
         hasAnthropicKeyAvailable: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData) || !!config.anthropicApiKey,
-        aiProvider: req.user.aiProvider || 'gemini',
+        aiProvider: resolveProvider(req.user),
         aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled
     };
@@ -1182,7 +1189,7 @@ app.delete('/api/user/anthropic-key', requireAuth, (req, res) => {
 app.put('/api/user/ai-provider', requireAuth, (req, res) => {
     const { aiProvider } = req.body;
 
-    if (!aiProvider || !['gemini', 'openai', 'anthropic'].includes(aiProvider)) {
+    if (!aiProvider || !ALLOWED_AI_PROVIDERS.includes(aiProvider)) {
         return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", or "anthropic".' });
     }
 
@@ -1196,7 +1203,7 @@ app.put('/api/user/ai-provider', requireAuth, (req, res) => {
 
 // List available AI models for the user's current provider
 app.get('/api/ai/models', requireAuth, async (req, res) => {
-    const provider = req.user.aiProvider || 'gemini';
+    const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
@@ -2864,7 +2871,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         : [];
 
     // Determine provider: use user's stored preference (default gemini)
-    const provider = req.user.aiProvider || 'gemini';
+    const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
@@ -3270,7 +3277,7 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
     }
 
     // Determine provider: use user's stored preference (default gemini)
-    const provider = req.user.aiProvider || 'gemini';
+    const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
