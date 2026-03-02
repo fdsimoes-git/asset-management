@@ -3062,8 +3062,8 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                 });
 
                 if (response.stop_reason !== 'tool_use') {
-                    const textBlock = response.content.find(b => b.type === 'text');
-                    finalText = textBlock ? textBlock.text : 'Sorry, I could not generate a response.';
+                    const textBlocks = response.content.filter(b => b.type === 'text');
+                    finalText = textBlocks.map(b => b.text).join('') || 'Sorry, I could not generate a response.';
                     break;
                 }
 
@@ -3402,7 +3402,10 @@ ${text}`;
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0.2
                 });
-                aiResponse = response.content[0]?.text || '{}';
+                aiResponse = response.content
+                    .filter(b => b.type === 'text')
+                    .map(b => b.text)
+                    .join('') || '{}';
             } catch (anthropicError) {
                 console.error('Anthropic API error details:', anthropicError.message);
                 throw anthropicError;
