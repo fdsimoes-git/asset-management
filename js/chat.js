@@ -166,6 +166,10 @@
                 const data = await res.json().catch(() => ({}));
                 if (data.error === 'no_api_key') {
                     appendMessage('assistant', t('chat.errorNoKey'));
+                } else if (data.error === 'invalid_api_key') {
+                    appendMessage('assistant', t('chat.errorInvalidKey'));
+                } else if (data.error === 'quota_exceeded') {
+                    appendMessage('assistant', t('chat.errorQuota'));
                 } else if (res.status === 429) {
                     appendMessage('assistant', t('chat.errorRateLimit'));
                 } else {

@@ -839,13 +839,27 @@ const loadingIndicator = document.getElementById('loadingIndicator');
 
 let bulkExtractedEntries = [];
 
-// --- Gemini API Key UI Management ---
-function updateGeminiKeyUI() {
-    const statusDiv = document.getElementById('geminiKeyStatus');
+// --- AI Key/Provider UI Management ---
+function updateAiKeyUI() {
+    const statusDiv = document.getElementById('aiKeyStatus');
     if (!statusDiv) return;
 
-    if (currentUser && currentUser.hasGeminiApiKey) {
+    const provider = currentUser && currentUser.aiProvider || 'gemini';
+    const hasUserKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiApiKey)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicApiKey)
+        : (currentUser && currentUser.hasGeminiApiKey);
+    const hasKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicKeyAvailable)
+        : (currentUser && currentUser.hasGeminiKeyAvailable);
+
+    if (hasUserKey) {
         statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyStored')}</span>`;
+    } else if (hasKey) {
+        statusDiv.innerHTML = `<span style="color: var(--color-success);">&#10003;</span> <span style="color: var(--color-success);">${t('bulk.keyConfigured')}</span>`;
     } else {
         statusDiv.innerHTML = `<span style="color: var(--color-text-muted);">${t('bulk.keyRequired')}</span>`;
     }
@@ -863,7 +877,7 @@ openBulkUploadModalBtn.addEventListener('click', () => {
     if (bulkCoupleHeader) {
         bulkCoupleHeader.style.display = hasPartner ? '' : 'none';
     }
-    updateGeminiKeyUI();
+    updateAiKeyUI();
 });
 
 closeBulkUploadModalBtn.addEventListener('click', () => {
@@ -899,8 +913,14 @@ processBulkPdfBtn.addEventListener('click', async () => {
         return;
     }
 
-    // Validate that a Gemini API key is configured
-    if (!currentUser || !currentUser.hasGeminiApiKey) {
+    // Validate that an AI API key is configured for the selected provider
+    const provider = currentUser && currentUser.aiProvider || 'gemini';
+    const hasKey = provider === 'openai'
+        ? (currentUser && currentUser.hasOpenaiKeyAvailable)
+        : provider === 'anthropic'
+        ? (currentUser && currentUser.hasAnthropicKeyAvailable)
+        : (currentUser && currentUser.hasGeminiKeyAvailable);
+    if (!currentUser || !hasKey) {
         alert(t('bulk.alertEnterKey'));
         return;
     }
@@ -1601,6 +1621,91 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.openaiSection')}</h3>
+                    <div id="settingsOpenaiDisplay">
+                        ${currentUser && currentUser.hasOpenaiApiKey
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.openaiSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsOpenaiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiChange')}</button>
+                                   <button type="button" id="settingsOpenaiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.openaiNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsOpenaiForm" style="display: ${currentUser && currentUser.hasOpenaiApiKey ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsOpenaiInput" placeholder="${t('settings.openaiPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.openaiHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsOpenaiSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsOpenaiCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.anthropicSection')}</h3>
+                    <div id="settingsAnthropicDisplay">
+                        ${currentUser && currentUser.hasAnthropicApiKey
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.anthropicSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsAnthropicChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicChange')}</button>
+                                   <button type="button" id="settingsAnthropicRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.anthropicNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsAnthropicForm" style="display: ${currentUser && currentUser.hasAnthropicApiKey ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsAnthropicInput" placeholder="${t('settings.anthropicPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.anthropicHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsAnthropicSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsAnthropicCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.aiProviderSection')}</h3>
+                    <p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiProviderLabel')}</p>
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderGemini" value="gemini" ${(!currentUser || !currentUser.aiProvider || currentUser.aiProvider === 'gemini') ? 'checked' : ''}>
+                            ${t('settings.aiProviderGemini')}
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderOpenai" value="openai" ${(currentUser && currentUser.aiProvider === 'openai') ? 'checked' : ''}>
+                            ${t('settings.aiProviderOpenai')}
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="radio" name="aiProvider" id="aiProviderAnthropic" value="anthropic" ${(currentUser && currentUser.aiProvider === 'anthropic') ? 'checked' : ''}>
+                            ${t('settings.aiProviderAnthropic')}
+                        </label>
+                        <button type="button" id="settingsAiProviderSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                    </div>
+
+                    <div id="aiModelSection" style="margin-top: 1rem; display: none;">
+                        <p style="margin: 0 0 0.5rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiModelLabel')}</p>
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <select id="aiModelSelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body); min-width: 200px;">
+                                <option value="">${t('settings.aiModelDefault')}</option>
+                            </select>
+                            <button type="button" id="settingsAiModelSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <span id="aiModelLoading" style="display: none; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiModelLoading')}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -1613,6 +1718,10 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsEmail(overlay, emailData);
         wireSettings2FA(overlay, twoFAData, cleanup);
         wireSettingsGemini(overlay);
+        wireSettingsOpenai(overlay);
+        wireSettingsAnthropic(overlay);
+        wireSettingsAiProvider(overlay);
+        wireSettingsAiModel(overlay);
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -1879,11 +1988,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     try {
                         const response = await fetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
+                            const data = await response.json();
                             currentUser.hasGeminiApiKey = false;
+                            currentUser.hasGeminiKeyAvailable = data.hasGeminiKeyAvailable || false;
                             rebuildDisplay(false);
                             form.style.display = 'block';
                             cancelBtn.style.display = 'none';
                             input.value = '';
+                            updateAiKeyUI();
                             alert(t('settings.geminiRemoveSuccess'));
                         } else {
                             alert(t('gemini.removeFailed'));
@@ -1925,11 +2037,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (response.ok) {
                         currentUser.hasGeminiApiKey = true;
+                        currentUser.hasGeminiKeyAvailable = true;
                         rebuildDisplay(true);
                         display.style.display = '';
                         form.style.display = 'none';
                         cancelBtn.style.display = 'none';
                         input.value = '';
+                        updateAiKeyUI();
                         alert(t('settings.geminiSaveSuccess'));
                     } else {
                         const data = await response.json();
@@ -1950,7 +2064,351 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ============ ADMIN PANEL FUNCTIONALITY ============
+    function wireSettingsOpenai(overlay) {
+        const display = overlay.querySelector('#settingsOpenaiDisplay');
+        const form = overlay.querySelector('#settingsOpenaiForm');
+        const input = overlay.querySelector('#settingsOpenaiInput');
+        const saveBtn = overlay.querySelector('#settingsOpenaiSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsOpenaiCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasKey) {
+            if (hasKey) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.openaiSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsOpenaiChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiChange')}</button>
+                        <button type="button" id="settingsOpenaiRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.openaiRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.openaiNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsOpenaiChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsOpenaiRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('openai.confirmRemove'))) return;
+                    try {
+                        const response = await fetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            currentUser.hasOpenaiApiKey = false;
+                            currentUser.hasOpenaiKeyAvailable = data.hasOpenaiKeyAvailable || false;
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            updateAiKeyUI();
+                            alert(t('settings.openaiRemoveSuccess'));
+                        } else {
+                            alert(t('openai.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('openai.removeFailed'));
+                    }
+                });
+            }
+        }
+
+        wireChangeAndRemove();
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/user/openai-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ openaiApiKey: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasOpenaiApiKey = true;
+                        currentUser.hasOpenaiKeyAvailable = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        updateAiKeyUI();
+                        alert(t('settings.openaiSaveSuccess'));
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                }
+            });
+        }
+
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+            });
+        }
+    }
+
+    function wireSettingsAnthropic(overlay) {
+        const display = overlay.querySelector('#settingsAnthropicDisplay');
+        const form = overlay.querySelector('#settingsAnthropicForm');
+        const input = overlay.querySelector('#settingsAnthropicInput');
+        const saveBtn = overlay.querySelector('#settingsAnthropicSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsAnthropicCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasKey) {
+            if (hasKey) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.anthropicSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsAnthropicChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicChange')}</button>
+                        <button type="button" id="settingsAnthropicRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.anthropicRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.anthropicNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsAnthropicChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsAnthropicRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('anthropic.confirmRemove'))) return;
+                    try {
+                        const response = await fetch('/api/user/anthropic-key', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            currentUser.hasAnthropicApiKey = false;
+                            currentUser.hasAnthropicKeyAvailable = data.hasAnthropicKeyAvailable || false;
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            updateAiKeyUI();
+                            alert(t('settings.anthropicRemoveSuccess'));
+                        } else {
+                            alert(t('anthropic.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('anthropic.removeFailed'));
+                    }
+                });
+            }
+        }
+
+        wireChangeAndRemove();
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/user/anthropic-key', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ anthropicApiKey: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasAnthropicApiKey = true;
+                        currentUser.hasAnthropicKeyAvailable = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        updateAiKeyUI();
+                        alert(t('settings.anthropicSaveSuccess'));
+                    } else {
+                        const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                }
+            });
+        }
+
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+            });
+        }
+    }
+
+    function wireSettingsAiProvider(overlay) {
+        const saveBtn = overlay.querySelector('#settingsAiProviderSaveBtn');
+        if (!saveBtn) return;
+
+        saveBtn.addEventListener('click', async () => {
+            const selected = overlay.querySelector('input[name="aiProvider"]:checked');
+            if (!selected) return;
+            const provider = selected.value;
+            try {
+                const response = await fetch('/api/user/ai-provider', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aiProvider: provider }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    currentUser.aiProvider = provider;
+                    currentUser.aiModel = null;
+                    updateAiKeyUI();
+                    overlay.dispatchEvent(new CustomEvent('providerChanged'));
+                    alert(t('settings.aiProviderSaveSuccess'));
+                } else {
+                    alert(t('settings.aiProviderSaveError'));
+                }
+            } catch (e) {
+                alert(t('settings.aiProviderSaveError'));
+            }
+        });
+    }
+
+    function wireSettingsAiModel(overlay) {
+        const section = overlay.querySelector('#aiModelSection');
+        const select = overlay.querySelector('#aiModelSelect');
+        const saveBtn = overlay.querySelector('#settingsAiModelSaveBtn');
+        const loading = overlay.querySelector('#aiModelLoading');
+        if (!section || !select || !saveBtn) return;
+
+        async function loadModels() {
+            loading.style.display = 'inline';
+            select.disabled = true;
+            try {
+                const response = await fetch('/api/ai/models', { credentials: 'include' });
+                if (!response.ok) throw new Error('fetch failed');
+                const data = await response.json();
+
+                // Clear existing options (keep default)
+                select.innerHTML = `<option value="">${t('settings.aiModelDefault')}</option>`;
+
+                if (data.models.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                const modelIds = new Set(data.models.map(m => m.id));
+
+                // If user has a selected model that's not in the list, show it as unavailable
+                if (data.selectedModel && !modelIds.has(data.selectedModel)) {
+                    const opt = document.createElement('option');
+                    opt.value = data.selectedModel;
+                    opt.textContent = `${data.selectedModel} (${t('settings.aiModelUnavailable')})`;
+                    select.appendChild(opt);
+                }
+
+                for (const model of data.models) {
+                    const opt = document.createElement('option');
+                    opt.value = model.id;
+                    opt.textContent = model.name;
+                    select.appendChild(opt);
+                }
+
+                select.value = data.selectedModel || '';
+                section.style.display = 'block';
+            } catch (e) {
+                section.style.display = 'none';
+            } finally {
+                loading.style.display = 'none';
+                select.disabled = false;
+            }
+        }
+
+        saveBtn.addEventListener('click', async () => {
+            const aiModel = select.value || null;
+            try {
+                const response = await fetch('/api/user/ai-model', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aiModel }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser.aiModel = data.aiModel;
+                    alert(t('settings.aiModelSaveSuccess'));
+                } else {
+                    alert(t('settings.aiModelSaveError'));
+                }
+            } catch (e) {
+                alert(t('settings.aiModelSaveError'));
+            }
+        });
+
+        // Reload models when provider changes
+        overlay.addEventListener('providerChanged', () => {
+            select.value = '';
+            loadModels();
+        });
+
+        loadModels();
+    }
 
     // Fetch current user info on load
     async function fetchCurrentUser() {

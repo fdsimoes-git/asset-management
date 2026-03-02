@@ -12,6 +12,8 @@ const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
 const { GoogleGenAI, Type } = require('@google/genai');
+const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const nodemailer = require('nodemailer');
 const otplib = require('otplib');
 const QRCode = require('qrcode');
@@ -74,6 +76,53 @@ if (config.paypalClientId && config.paypalClientSecret) {
 // Gemini AI model names (instances created per-request)
 const GEMINI_MODEL = 'gemini-3-flash-preview';       // PDF processing & structured extraction
 const GEMINI_CHAT_MODEL = 'gemini-3-flash-preview';   // AI chat advisor (can be changed independently)
+
+// OpenAI model names
+const OPENAI_MODEL = 'gpt-3.5-turbo';       // PDF processing & structured extraction
+const OPENAI_CHAT_MODEL = 'gpt-3.5-turbo';  // AI chat advisor (can be changed independently)
+
+// Anthropic model names
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6';       // PDF processing & structured extraction
+const ANTHROPIC_CHAT_MODEL = 'claude-sonnet-4-6';  // AI chat advisor (can be changed independently)
+
+// Model list cache for /api/ai/models endpoint
+const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
+const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+const ALLOWED_AI_PROVIDERS = ['gemini', 'openai', 'anthropic'];
+
+/** Normalize stored provider to an allowed value, defaulting to gemini. */
+function resolveProvider(user) {
+    return ALLOWED_AI_PROVIDERS.includes(user.aiProvider) ? user.aiProvider : 'gemini';
+}
+
+/**
+ * Resolve AI model: user preference → hardcoded default.
+ * @param {object} user - user object
+ * @param {'openai'|'gemini'|'anthropic'} provider
+ * @param {'chat'|'pdf'} usage
+ */
+function modelMatchesProvider(model, provider) {
+    return (
+        (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(model)) ||
+        (provider === 'anthropic' && /^claude/i.test(model)) ||
+        (provider === 'gemini' && /^(gemini|models\/)/i.test(model))
+    );
+}
+
+function resolveModel(user, provider, usage) {
+    // Only honour user-selected model if it belongs to the active provider
+    if (user.aiModel && modelMatchesProvider(user.aiModel, provider)) {
+        return user.aiModel;
+    }
+    if (provider === 'openai') {
+        return usage === 'chat' ? OPENAI_CHAT_MODEL : OPENAI_MODEL;
+    }
+    if (provider === 'anthropic') {
+        return usage === 'chat' ? ANTHROPIC_CHAT_MODEL : ANTHROPIC_MODEL;
+    }
+    return usage === 'chat' ? GEMINI_CHAT_MODEL : GEMINI_MODEL;
+}
 
 // Data file path
 const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
@@ -758,6 +807,15 @@ const chatRateLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
+const aiModelsLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many model listing requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -1037,6 +1095,13 @@ app.get('/api/user', requireAuth, (req, res) => {
         partnerLinkedAt: null,
         partnerUsername: null,
         hasGeminiApiKey: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData),
+        hasOpenaiApiKey: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData),
+        hasAnthropicApiKey: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData),
+        hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
+        hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
+        hasAnthropicKeyAvailable: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData) || !!config.anthropicApiKey,
+        aiProvider: resolveProvider(req.user),
+        aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled
     };
 
@@ -1070,7 +1135,7 @@ app.post('/api/user/gemini-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true });
+    res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true, hasGeminiKeyAvailable: true });
 });
 
 // Remove saved Gemini API key
@@ -1079,7 +1144,214 @@ app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
     req.user.updatedAt = new Date().toISOString();
     saveUsers();
 
-    res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false });
+    res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false, hasGeminiKeyAvailable: !!config.geminiApiKey });
+});
+
+// Save OpenAI API key (encrypted)
+app.post('/api/user/openai-key', requireAuth, (req, res) => {
+    const { openaiApiKey } = req.body;
+
+    if (!openaiApiKey || typeof openaiApiKey !== 'string') {
+        return res.status(400).json({ message: 'API key is required.' });
+    }
+
+    const trimmed = openaiApiKey.trim();
+    if (trimmed.length < 30 || trimmed.length > 200) {
+        return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
+    }
+
+    req.user.openaiApiKey = encryptString(trimmed);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true, hasOpenaiKeyAvailable: true });
+});
+
+// Remove saved OpenAI API key
+app.delete('/api/user/openai-key', requireAuth, (req, res) => {
+    delete req.user.openaiApiKey;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false, hasOpenaiKeyAvailable: !!config.openaiApiKey });
+});
+
+// Save Anthropic API key (encrypted)
+app.post('/api/user/anthropic-key', requireAuth, (req, res) => {
+    const { anthropicApiKey } = req.body;
+
+    if (!anthropicApiKey || typeof anthropicApiKey !== 'string') {
+        return res.status(400).json({ message: 'API key is required.' });
+    }
+
+    const trimmed = anthropicApiKey.trim();
+    if (trimmed.length < 30 || trimmed.length > 200) {
+        return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
+    }
+
+    req.user.anthropicApiKey = encryptString(trimmed);
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Anthropic API key saved successfully.', hasAnthropicApiKey: true, hasAnthropicKeyAvailable: true });
+});
+
+// Remove saved Anthropic API key
+app.delete('/api/user/anthropic-key', requireAuth, (req, res) => {
+    delete req.user.anthropicApiKey;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'Anthropic API key removed.', hasAnthropicApiKey: false, hasAnthropicKeyAvailable: !!config.anthropicApiKey });
+});
+
+// Save AI provider preference
+app.put('/api/user/ai-provider', requireAuth, (req, res) => {
+    const { aiProvider } = req.body;
+
+    if (!aiProvider || !ALLOWED_AI_PROVIDERS.includes(aiProvider)) {
+        return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", or "anthropic".' });
+    }
+
+    req.user.aiProvider = aiProvider;
+    req.user.aiModel = null;
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ message: 'AI provider saved.', aiProvider, aiModel: null });
+});
+
+// List available AI models for the user's current provider
+app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
+    const provider = resolveProvider(req.user);
+
+    // Resolve API key: stored user key → server .env key
+    let apiKey = null;
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try { apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.openaiApiKey;
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try { apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
+    } else {
+        if (req.user.geminiApiKey) {
+            try { apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv); } catch (e) { /* ignore */ }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
+    }
+
+    if (!apiKey) {
+        return res.json({ provider, models: [], selectedModel: null });
+    }
+
+    // Cache key: provider + truncated hash of API key
+    const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+    const cacheKey = provider + ':' + keyHash;
+
+    // Check cache
+    const cached = modelListCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < MODEL_CACHE_TTL) {
+        const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+        return res.json({ provider, models: cached.models, selectedModel });
+    }
+
+    try {
+        let models = [];
+
+        if (provider === 'openai') {
+            const openaiClient = new OpenAI({ apiKey });
+            const list = await openaiClient.models.list();
+            const includePattern = /^(gpt-|o[0-9]|chatgpt-)/;
+            const excludePattern = /instruct|realtime|audio|search|embedding/i;
+            for (const model of list.data) {
+                if (includePattern.test(model.id) && !excludePattern.test(model.id)) {
+                    models.push({ id: model.id, name: model.id });
+                }
+            }
+        } else if (provider === 'anthropic') {
+            const anthropicClient = new Anthropic({ apiKey });
+            const response = await anthropicClient.models.list({ limit: 100 });
+            for (const model of response.data) {
+                const displayName = model.display_name || model.id;
+                models.push({ id: model.id, name: displayName });
+            }
+        } else {
+            const listGenAI = new GoogleGenAI({ apiKey });
+            const pager = await listGenAI.models.list({ pageSize: 100 });
+            for (const model of pager.page) {
+                if (!model.supportedActions || !model.supportedActions.includes('generateContent')) continue;
+                if (/embedding/i.test(model.name)) continue;
+                // model.name is "models/gemini-..." — extract the short id
+                const id = model.name.replace(/^models\//, '');
+                const displayName = model.displayName || id;
+                models.push({ id, name: displayName });
+            }
+        }
+
+        models.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Enforce hard cap: evict expired first, then oldest if still over limit
+        if (modelListCache.size >= 50) {
+            const now = Date.now();
+            for (const [k, v] of modelListCache) {
+                if (now - v.timestamp >= MODEL_CACHE_TTL) modelListCache.delete(k);
+            }
+            // Still over limit — remove oldest entries
+            while (modelListCache.size >= 50) {
+                const oldestKey = modelListCache.keys().next().value;
+                modelListCache.delete(oldestKey);
+            }
+        }
+
+        modelListCache.set(cacheKey, { models, timestamp: Date.now() });
+        const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+        res.json({ provider, models, selectedModel });
+    } catch (err) {
+        console.error('Failed to list AI models:', err.message);
+        const status = err.status || err.statusCode || (err.response && err.response.status) || null;
+        if (status === 401 || status === 403) {
+            return res.status(400).json({ message: 'Invalid or unauthorized API key.', error: 'auth_error' });
+        }
+        if (status === 429) {
+            return res.status(429).json({ message: 'Rate limit exceeded. Please try again later.', error: 'rate_limited' });
+        }
+        res.status(500).json({ message: 'Failed to fetch model list.' });
+    }
+});
+
+// Save AI model preference
+app.put('/api/user/ai-model', requireAuth, (req, res) => {
+    const { aiModel: rawAiModel } = req.body;
+
+    if (rawAiModel === null || rawAiModel === undefined || rawAiModel === '') {
+        req.user.aiModel = null;
+    } else {
+        if (typeof rawAiModel !== 'string') {
+            return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
+        }
+        const aiModel = rawAiModel.trim();
+        if (aiModel === '') {
+            req.user.aiModel = null;
+        } else if (aiModel.length > 100) {
+            return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
+        } else {
+            // Validate model belongs to the user's active provider
+            const provider = resolveProvider(req.user);
+            if (!modelMatchesProvider(aiModel, provider)) {
+                return res.status(400).json({ message: `Model "${aiModel}" does not match the active provider (${provider}).` });
+            }
+            req.user.aiModel = aiModel;
+        }
+    }
+
+    req.user.updatedAt = new Date().toISOString();
+    saveUsers();
+
+    res.json({ aiModel: req.user.aiModel || null });
 });
 
 // ============ 2FA VERIFICATION (LOGIN STEP 2) ============
@@ -2049,7 +2321,145 @@ const chatToolDeclarations = [
     }
 ];
 
-// Stores the pre-edit snapshot for the most recent AI edit per entry, keyed by "userId:entryId".
+// OpenAI tool declarations (same functionality, OpenAI function-calling format)
+const openaiToolDeclarations = [
+    {
+        type: 'function',
+        function: {
+            name: 'getFinancialSummary',
+            description: 'Get total income, total expenses, net balance, and savings rate for the user, optionally filtered by date range.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    startMonth: { type: 'string', description: 'Start month in YYYY-MM format (inclusive). Omit for all time.' },
+                    endMonth: { type: 'string', description: 'End month in YYYY-MM format (inclusive). Omit for all time.' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getCategoryBreakdown',
+            description: 'Get spending or income broken down by category tag, with totals and percentages.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getMonthlyTrends',
+            description: 'Get month-by-month income, expenses, and net amounts, plus averages.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'getTopExpenses',
+            description: 'Get the largest expense entries, optionally filtered by category or date range.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    limit: { type: 'number', description: 'Number of top entries to return. Default 10.' },
+                    category: { type: 'string', description: 'Filter by category tag (e.g. "food", "transport").' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'comparePeriods',
+            description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    period1Start: { type: 'string', description: 'First period start month YYYY-MM.' },
+                    period1End: { type: 'string', description: 'First period end month YYYY-MM.' },
+                    period2Start: { type: 'string', description: 'Second period start month YYYY-MM.' },
+                    period2End: { type: 'string', description: 'Second period end month YYYY-MM.' }
+                },
+                required: ['period1Start', 'period1End', 'period2Start', 'period2End']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'searchEntries',
+            description: 'Search the user\'s financial entries by keyword in description or by category tag.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    keyword: { type: 'string', description: 'Search keyword to match in entry descriptions (case-insensitive).' },
+                    category: { type: 'string', description: 'Filter by category tag.' },
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
+                    startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    limit: { type: 'number', description: 'Max results to return. Default 20.' }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'editEntry',
+            description: 'Propose an edit to an existing financial entry. The system will show a confirmation card to the user in the chat UI — do NOT ask the user to confirm in conversation. Just describe the changes you are proposing. Use searchEntries first to find the entry ID.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    entryId: { type: 'number', description: 'The ID of the entry to edit. Required. Use searchEntries to find it.' },
+                    description: { type: 'string', description: 'New description for the entry (max 500 characters).' },
+                    amount: { type: 'number', description: 'New amount for the entry (positive number, max 10000000).' },
+                    type: { type: 'string', enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
+                    month: { type: 'string', description: 'New month in YYYY-MM format.' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                    isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense.' }
+                },
+                required: ['entryId']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'undoLastEdit',
+            description: 'Undo the most recent AI edit on a specific entry, restoring it to its previous state. Only works if the entry was edited via the editEntry tool in the current session and has not already been undone.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    entryId: { type: 'number', description: 'The ID of the entry to undo. Must match a previously edited entry.' }
+                },
+                required: ['entryId']
+            }
+        }
+    }
+];
+
+// Anthropic tool declarations — same tools, restructured for Anthropic's format
+const anthropicToolDeclarations = openaiToolDeclarations.map(tool => ({
+    name: tool.function.name,
+    description: tool.function.description,
+    input_schema: tool.function.parameters
+}));
+
 // Cleared on undo or server restart — only the last edit per entry is reversible.
 // Capped at 1000 entries; oldest snapshots are evicted when the limit is reached.
 const lastEditSnapshots = new Map();
@@ -2490,150 +2900,282 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     }
 
     // Sanitize client-provided history: accept user and assistant messages for conversation context.
-    // Assistant messages are mapped to Gemini's 'model' role. Both are length-capped.
     const messages = Array.isArray(clientMessages)
         ? clientMessages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
         : [];
 
+    // Determine provider: use user's stored preference (default gemini)
+    const provider = resolveProvider(req.user);
+
     // Resolve API key: stored user key → server .env key
     let apiKey = null;
-    if (req.user.geminiApiKey) {
-        try {
-            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
-        } catch (e) {
-            console.error('Failed to decrypt stored Gemini API key for chat:', e.message);
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try {
+                apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored OpenAI API key for chat:', e.message);
+            }
         }
-    }
-    if (!apiKey) {
-        apiKey = config.geminiApiKey;
+        if (!apiKey) apiKey = config.openaiApiKey;
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try {
+                apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Anthropic API key for chat:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
+    } else {
+        if (req.user.geminiApiKey) {
+            try {
+                apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Gemini API key for chat:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
     }
     if (!apiKey) {
         return res.status(400).json({ error: 'no_api_key' });
     }
 
+    // Shared helper: handle editEntry tool call interception.
+    // Validates the proposed edit, stores it as a pending edit for UI confirmation,
+    // and returns a result message for the AI to relay to the user.
+    // @param {object} toolArgs - Raw arguments from the AI tool call.
+    // @param {Array}  pendingEditsList - Accumulator for pending edits to include in the response.
+    // @returns {object} - Result to return to the AI as the tool response.
+    function handleEditEntryCall(toolArgs, pendingEditsList) {
+        const validation = validateEditArgs(req.user.id, toolArgs);
+        if (validation.error) return validation;
+        const entryId = validation.entry.id;
+        const currentEntry = {
+            id: validation.entry.id,
+            description: validation.entry.description,
+            amount: validation.entry.amount,
+            type: validation.entry.type,
+            month: validation.entry.month,
+            tags: validation.entry.tags || [],
+            isCoupleExpense: validation.entry.isCoupleExpense || false
+        };
+        const editItem = { entryId, changes: validation.updates, currentEntry, createdAt: Date.now() };
+        const existing = pendingEdits.get(req.user.id) || [];
+        const idx = existing.findIndex(e => e.entryId === entryId);
+        if (idx !== -1) existing[idx] = editItem;
+        else existing.push(editItem);
+        pendingEdits.set(req.user.id, existing);
+        pendingEditsList.push({ entryId, changes: validation.updates, currentEntry });
+        return { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+    }
+
     try {
-        const chatGenAI = new GoogleGenAI({ apiKey });
-
-        // Build contents from sanitized history + new message.
-        // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
-        // messages to satisfy Gemini's alternating-turn requirement.
-        const contents = [];
-        const MAX_HISTORY_TEXT_LENGTH = 8000;
-        const recent = messages.slice(-20);
-        for (const msg of recent) {
-            const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
-            if (!text) continue;
-            const role = msg.role === 'assistant' ? 'model' : 'user';
-            const last = contents[contents.length - 1];
-            if (last && last.role === role) {
-                // Merge consecutive same-role messages into one turn
-                last.parts[0].text += '\n' + text;
-            } else {
-                contents.push({ role, parts: [{ text }] });
-            }
-        }
-        // Ensure the new message is a user turn (merge if last history was also user)
-        const lastEntry = contents[contents.length - 1];
-        if (lastEntry && lastEntry.role === 'user') {
-            lastEntry.parts[0].text += '\n' + message;
-        } else {
-            contents.push({ role: 'user', parts: [{ text: message }] });
-        }
-
-        // Tool call loop (max 5 iterations)
-        let currentContents = contents;
         let finalText = null;
         const pendingEditsList = [];
         const maxIterations = 5;
 
-        for (let i = 0; i < maxIterations; i++) {
-            const response = await chatGenAI.models.generateContent({
-                model: GEMINI_CHAT_MODEL,
-                contents: currentContents,
-                config: {
-                    temperature: 0.7,
-                    tools: [{ functionDeclarations: chatToolDeclarations }],
-                    systemInstruction: chatSystemPrompt
+        if (provider === 'openai') {
+            // ── OpenAI branch ──────────────────────────────────────────
+            const openaiClient = new OpenAI({ apiKey });
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const openaiMessages = [{ role: 'system', content: chatSystemPrompt }];
+            for (const msg of messages.slice(-20)) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                openaiMessages.push({ role: msg.role, content: text });
+            }
+            openaiMessages.push({ role: 'user', content: message });
+
+            let currentMessages = openaiMessages;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await openaiClient.chat.completions.create({
+                    model: resolveModel(req.user, 'openai', 'chat'),
+                    messages: currentMessages,
+                    tools: openaiToolDeclarations,
+                    tool_choice: 'auto',
+                    temperature: 0.7
+                });
+
+                const choice = response.choices[0];
+                if (!choice) { finalText = 'Sorry, I could not generate a response.'; break; }
+
+                const assistantMsg = choice.message;
+                currentMessages = [...currentMessages, assistantMsg];
+
+                if (choice.finish_reason !== 'tool_calls' || !assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+                    finalText = assistantMsg.content || 'Sorry, I could not generate a response.';
+                    break;
                 }
-            });
 
-            const candidate = response.candidates?.[0];
-            if (!candidate || !candidate.content) {
-                finalText = response.text || 'Sorry, I could not generate a response.';
-                break;
-            }
-
-            const parts = candidate.content.parts || [];
-            const functionCalls = parts.filter(p => p.functionCall);
-
-            if (functionCalls.length === 0) {
-                // No tool calls — extract text response
-                const textParts = parts.filter(p => p.text);
-                finalText = textParts.map(p => p.text).join('\n') || 'Sorry, I could not generate a response.';
-                break;
-            }
-
-            // Execute tool calls and feed results back
-            currentContents = [
-                ...currentContents,
-                { role: 'model', parts }
-            ];
-
-            const toolResultParts = [];
-            for (const fc of functionCalls) {
-                const toolName = fc.functionCall.name;
-                const toolArgs = fc.functionCall.args || {};
-                let result;
-
-                if (toolName === 'editEntry') {
-                    // Intercept editEntry: validate args, store as pending, return fake response
-                    const validation = validateEditArgs(req.user.id, toolArgs);
-                    if (validation.error) {
-                        result = validation;
-                    } else {
-                        const entryId = validation.entry.id;
-                        const currentEntry = {
-                            id: validation.entry.id,
-                            description: validation.entry.description,
-                            amount: validation.entry.amount,
-                            type: validation.entry.type,
-                            month: validation.entry.month,
-                            tags: validation.entry.tags || [],
-                            isCoupleExpense: validation.entry.isCoupleExpense || false
-                        };
-                        const editItem = {
-                            entryId,
-                            changes: validation.updates,
-                            currentEntry,
-                            createdAt: Date.now()
-                        };
-                        // Accumulate pending edits per user (append, don't overwrite)
-                        const existing = pendingEdits.get(req.user.id) || [];
-                        // Replace if same entryId already pending, else append
-                        const idx = existing.findIndex(e => e.entryId === entryId);
-                        if (idx !== -1) existing[idx] = editItem;
-                        else existing.push(editItem);
-                        pendingEdits.set(req.user.id, existing);
-                        pendingEditsList.push({
-                            entryId,
-                            changes: validation.updates,
-                            currentEntry
-                        });
-                        result = { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
+                // Execute tool calls
+                const toolResultMessages = [];
+                for (const toolCall of assistantMsg.tool_calls) {
+                    const toolName = toolCall.function.name;
+                    let toolArgs = {};
+                    try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
+                        console.error(`Failed to parse OpenAI tool args for ${toolName}:`, parseErr.message);
                     }
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResultMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(result)
+                    });
+                }
+                currentMessages = [...currentMessages, ...toolResultMessages];
+            }
+        } else if (provider === 'anthropic') {
+            // ── Anthropic branch ─────────────────────────────────────
+            const anthropicClient = new Anthropic({ apiKey });
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const anthropicMessages = [];
+            for (const msg of messages.slice(-20)) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                const last = anthropicMessages[anthropicMessages.length - 1];
+                if (last && last.role === msg.role) {
+                    // Merge consecutive same-role messages (Anthropic requires alternating roles)
+                    last.content += '\n' + text;
                 } else {
-                    result = executeTool(toolName, req.user.id, toolArgs);
+                    anthropicMessages.push({ role: msg.role, content: text });
+                }
+            }
+            // Ensure first message is from user (Anthropic requirement)
+            while (anthropicMessages.length > 0 && anthropicMessages[0].role !== 'user') {
+                anthropicMessages.shift();
+            }
+            // Append new user message (merge if last history was also user)
+            const lastMsg = anthropicMessages[anthropicMessages.length - 1];
+            if (lastMsg && lastMsg.role === 'user') {
+                lastMsg.content += '\n' + message;
+            } else {
+                anthropicMessages.push({ role: 'user', content: message });
+            }
+
+            let currentMessages = anthropicMessages;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await anthropicClient.messages.create({
+                    model: resolveModel(req.user, 'anthropic', 'chat'),
+                    max_tokens: 4096,
+                    system: chatSystemPrompt,
+                    messages: currentMessages,
+                    tools: anthropicToolDeclarations,
+                    temperature: 0.7
+                });
+
+                if (response.stop_reason !== 'tool_use') {
+                    const textBlocks = response.content.filter(b => b.type === 'text');
+                    finalText = textBlocks.map(b => b.text).join('') || 'Sorry, I could not generate a response.';
+                    break;
                 }
 
-                toolResultParts.push({
-                    functionResponse: {
-                        name: toolName,
-                        response: result
+                // Extract tool_use blocks and execute them
+                const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+                const toolResults = [];
+                for (const toolUse of toolUseBlocks) {
+                    const toolName = toolUse.name;
+                    const toolArgs = toolUse.input || {};
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResults.push({
+                        type: 'tool_result',
+                        tool_use_id: toolUse.id,
+                        content: JSON.stringify(result)
+                    });
+                }
+                currentMessages = [
+                    ...currentMessages,
+                    { role: 'assistant', content: response.content },
+                    { role: 'user', content: toolResults }
+                ];
+            }
+        } else {
+            // ── Gemini branch ──────────────────────────────────────────
+            const chatGenAI = new GoogleGenAI({ apiKey });
+
+            // Build contents from sanitized history + new message.
+            // Map 'assistant' → 'model' for Gemini. Merge consecutive same-role
+            // messages to satisfy Gemini's alternating-turn requirement.
+            const contents = [];
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const recent = messages.slice(-20);
+            for (const msg of recent) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                const role = msg.role === 'assistant' ? 'model' : 'user';
+                const last = contents[contents.length - 1];
+                if (last && last.role === role) {
+                    // Merge consecutive same-role messages into one turn
+                    last.parts[0].text += '\n' + text;
+                } else {
+                    contents.push({ role, parts: [{ text }] });
+                }
+            }
+            // Ensure the new message is a user turn (merge if last history was also user)
+            const lastEntry = contents[contents.length - 1];
+            if (lastEntry && lastEntry.role === 'user') {
+                lastEntry.parts[0].text += '\n' + message;
+            } else {
+                contents.push({ role: 'user', parts: [{ text: message }] });
+            }
+
+            let currentContents = contents;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await chatGenAI.models.generateContent({
+                    model: resolveModel(req.user, 'gemini', 'chat'),
+                    contents: currentContents,
+                    config: {
+                        temperature: 0.7,
+                        tools: [{ functionDeclarations: chatToolDeclarations }],
+                        systemInstruction: chatSystemPrompt
                     }
                 });
-            }
 
-            currentContents.push({ role: 'user', parts: toolResultParts });
+                const candidate = response.candidates?.[0];
+                if (!candidate || !candidate.content) {
+                    finalText = response.text || 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                const parts = candidate.content.parts || [];
+                const functionCalls = parts.filter(p => p.functionCall);
+
+                if (functionCalls.length === 0) {
+                    // No tool calls — extract text response
+                    const textParts = parts.filter(p => p.text);
+                    finalText = textParts.map(p => p.text).join('\n') || 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                // Execute tool calls and feed results back
+                currentContents = [...currentContents, { role: 'model', parts }];
+
+                const toolResultParts = [];
+                for (const fc of functionCalls) {
+                    const toolName = fc.functionCall.name;
+                    const toolArgs = fc.functionCall.args || {};
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResultParts.push({
+                        functionResponse: { name: toolName, response: result }
+                    });
+                }
+                currentContents.push({ role: 'user', parts: toolResultParts });
+            }
         }
 
         if (!finalText) {
@@ -2646,12 +3188,12 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.json(responsePayload);
     } catch (error) {
-        console.error('AI Chat error:', error.message);
-        if (error.message?.includes('API key')) {
-            return res.status(400).json({ error: 'Invalid API key.' });
+        console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
+        if (error.message?.includes('API key') || error.message?.includes('authentication') || error.status === 401) {
+            return res.status(400).json({ error: 'invalid_api_key' });
         }
-        if (error.message?.includes('quota')) {
-            return res.status(429).json({ error: 'API quota exceeded. Please try again later.' });
+        if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
+            return res.status(429).json({ error: 'quota_exceeded' });
         }
         res.status(500).json({ error: 'generic' });
     }
@@ -2749,7 +3291,7 @@ const upload = multer({
     }
 });
 
-// PDF processing endpoint with Gemini AI (for web interface)
+// PDF processing endpoint with AI (Gemini, OpenAI, or Anthropic based on user preference)
 app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => {
     upload.single('pdfFile')(req, res, (err) => {
         if (err instanceof multer.MulterError) {
@@ -2768,25 +3310,48 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         return res.status(400).json({ message: 'No PDF file uploaded.' });
     }
 
-    // Resolve API key: manual > stored > .env fallback
+    // Determine provider: use user's stored preference (default gemini)
+    const provider = resolveProvider(req.user);
+
+    // Resolve API key: stored user key → server .env key
     let apiKey = null;
-    if (req.body.geminiApiKey && req.body.geminiApiKey.trim()) {
-        apiKey = req.body.geminiApiKey.trim();
-    } else if (req.user.geminiApiKey) {
-        try {
-            apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
-        } catch (e) {
-            console.error('Failed to decrypt stored Gemini API key:', e.message);
+    if (provider === 'openai') {
+        if (req.user.openaiApiKey) {
+            try {
+                apiKey = decryptString(req.user.openaiApiKey.encryptedData, req.user.openaiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored OpenAI API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.openaiApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No OpenAI API key available. Please add one in Settings.' });
+        }
+    } else if (provider === 'anthropic') {
+        if (req.user.anthropicApiKey) {
+            try {
+                apiKey = decryptString(req.user.anthropicApiKey.encryptedData, req.user.anthropicApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Anthropic API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.anthropicApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No Anthropic API key available. Please add one in Settings.' });
+        }
+    } else {
+        if (req.user.geminiApiKey) {
+            try {
+                apiKey = decryptString(req.user.geminiApiKey.encryptedData, req.user.geminiApiKey.iv);
+            } catch (e) {
+                console.error('Failed to decrypt stored Gemini API key:', e.message);
+            }
+        }
+        if (!apiKey) apiKey = config.geminiApiKey;
+        if (!apiKey) {
+            return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in Settings.' });
         }
     }
-    if (!apiKey) {
-        apiKey = config.geminiApiKey;
-    }
-    if (!apiKey) {
-        return res.status(400).json({ message: 'No Gemini API key available. Please provide an API key in the bulk upload dialog.' });
-    }
-
-    const requestGenAI = new GoogleGenAI({ apiKey });
 
     try {
         // Parse the PDF buffer
@@ -2801,47 +3366,6 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-        // Define the response schema for structured output
-        const responseSchema = {
-            type: Type.OBJECT,
-            properties: {
-                entries: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            month: {
-                                type: Type.STRING,
-                                description: 'Transaction date in YYYY-MM format'
-                            },
-                            amount: {
-                                type: Type.NUMBER,
-                                description: 'Transaction amount as positive number'
-                            },
-                            description: {
-                                type: Type.STRING,
-                                description: 'Description of the transaction'
-                            },
-                            tag: {
-                                type: Type.STRING,
-                                enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
-                                       'healthcare', 'education', 'shopping', 'subscription', 'housing',
-                                       'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
-                                description: 'Category tag for the transaction'
-                            },
-                            type: {
-                                type: Type.STRING,
-                                enum: ['expense', 'income'],
-                                description: 'Transaction type'
-                            }
-                        },
-                        required: ['month', 'amount', 'description', 'tag', 'type']
-                    }
-                }
-            },
-            required: ['entries']
-        };
-
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
 
@@ -2851,41 +3375,125 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
+- tag must be one of: food, groceries, transport, travel, entertainment, utilities, healthcare, education, shopping, subscription, housing, salary, freelance, investment, transfer, wedding, other
+- Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
 DOCUMENT:
 ${text}`;
 
-        // Call Gemini API with structured output
-        console.log('Starting Gemini API call...');
-        console.log('Prompt length:', prompt.length, 'chars');
-        let response;
-        try {
-            response = await requestGenAI.models.generateContent({
-                model: GEMINI_MODEL,
-                contents: prompt,
-                config: {
-                    responseMimeType: 'application/json',
-                    responseSchema: responseSchema,
+        let aiResponse;
+
+        if (provider === 'openai') {
+            console.log('Starting OpenAI API call...');
+            const openaiClient = new OpenAI({ apiKey });
+            try {
+                const response = await openaiClient.chat.completions.create({
+                    model: resolveModel(req.user, 'openai', 'pdf'),
+                    messages: [{ role: 'user', content: prompt }],
+                    response_format: { type: 'json_object' },
                     temperature: 0.2
-                }
-            });
-        } catch (geminiError) {
-            console.error('Gemini API error details:', geminiError.message);
-            console.error('Gemini API error cause:', geminiError.cause);
-            console.error('Full error:', JSON.stringify(geminiError, Object.getOwnPropertyNames(geminiError)));
-            throw geminiError;
+                });
+                aiResponse = response.choices[0]?.message?.content || '{}';
+            } catch (openaiError) {
+                console.error('OpenAI API error details:', openaiError.message);
+                throw openaiError;
+            }
+            console.log('OpenAI response received, length:', aiResponse.length);
+        } else if (provider === 'anthropic') {
+            console.log('Starting Anthropic API call...');
+            const anthropicClient = new Anthropic({ apiKey });
+            try {
+                const response = await anthropicClient.messages.create({
+                    model: resolveModel(req.user, 'anthropic', 'pdf'),
+                    max_tokens: 4096,
+                    system: 'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.2
+                });
+                aiResponse = response.content
+                    .filter(b => b.type === 'text')
+                    .map(b => b.text)
+                    .join('') || '{}';
+            } catch (anthropicError) {
+                console.error('Anthropic API error details:', anthropicError.message);
+                throw anthropicError;
+            }
+            console.log('Anthropic response received, length:', aiResponse.length);
+        } else {
+            // Define the response schema for Gemini structured output
+            const responseSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    entries: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                month: {
+                                    type: Type.STRING,
+                                    description: 'Transaction date in YYYY-MM format'
+                                },
+                                amount: {
+                                    type: Type.NUMBER,
+                                    description: 'Transaction amount as positive number'
+                                },
+                                description: {
+                                    type: Type.STRING,
+                                    description: 'Description of the transaction'
+                                },
+                                tag: {
+                                    type: Type.STRING,
+                                    enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
+                                           'healthcare', 'education', 'shopping', 'subscription', 'housing',
+                                           'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
+                                    description: 'Category tag for the transaction'
+                                },
+                                type: {
+                                    type: Type.STRING,
+                                    enum: ['expense', 'income'],
+                                    description: 'Transaction type'
+                                }
+                            },
+                            required: ['month', 'amount', 'description', 'tag', 'type']
+                        }
+                    }
+                },
+                required: ['entries']
+            };
+
+            const requestGenAI = new GoogleGenAI({ apiKey });
+            console.log('Starting Gemini API call...');
+            console.log('Prompt length:', prompt.length, 'chars');
+            let response;
+            try {
+                response = await requestGenAI.models.generateContent({
+                    model: resolveModel(req.user, 'gemini', 'pdf'),
+                    contents: prompt,
+                    config: {
+                        responseMimeType: 'application/json',
+                        responseSchema: responseSchema,
+                        temperature: 0.2
+                    }
+                });
+            } catch (geminiError) {
+                console.error('Gemini API error details:', geminiError.message);
+                console.error('Gemini API error cause:', geminiError.cause);
+                console.error('Full error:', JSON.stringify(geminiError, Object.getOwnPropertyNames(geminiError)));
+                throw geminiError;
+            }
+            aiResponse = response.text;
+            console.log('Gemini response received, length:', aiResponse.length);
         }
 
-        const aiResponse = response.text;
-
-        console.log('=== GEMINI RESPONSE ===');
-        console.log(aiResponse);
-        console.log('=== END GEMINI RESPONSE ===');
+        // Strip markdown code fences if present (Anthropic may wrap JSON in ```json...```)
+        let cleanedResponse = aiResponse.trim();
+        const fenceMatch = cleanedResponse.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+        if (fenceMatch) cleanedResponse = fenceMatch[1].trim();
 
         // Parse the structured JSON response
         let entries = [];
         try {
-            const parsed = JSON.parse(aiResponse);
+            const parsed = JSON.parse(cleanedResponse);
 
             // Extract entries from the response
             if (parsed.entries && Array.isArray(parsed.entries)) {
@@ -2929,32 +3537,32 @@ ${text}`;
             });
 
         } catch (parseError) {
-            console.error('Error parsing AI response:', parseError);
-            console.error('AI Response was:', aiResponse);
+            console.error('Error parsing AI response:', parseError.message);
             return res.status(500).json({
-                message: 'Failed to parse AI response. Please check the PDF format.',
-                debug: aiResponse ? aiResponse.substring(0, 200) : 'No response'
+                message: 'Failed to parse AI response. Please check the PDF format.'
             });
         }
 
-        console.log('=== FINAL ENTRIES ===');
-        console.log(entries);
-
+        console.log('PDF processing complete, extracted', entries.length, 'entries');
         res.json(entries);
     } catch (error) {
-        console.error('Error processing PDF with Gemini:', error);
+        console.error('Error processing PDF with AI:', error);
 
-        // Provide more specific error messages
+        // Provide more specific error messages with appropriate status codes
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
-        if (error.message?.includes('API key')) {
-            errorMessage = 'Invalid Gemini API key. Please check your API key and try again.';
-        } else if (error.message?.includes('quota')) {
-            errorMessage = 'Gemini API quota exceeded. Please try again later.';
+        let statusCode = 500;
+        const providerName = provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Gemini';
+        if (error.message?.includes('API key') || error.status === 401) {
+            errorMessage = `Invalid ${providerName} API key. Please check your API key and try again.`;
+            statusCode = 400;
+        } else if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
+            errorMessage = `${providerName} API quota exceeded. Please try again later.`;
+            statusCode = 429;
         } else if (error.message?.includes('safety')) {
             errorMessage = 'Content was blocked by safety filters.';
         }
 
-        res.status(500).json({ message: errorMessage });
+        res.status(statusCode).json({ message: errorMessage });
     }
 });
 
@@ -3000,6 +3608,32 @@ app.listen(PORT, '0.0.0.0', () => {
             console.warn('Warning: Gemini API key may be invalid:', error.message);
         });
     } else {
-        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys or manually provided keys.');
+        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
+    }
+
+    // Verify OpenAI API configuration
+    if (config.openaiApiKey) {
+        console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
+        const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
+        openaiStartup.models.list().then(() => {
+            console.log('OpenAI API key verified successfully.');
+        }).catch((error) => {
+            console.warn('Warning: OpenAI API key may be invalid:', error.message);
+        });
+    } else {
+        console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
+    }
+
+    // Verify Anthropic API configuration
+    if (config.anthropicApiKey) {
+        console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
+        const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
+        anthropicStartup.models.list({ limit: 1 }).then(() => {
+            console.log('Anthropic API key verified successfully.');
+        }).catch((error) => {
+            console.warn('Warning: Anthropic API key may be invalid:', error.message);
+        });
+    } else {
+        console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
     }
 });

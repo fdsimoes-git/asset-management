@@ -124,7 +124,8 @@ const translations = {
     'bulk.title': 'Bulk Upload from PDF',
     'bulk.selectFile': 'Select PDF File',
     'bulk.keyStored': 'Saved API key will be used',
-    'bulk.keyRequired': 'A Gemini API key is required. Configure it in Settings.',
+    'bulk.keyConfigured': 'Server API key is configured',
+    'bulk.keyRequired': 'An AI API key is required for the selected provider. Configure it in Settings.',
     'bulk.uploadProcess': 'Upload and Process',
     'bulk.processing': 'Processing...',
     'bulk.analyzing': 'Analyzing PDF with AI...',
@@ -136,7 +137,7 @@ const translations = {
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Please select a PDF file.',
     'bulk.alertTooLarge': 'File is too large. Maximum size is 10MB.',
-    'bulk.alertEnterKey': 'No Gemini API key configured. Please add one in Settings.',
+    'bulk.alertEnterKey': 'No API key configured for the selected AI provider. Please add one in Settings.',
     'bulk.alertValidMonth': 'Please enter a valid month in YYYY-MM format',
     'bulk.alertValidAmount': 'Please enter a valid positive amount',
     'bulk.alertEnterDesc': 'Please enter a description',
@@ -217,9 +218,57 @@ const translations = {
     'settings.geminiRemove': 'Remove',
     'settings.geminiNone': 'No API key configured',
     'settings.geminiPlaceholder': 'Enter your Gemini API key',
-    'settings.geminiHelp': 'Used for AI-powered PDF processing and financial advisor chat. Get your key at aistudio.google.com.',
+    'settings.geminiHelp': 'Used for AI-powered PDF processing and financial advisor chat when Gemini is selected. Get your key at aistudio.google.com.',
     'settings.geminiSaveSuccess': 'Gemini API key saved successfully',
     'settings.geminiRemoveSuccess': 'Gemini API key removed',
+
+    // ── OpenAI API Key settings ──
+    'settings.openaiSection': 'OpenAI API Key',
+    'settings.openaiSaved': 'API key saved',
+    'settings.openaiChange': 'Change',
+    'settings.openaiRemove': 'Remove',
+    'settings.openaiNone': 'No API key configured',
+    'settings.openaiPlaceholder': 'Enter your OpenAI API key (sk-...)',
+    'settings.openaiHelp': 'Used for AI-powered PDF processing and financial advisor chat when OpenAI is selected. Get your key at platform.openai.com.',
+    'settings.openaiSaveSuccess': 'OpenAI API key saved successfully',
+    'settings.openaiRemoveSuccess': 'OpenAI API key removed',
+
+    // ── Anthropic API Key settings ──
+    'settings.anthropicSection': 'Anthropic API Key',
+    'settings.anthropicSaved': 'API key saved',
+    'settings.anthropicChange': 'Change',
+    'settings.anthropicRemove': 'Remove',
+    'settings.anthropicNone': 'No API key configured',
+    'settings.anthropicPlaceholder': 'Enter your Anthropic API key (sk-ant-...)',
+    'settings.anthropicHelp': 'Used for AI-powered PDF processing and financial advisor chat when Anthropic is selected. Get your key at console.anthropic.com.',
+    'settings.anthropicSaveSuccess': 'Anthropic API key saved successfully',
+    'settings.anthropicRemoveSuccess': 'Anthropic API key removed',
+
+    // ── AI Provider settings ──
+    'settings.aiProviderSection': 'AI Provider',
+    'settings.aiProviderLabel': 'Select which AI provider to use for PDF processing and chat',
+    'settings.aiProviderGemini': 'Google Gemini',
+    'settings.aiProviderOpenai': 'OpenAI',
+    'settings.aiProviderAnthropic': 'Anthropic Claude',
+    'settings.aiProviderSaveSuccess': 'AI provider preference saved',
+    'settings.aiProviderSaveError': 'Failed to save AI provider preference',
+
+    // ── AI Model settings ──
+    'settings.aiModelLabel': 'AI Model',
+    'settings.aiModelDefault': 'Default (recommended)',
+    'settings.aiModelLoading': 'Loading models...',
+    'settings.aiModelSaveSuccess': 'AI model preference saved',
+    'settings.aiModelSaveError': 'Failed to save AI model preference',
+    'settings.aiModelFetchError': 'Could not load models',
+    'settings.aiModelUnavailable': 'unavailable',
+
+    // ── OpenAI key (gemini-style alerts) ──
+    'openai.confirmRemove': 'Remove your saved OpenAI API key?',
+    'openai.removeFailed': 'Failed to remove API key.',
+
+    // ── Anthropic key ──
+    'anthropic.confirmRemove': 'Remove your saved Anthropic API key?',
+    'anthropic.removeFailed': 'Failed to remove API key.',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Couple Management',
@@ -366,7 +415,9 @@ const translations = {
     'chat.close': 'Close',
     'chat.welcome': 'Hello! I\'m your AI financial advisor. I can analyze your income, expenses, and spending patterns to help you make better financial decisions.',
     'chat.welcomeExamples': 'For example:\n- "How much did I spend last month?"\n- "What are my biggest expenses?"\n- "Compare January vs February"',
-    'chat.errorNoKey': 'No AI API key configured. Please add your Gemini API key in Settings to use the chat advisor.',
+    'chat.errorNoKey': 'No AI API key configured. Please add an API key for the selected provider in Settings to use the chat advisor.',
+    'chat.errorInvalidKey': 'Your API key for the selected provider appears to be invalid. Please check it in Settings.',
+    'chat.errorQuota': 'API quota or credits exceeded for your AI provider. Please check your account or try again later.',
     'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
     'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
     'chat.confirmEditTitle': 'Confirm Entry Edit',
@@ -506,26 +557,27 @@ const translations = {
     // ── Bulk upload modal ──
     'bulk.title': 'Upload em Lote via PDF',
     'bulk.selectFile': 'Selecionar Arquivo PDF',
-    'bulk.keyStored': 'Chave API salva ser\u00e1 utilizada',
-    'bulk.keyRequired': 'Uma chave API Gemini \u00e9 necess\u00e1ria. Configure em Ajustes.',
+    'bulk.keyStored': 'Chave API salva será utilizada',
+    'bulk.keyConfigured': 'Chave API do servidor configurada',
+    'bulk.keyRequired': 'Uma chave API de IA é necessária para o provedor selecionado. Configure em Ajustes.',
     'bulk.uploadProcess': 'Enviar e Processar',
     'bulk.processing': 'Processando...',
     'bulk.analyzing': 'Analisando PDF com IA...',
-    'bulk.preview': 'Pr\u00e9-visualizar Entradas Extra\u00eddas',
+    'bulk.preview': 'Pré-visualizar Entradas Extraídas',
     'bulk.confirm': 'Confirmar e Adicionar Entradas',
-    'bulk.noEntries': 'Nenhuma entrada v\u00e1lida encontrada no PDF.',
+    'bulk.noEntries': 'Nenhuma entrada válida encontrada no PDF.',
     'bulk.category': 'Categoria',
 
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Por favor, selecione um arquivo PDF.',
-    'bulk.alertTooLarge': 'Arquivo muito grande. Tamanho m\u00e1ximo \u00e9 10MB.',
-    'bulk.alertEnterKey': 'Nenhuma chave API Gemini configurada. Adicione uma em Ajustes.',
-    'bulk.alertValidMonth': 'Por favor, insira um m\u00eas v\u00e1lido no formato AAAA-MM',
-    'bulk.alertValidAmount': 'Por favor, insira um valor positivo v\u00e1lido',
-    'bulk.alertEnterDesc': 'Por favor, insira uma descri\u00e7\u00e3o',
-    'bulk.confirmDelete': 'Excluir esta entrada da pr\u00e9-visualiza\u00e7\u00e3o?',
+    'bulk.alertTooLarge': 'Arquivo muito grande. Tamanho máximo é 10MB.',
+    'bulk.alertEnterKey': 'Nenhuma chave API configurada para o provedor de IA selecionado. Adicione uma em Ajustes.',
+    'bulk.alertValidMonth': 'Por favor, insira um mês válido no formato AAAA-MM',
+    'bulk.alertValidAmount': 'Por favor, insira um valor positivo válido',
+    'bulk.alertEnterDesc': 'Por favor, insira uma descrição',
+    'bulk.confirmDelete': 'Excluir esta entrada da pré-visualização?',
     'bulk.successAdd': '{count} entradas adicionadas com sucesso ao banco de dados!',
-    'bulk.errorSave': 'Erro ao salvar entradas: {message}. Algumas entradas podem n\u00e3o ter sido salvas.',
+    'bulk.errorSave': 'Erro ao salvar entradas: {message}. Algumas entradas podem não ter sido salvas.',
     'bulk.errorProcess': 'Erro ao processar PDF: {message}',
     'bulk.errorFailed': 'Falha ao processar PDF. Verifique o console para detalhes.',
 
@@ -543,6 +595,14 @@ const translations = {
     // ── Gemini key ──
     'gemini.confirmRemove': 'Remover sua chave API Gemini salva?',
     'gemini.removeFailed': 'Falha ao remover chave API.',
+
+    // ── OpenAI key ──
+    'openai.confirmRemove': 'Remover sua chave API OpenAI salva?',
+    'openai.removeFailed': 'Falha ao remover chave API.',
+
+    // ── Anthropic key ──
+    'anthropic.confirmRemove': 'Remover sua chave API Anthropic salva?',
+    'anthropic.removeFailed': 'Falha ao remover chave API.',
 
     // ── Logout ──
     'logout.failed': 'Falha ao sair.',
@@ -600,9 +660,49 @@ const translations = {
     'settings.geminiRemove': 'Remover',
     'settings.geminiNone': 'Nenhuma chave API configurada',
     'settings.geminiPlaceholder': 'Digite sua chave API Gemini',
-    'settings.geminiHelp': 'Usada para processamento de PDF com IA e consultor financeiro. Obtenha em aistudio.google.com.',
+    'settings.geminiHelp': 'Usada para processamento de PDF com IA e consultor financeiro quando Gemini está selecionado. Obtenha em aistudio.google.com.',
     'settings.geminiSaveSuccess': 'Chave API Gemini salva com sucesso',
     'settings.geminiRemoveSuccess': 'Chave API Gemini removida',
+
+    // ── OpenAI API Key settings ──
+    'settings.openaiSection': 'Chave API OpenAI',
+    'settings.openaiSaved': 'Chave API salva',
+    'settings.openaiChange': 'Alterar',
+    'settings.openaiRemove': 'Remover',
+    'settings.openaiNone': 'Nenhuma chave API configurada',
+    'settings.openaiPlaceholder': 'Digite sua chave API OpenAI (sk-...)',
+    'settings.openaiHelp': 'Usada para processamento de PDF com IA e consultor financeiro quando OpenAI está selecionado. Obtenha em platform.openai.com.',
+    'settings.openaiSaveSuccess': 'Chave API OpenAI salva com sucesso',
+    'settings.openaiRemoveSuccess': 'Chave API OpenAI removida',
+
+    // ── Anthropic API Key settings ──
+    'settings.anthropicSection': 'Chave API Anthropic',
+    'settings.anthropicSaved': 'Chave API salva',
+    'settings.anthropicChange': 'Alterar',
+    'settings.anthropicRemove': 'Remover',
+    'settings.anthropicNone': 'Nenhuma chave API configurada',
+    'settings.anthropicPlaceholder': 'Digite sua chave API Anthropic (sk-ant-...)',
+    'settings.anthropicHelp': 'Usada para processamento de PDF com IA e consultor financeiro quando Anthropic está selecionado. Obtenha em console.anthropic.com.',
+    'settings.anthropicSaveSuccess': 'Chave API Anthropic salva com sucesso',
+    'settings.anthropicRemoveSuccess': 'Chave API Anthropic removida',
+
+    // ── AI Provider settings ──
+    'settings.aiProviderSection': 'Provedor de IA',
+    'settings.aiProviderLabel': 'Selecione o provedor de IA para processamento de PDF e chat',
+    'settings.aiProviderGemini': 'Google Gemini',
+    'settings.aiProviderOpenai': 'OpenAI',
+    'settings.aiProviderAnthropic': 'Anthropic Claude',
+    'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
+    'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
+
+    // ── AI Model settings ──
+    'settings.aiModelLabel': 'Modelo de IA',
+    'settings.aiModelDefault': 'Padrão (recomendado)',
+    'settings.aiModelLoading': 'Carregando modelos...',
+    'settings.aiModelSaveSuccess': 'Preferência de modelo de IA salva',
+    'settings.aiModelSaveError': 'Falha ao salvar preferência de modelo de IA',
+    'settings.aiModelFetchError': 'Não foi possível carregar modelos',
+    'settings.aiModelUnavailable': 'indisponível',
 
     // ── Couple management ──
     'admin.coupleManagement': 'Gerenciamento de Casais',
@@ -749,7 +849,9 @@ const translations = {
     'chat.close': 'Fechar',
     'chat.welcome': 'Olá! Sou seu consultor financeiro com IA. Posso analisar sua renda, despesas e padrões de gastos para ajudá-lo a tomar melhores decisões financeiras.',
     'chat.welcomeExamples': 'Por exemplo:\n- "Quanto gastei no mês passado?"\n- "Quais são minhas maiores despesas?"\n- "Compare janeiro com fevereiro"',
-    'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione sua chave Gemini API nas Configurações para usar o consultor.',
+    'chat.errorNoKey': 'Nenhuma chave API de IA configurada. Adicione uma chave de API para o provedor selecionado nas Configurações para usar o consultor.',
+    'chat.errorInvalidKey': 'Sua chave API para o provedor selecionado parece ser inválida. Verifique nas Configurações.',
+    'chat.errorQuota': 'Cota ou créditos da API excedidos para seu provedor de IA. Verifique sua conta ou tente novamente mais tarde.',
     'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
     'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
     'chat.confirmEditTitle': 'Confirmar Edição de Entrada',

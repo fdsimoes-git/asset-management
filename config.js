@@ -50,6 +50,8 @@ module.exports = {
     adminPasswordHash: process.env.ADMIN_PASSWORD_HASH,
     umamiWebsiteId:   process.env.UMAMI_WEBSITE_ID,
     geminiApiKey:      process.env.GEMINI_API_KEY,
+    openaiApiKey:      process.env.OPENAI_API_KEY,
+    anthropicApiKey:   process.env.ANTHROPIC_API_KEY,
     port:              process.env.PORT               || 3000,
     smtpHost:          process.env.SMTP_HOST,
     smtpPort:          process.env.SMTP_PORT,
