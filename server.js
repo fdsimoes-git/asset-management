@@ -102,15 +102,18 @@ function resolveProvider(user) {
  * @param {'openai'|'gemini'|'anthropic'} provider
  * @param {'chat'|'pdf'} usage
  */
+function modelMatchesProvider(model, provider) {
+    return (
+        (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(model)) ||
+        (provider === 'anthropic' && /^claude/i.test(model)) ||
+        (provider === 'gemini' && /^(gemini|models\/)/i.test(model))
+    );
+}
+
 function resolveModel(user, provider, usage) {
     // Only honour user-selected model if it belongs to the active provider
-    if (user.aiModel) {
-        const m = user.aiModel;
-        const belongsToProvider =
-            (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(m)) ||
-            (provider === 'anthropic' && /^claude/i.test(m)) ||
-            (provider === 'gemini' && /^(gemini|models\/)/i.test(m));
-        if (belongsToProvider) return m;
+    if (user.aiModel && modelMatchesProvider(user.aiModel, provider)) {
+        return user.aiModel;
     }
     if (provider === 'openai') {
         return usage === 'chat' ? OPENAI_CHAT_MODEL : OPENAI_MODEL;
@@ -1252,7 +1255,8 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
     // Check cache
     const cached = modelListCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < MODEL_CACHE_TTL) {
-        return res.json({ provider, models: cached.models, selectedModel: req.user.aiModel || null });
+        const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+        return res.json({ provider, models: cached.models, selectedModel });
     }
 
     try {
@@ -1304,9 +1308,17 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
         }
 
         modelListCache.set(cacheKey, { models, timestamp: Date.now() });
-        res.json({ provider, models, selectedModel: req.user.aiModel || null });
+        const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+        res.json({ provider, models, selectedModel });
     } catch (err) {
         console.error('Failed to list AI models:', err.message);
+        const status = err.status || err.statusCode || (err.response && err.response.status) || null;
+        if (status === 401 || status === 403) {
+            return res.status(400).json({ message: 'Invalid or unauthorized API key.', error: 'auth_error' });
+        }
+        if (status === 429) {
+            return res.status(429).json({ message: 'Rate limit exceeded. Please try again later.', error: 'rate_limited' });
+        }
         res.status(500).json({ message: 'Failed to fetch model list.' });
     }
 });
@@ -1329,11 +1341,7 @@ app.put('/api/user/ai-model', requireAuth, (req, res) => {
         } else {
             // Validate model belongs to the user's active provider
             const provider = resolveProvider(req.user);
-            const validForProvider =
-                (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(aiModel)) ||
-                (provider === 'anthropic' && /^claude/i.test(aiModel)) ||
-                (provider === 'gemini' && /^(gemini|models\/)/i.test(aiModel));
-            if (!validForProvider) {
+            if (!modelMatchesProvider(aiModel, provider)) {
                 return res.status(400).json({ message: `Model "${aiModel}" does not match the active provider (${provider}).` });
             }
             req.user.aiModel = aiModel;
