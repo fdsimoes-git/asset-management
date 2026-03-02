@@ -103,7 +103,15 @@ function resolveProvider(user) {
  * @param {'chat'|'pdf'} usage
  */
 function resolveModel(user, provider, usage) {
-    if (user.aiModel) return user.aiModel;
+    // Only honour user-selected model if it belongs to the active provider
+    if (user.aiModel) {
+        const m = user.aiModel;
+        const belongsToProvider =
+            (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(m)) ||
+            (provider === 'anthropic' && /^claude/i.test(m)) ||
+            (provider === 'gemini' && /^(gemini|models\/)/i.test(m));
+        if (belongsToProvider) return m;
+    }
     if (provider === 'openai') {
         return usage === 'chat' ? OPENAI_CHAT_MODEL : OPENAI_MODEL;
     }
@@ -3500,17 +3508,13 @@ ${text}`;
             });
 
         } catch (parseError) {
-            console.error('Error parsing AI response:', parseError);
-            console.error('AI Response was:', aiResponse);
+            console.error('Error parsing AI response:', parseError.message);
             return res.status(500).json({
-                message: 'Failed to parse AI response. Please check the PDF format.',
-                debug: aiResponse ? aiResponse.substring(0, 200) : 'No response'
+                message: 'Failed to parse AI response. Please check the PDF format.'
             });
         }
 
-        console.log('=== FINAL ENTRIES ===');
-        console.log(entries);
-
+        console.log('PDF processing complete, extracted', entries.length, 'entries');
         res.json(entries);
     } catch (error) {
         console.error('Error processing PDF with AI:', error);
