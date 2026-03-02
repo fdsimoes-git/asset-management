@@ -804,6 +804,15 @@ const chatRateLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
+const aiModelsLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many model listing requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -1210,7 +1219,7 @@ app.put('/api/user/ai-provider', requireAuth, (req, res) => {
 });
 
 // List available AI models for the user's current provider
-app.get('/api/ai/models', requireAuth, async (req, res) => {
+app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
     const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
@@ -1318,6 +1327,15 @@ app.put('/api/user/ai-model', requireAuth, (req, res) => {
         } else if (aiModel.length > 100) {
             return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
         } else {
+            // Validate model belongs to the user's active provider
+            const provider = resolveProvider(req.user);
+            const validForProvider =
+                (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(aiModel)) ||
+                (provider === 'anthropic' && /^claude/i.test(aiModel)) ||
+                (provider === 'gemini' && /^(gemini|models\/)/i.test(aiModel));
+            if (!validForProvider) {
+                return res.status(400).json({ message: `Model "${aiModel}" does not match the active provider (${provider}).` });
+            }
             req.user.aiModel = aiModel;
         }
     }
