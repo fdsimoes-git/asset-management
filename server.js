@@ -1246,7 +1246,7 @@ app.get('/api/ai/models', requireAuth, async (req, res) => {
             const list = await openaiClient.models.list();
             const includePattern = /^(gpt-|o[0-9]|chatgpt-)/;
             const excludePattern = /instruct|realtime|audio|search|embedding/i;
-            for await (const model of list) {
+            for (const model of list.data) {
                 if (includePattern.test(model.id) && !excludePattern.test(model.id)) {
                     models.push({ id: model.id, name: model.id });
                 }
@@ -3372,6 +3372,7 @@ ${text}`;
                 const response = await anthropicClient.messages.create({
                     model: resolveModel(req.user, 'anthropic', 'pdf'),
                     max_tokens: 4096,
+                    system: 'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.',
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0.2
                 });
