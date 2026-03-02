@@ -1,6 +1,6 @@
 # Asset Management Web Application
 
-A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor, both powered by Google Gemini AI.
+A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor. Supports three AI providers: Google Gemini, OpenAI, and Anthropic Claude.
 
 ## Features
 
@@ -32,30 +32,32 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Admin Couple Management**: Link/unlink couples from Admin Panel
 
 ### AI-Powered Processing
-- **PDF Analysis**: Upload financial documents for automatic expense extraction using Google Gemini AI
+- **Multi-Provider Support**: Choose between Google Gemini, OpenAI, and Anthropic Claude in Settings
+- **PDF Analysis**: Upload financial documents for automatic expense extraction using your selected AI provider
 - **Smart Data Extraction**: Automatically identifies amounts, dates, descriptions, and categories from PDFs
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
 - **Bulk Import**: Process multiple expenses from a single document with preview and editing
-- **Per-User API Keys**: Each user can store their own encrypted Gemini API key or enter one manually per session
-- **Key Priority Chain**: Manual input > user's stored key > global env var fallback
+- **Per-User API Keys**: Each user can store their own encrypted API key per provider
+- **Key Priority Chain**: User's stored key > global env var fallback
+- **Dynamic Model Selection**: Browse and select from available models for your chosen provider
 
 ### AI Financial Advisor
 - **Chat Interface**: Floating chat widget on the dashboard for real-time financial advice
 - **Data-Driven Insights**: AI analyzes your actual income, expenses, and spending patterns
-- **Function Calling**: Gemini uses 6 server-side tools (summary, category breakdown, trends, top expenses, period comparison, search)
+- **Function Calling**: AI uses 8 server-side tools (summary, category breakdown, trends, top expenses, period comparison, search, edit entries, undo edits)
+- **Edit Confirmation**: AI-proposed edits render as interactive Confirm/Cancel cards in the chat
 - **Conversation History**: Chat context maintained during the session for follow-up questions
 - **Rate Limited**: 30 messages per 15-minute window per user
 
 #### Bulk Import Workflow
 1. Click "Bulk PDF Upload" in the header
-2. Enter your Gemini API key (or use a previously saved key)
-3. Optionally check "Save this key for future use" to store it encrypted
-4. Select a PDF file (bank statement, receipt, etc.)
-5. Click "Upload and Process" to send to Gemini AI
-6. Review extracted entries in the preview table
-7. Edit any entries inline (month, type, amount, description, category)
-8. Use Edit/Delete buttons to modify or remove individual rows
-9. Click "Confirm and Add Entries" to save all entries
+2. Ensure your AI provider is configured with an API key (via Settings)
+3. Select a PDF file (bank statement, receipt, etc.)
+4. Click "Upload and Process" to send to your AI provider
+5. Review extracted entries in the preview table
+6. Edit any entries inline (month, type, amount, description, category)
+7. Use Edit/Delete buttons to modify or remove individual rows
+8. Click "Confirm and Add Entries" to save all entries
 
 ### Data Visualization
 - **Asset Progression**: Line chart showing cumulative total assets over time
@@ -81,7 +83,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Node.js** 18.x or higher
 - **npm** (Node Package Manager)
 - **Modern web browser** with JavaScript enabled
-- **Google Gemini API Key** (optional globally; users can provide their own)
+- **AI API Key** (optional globally; users can provide their own per provider — Gemini, OpenAI, or Anthropic)
 
 ## Installation
 
@@ -113,7 +115,9 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    ADMIN_USERNAME=admin                          # Optional (defaults to "admin")
    ADMIN_PASSWORD_HASH=your-bcrypt-hashed-password
    PORT=443
-   GEMINI_API_KEY=your-gemini-api-key            # Optional: global fallback for all users
+   GEMINI_API_KEY=your-gemini-api-key            # Optional: global fallback for Gemini users
+   OPENAI_API_KEY=your-openai-api-key            # Optional: global fallback for OpenAI users
+   ANTHROPIC_API_KEY=your-anthropic-api-key      # Optional: global fallback for Anthropic users
    UMAMI_WEBSITE_ID=your-umami-website-id        # Optional: analytics
    SMTP_HOST=smtp.gmail.com                      # Optional: enables self-service password reset
    SMTP_PORT=587                                 # Optional
@@ -208,7 +212,7 @@ Available expense/income categories:
 - **Password Hashing**: bcrypt with 10 salt rounds
 - **Session Security**: HTTP-only, secure cookies (24-hour expiration)
 - **Data Encryption**: AES-256-CBC for stored data
-- **API Key Encryption**: Per-user Gemini keys double-encrypted (field-level + file-level AES-256-CBC)
+- **API Key Encryption**: Per-user AI provider keys encrypted (field-level AES-256-CBC + file-level encryption)
 - **TOTP 2FA**: Time-based one-time passwords with encrypted secret storage and bcrypt-hashed backup codes
 - **Email Encryption**: User emails encrypted at rest with AES-256-CBC
 - **Email Privacy**: Admins see only email/2FA status indicators, not actual addresses
@@ -223,7 +227,7 @@ Available expense/income categories:
 - **Users**: `data/users.json` (encrypted)
 - **Entries**: `data/entries.json` (encrypted)
 - **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, email?, totpSecret?, totpEnabled, backupCodes }`
+- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, openaiApiKey?, anthropicApiKey?, aiProvider?, aiModel?, email?, totpSecret?, totpEnabled, backupCodes }`
 - **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
 
 ## Technical Details
@@ -232,7 +236,7 @@ Available expense/income categories:
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
 - **Database**: Encrypted JSON file storage
-- **AI Integration**: Google Gemini API (gemini-3-flash-preview)
+- **AI Integration**: Google Gemini, OpenAI, and Anthropic Claude (user-selectable)
 - **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES encryption
 
 ### API Endpoints
@@ -241,7 +245,7 @@ Available expense/income categories:
 - `POST /api/login` - User authentication
 - `POST /api/register` - User registration
 - `POST /api/logout` - End session
-- `GET /api/user` - Get current user info (includes `hasGeminiApiKey` flag)
+- `GET /api/user` - Get current user info (includes API key availability flags per provider)
 - `POST /api/forgot-password` - Request password reset code (rate limited: 3/15min)
 - `POST /api/reset-password` - Reset password with code
 
@@ -251,6 +255,12 @@ Available expense/income categories:
 - `DELETE /api/user/email` - Remove email
 - `POST /api/user/gemini-key` - Save encrypted Gemini API key
 - `DELETE /api/user/gemini-key` - Remove saved Gemini API key
+- `POST /api/user/openai-key` - Save encrypted OpenAI API key
+- `DELETE /api/user/openai-key` - Remove saved OpenAI API key
+- `POST /api/user/anthropic-key` - Save encrypted Anthropic API key
+- `DELETE /api/user/anthropic-key` - Remove saved Anthropic API key
+- `PUT /api/user/ai-provider` - Set AI provider (gemini, openai, or anthropic)
+- `PUT /api/user/ai-model` - Set preferred AI model (validated against active provider)
 - `GET /api/user/2fa/status` - Get 2FA status
 - `POST /api/user/2fa/setup` - Start 2FA setup (generates QR code)
 - `POST /api/user/2fa/verify` - Verify and enable 2FA
@@ -261,8 +271,11 @@ Available expense/income categories:
 - `POST /api/entries` - Add new entry
 - `PUT /api/entries/:id` - Update entry
 - `DELETE /api/entries/:id` - Delete entry
-- `POST /api/process-pdf` - Process PDF with AI (accepts optional `geminiApiKey` field)
+- `POST /api/process-pdf` - Process PDF with AI (uses user's selected provider)
 - `POST /api/ai/chat` - AI financial advisor chat (rate limited: 30/15min)
+- `POST /api/ai/confirm-edit` - Confirm a pending AI-proposed edit
+- `POST /api/ai/cancel-edit` - Cancel a pending AI-proposed edit
+- `GET /api/ai/models` - List available models for user's AI provider (rate limited: 10/min)
 
 #### Admin (requires admin role)
 - `GET /api/admin/users` - List all users
@@ -333,14 +346,14 @@ The script will:
 
 ### Common Issues
 1. **Certificate Errors**: Regenerate SSL certificates or accept self-signed
-2. **Gemini API Errors**: Verify your API key is valid (per-user key, or global `GEMINI_API_KEY` env var)
+2. **AI API Errors**: Verify your API key is valid for the selected provider (per-user key, or global env var fallback)
 3. **DNS Issues**: Verify hosts file or router DNS configuration
 4. **Permission Errors**: Run server with `sudo` for port 443
 5. **Login Issues**: Ensure user account is active
 
 ### Debug Mode
 - Check browser developer console for client-side errors
-- Server logs show detailed processing information including AI responses
+- Server logs show processing information (financial data is redacted from logs)
 
 ---
 
