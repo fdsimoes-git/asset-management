@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/logo_gh_repo.png" alt="Asset Manager Logo" width="400">
+</p>
+
 # Asset Management Web Application
 
 A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor. Supports three AI providers: Google Gemini, OpenAI, and Anthropic Claude.
