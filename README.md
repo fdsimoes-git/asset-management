@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/logo_gh_repo.png" alt="Asset Manager Logo" width="400">
+  <img src="assets/logo.png" alt="Asset Manager Logo" width="400">
 </p>
 
 # Asset Management Web Application

@@ -165,14 +165,23 @@
             animation: fadeInUp 0.8s ease backwards;
         }
 
-        .hero-title {
-            font-family: var(--font-display);
-            font-size: 3.5rem;
-            font-weight: 700;
-            color: var(--color-accent-primary);
-            margin: 0 0 1rem 0;
-            letter-spacing: -0.03em;
-            line-height: 1.1;
+        .hero-logo {
+            display: block;
+            width: 280px;
+            max-width: 100%;
+            border-radius: 16px;
+            box-shadow:
+                0 4px 24px rgba(0, 0, 0, 0.4),
+                0 0 60px rgba(245, 158, 11, 0.08);
+            margin-bottom: 1.5rem;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hero-logo:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow:
+                0 8px 40px rgba(0, 0, 0, 0.5),
+                0 0 80px rgba(245, 158, 11, 0.15);
         }
 
         .hero-tagline {
@@ -431,8 +440,10 @@
                 padding: 2.5rem 1.5rem 2rem;
             }
 
-            .hero-title {
-                font-size: 2.5rem;
+            .hero-logo {
+                width: 220px;
+                margin-left: auto;
+                margin-right: auto;
             }
 
             .hero-tagline {
@@ -466,8 +477,8 @@
                 padding: 2rem 1.25rem 1.5rem;
             }
 
-            .hero-title {
-                font-size: 2rem;
+            .hero-logo {
+                width: 180px;
             }
 
             .landing-login {
@@ -529,7 +540,7 @@
         <!-- Hero / Features Side -->
         <div class="landing-hero">
             <div class="hero-content">
-                <h1 class="hero-title" data-i18n="login.title">Asset Manager</h1>
+                <img src="/assets/logo.png" alt="Asset Manager" class="hero-logo">
                 <p class="hero-tagline" data-i18n="login.heroTagline">Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.</p>
 
                 <div class="feature-grid">

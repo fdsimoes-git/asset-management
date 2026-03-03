@@ -150,13 +150,18 @@
             letter-spacing: -0.02em;
         }
 
-        header h1::before {
-            content: '';
-            width: 8px;
-            height: 8px;
-            background: var(--color-accent-primary);
-            border-radius: 50%;
-            animation: pulse-glow 2s ease-in-out infinite;
+        .header-logo {
+            height: 36px;
+            width: auto;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .header-logo:hover {
+            transform: scale(1.06);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         }
 
         .header-buttons {
@@ -784,6 +789,10 @@
 
             header h1 {
                 font-size: 1.35rem;
+            }
+
+            .header-logo {
+                height: 28px;
             }
         }
 
@@ -1752,6 +1761,7 @@
 
     <div class="container">
         <header>
+            <img src="/assets/logo.png" alt="Asset Manager" class="header-logo">
             <h1 data-i18n="common.assetManagement">Asset Management</h1>
             <div class="header-buttons">
                 <button id="addEntryBtn" class="add-entry-btn" data-i18n="dash.addEntry" data-i18n-title="dash.addEntry" title="Add New Entry">Add New Entry</button>
