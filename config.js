@@ -33,8 +33,12 @@ if (!SESSION_SECRET) {
     process.exit(1);
 }
 
-if (!process.env.PGUSER || !process.env.PGPASSWORD) {
-    console.error('FATAL: PGUSER and PGPASSWORD must be set.');
+if (!process.env.PGUSER) {
+    console.error('FATAL: PGUSER must be set.');
+    process.exit(1);
+}
+if (process.env.PGPASSWORD === undefined) {
+    console.error('FATAL: PGPASSWORD must be set (can be empty for local trust auth).');
     process.exit(1);
 }
 

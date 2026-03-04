@@ -78,14 +78,14 @@ async function migrate() {
     try {
         await client.query('BEGIN');
 
-        // Insert users (preserving IDs)
+        // Insert users (preserving IDs) — without partner_id first to avoid FK cycles
         let usersInserted = 0;
         for (const u of users) {
             const result = await client.query(
                 `INSERT INTO users (id, username, password_hash, role, email, gemini_api_key,
                  openai_api_key, anthropic_api_key, totp_secret, totp_enabled, backup_codes,
-                 ai_provider, ai_model, partner_id, partner_linked_at, is_active, created_at, updated_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                 ai_provider, ai_model, is_active, created_at, updated_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                  ON CONFLICT (id) DO NOTHING`,
                 [
                     u.id,
@@ -101,8 +101,6 @@ async function migrate() {
                     u.backupCodes || [],
                     u.aiProvider || null,
                     u.aiModel || null,
-                    u.partnerId || null,
-                    u.partnerLinkedAt || null,
                     u.isActive !== undefined ? u.isActive : true,
                     u.createdAt || new Date().toISOString(),
                     u.updatedAt || new Date().toISOString()
@@ -111,6 +109,17 @@ async function migrate() {
             if (result.rowCount > 0) usersInserted++;
         }
         console.log(`Users: ${usersInserted} inserted (${users.length - usersInserted} already existed)`);
+
+        // Now set partner relationships (all user rows exist, FK safe)
+        for (const u of users) {
+            if (u.partnerId) {
+                await client.query(
+                    'UPDATE users SET partner_id = $1, partner_linked_at = $2 WHERE id = $3',
+                    [u.partnerId, u.partnerLinkedAt || null, u.id]
+                );
+            }
+        }
+        console.log('Partner relationships set');
 
         // Set user ID sequence
         if (users.length > 0) {
