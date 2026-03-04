@@ -2,7 +2,7 @@
 # Asset Management Backup Script
 # Backs up data folder (and .env if present) to Cloudflare R2 via rclone
 
-set -e
+set -eo pipefail
 
 # Configuration
 SOURCE_DIR="$HOME/projects/asset-management"
@@ -28,7 +28,7 @@ fi
 
 # PostgreSQL backup
 if command -v pg_dump &> /dev/null; then
-    pg_dump asset_management | gzip > /tmp/pg_backup_$DATETIME.sql.gz
+    pg_dump -h "${PGHOST:-localhost}" -U "${PGUSER:-asset_app}" "${PGDATABASE:-asset_management}" | gzip > /tmp/pg_backup_$DATETIME.sql.gz
     rclone copy /tmp/pg_backup_$DATETIME.sql.gz "$BACKUP_DIR/"
     rm /tmp/pg_backup_$DATETIME.sql.gz
     echo "Backed up: PostgreSQL dump"

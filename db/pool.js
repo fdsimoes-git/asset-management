@@ -1,5 +1,14 @@
 const { Pool } = require('pg');
 
+if (!process.env.PGUSER) {
+    console.error('FATAL: PGUSER must be set.');
+    process.exit(1);
+}
+if (process.env.PGPASSWORD === undefined) {
+    console.error('FATAL: PGPASSWORD must be set (can be empty for local trust auth).');
+    process.exit(1);
+}
+
 const pool = new Pool({
     host:     process.env.PGHOST     || 'localhost',
     port:     parseInt(process.env.PGPORT || '5432', 10),

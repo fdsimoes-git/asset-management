@@ -14,10 +14,11 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { pool } = require('./pool');
 
-// Load env
+// Load env BEFORE importing pool (pool reads PG* vars at module load)
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const { pool } = require('./pool');
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY || !/^[0-9a-fA-F]{64}$/.test(ENCRYPTION_KEY)) {

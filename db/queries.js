@@ -115,6 +115,51 @@ async function createUser(fields) {
     return dbRowToUser(rows[0]);
 }
 
+async function registerWithInviteCode(inviteCode, userFields) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Atomically consume the invite code
+        const { rowCount } = await client.query(
+            `UPDATE invite_codes SET is_used = TRUE, used_at = NOW()
+             WHERE code = $1 AND is_used = FALSE`,
+            [inviteCode.toUpperCase()]
+        );
+        if (rowCount === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+        // Create the user
+        const { rows } = await client.query(
+            `INSERT INTO users (username, password_hash, role, email, totp_secret, totp_enabled, backup_codes, is_active)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [
+                userFields.username,
+                userFields.passwordHash,
+                userFields.role || 'user',
+                stringifyJsonField(userFields.email),
+                stringifyJsonField(userFields.totpSecret),
+                userFields.totpEnabled || false,
+                userFields.backupCodes || [],
+                userFields.isActive !== undefined ? userFields.isActive : true
+            ]
+        );
+        const newUser = dbRowToUser(rows[0]);
+        // Set used_by on the invite code
+        await client.query(
+            'UPDATE invite_codes SET used_by = $1 WHERE code = $2',
+            [newUser.id, inviteCode.toUpperCase()]
+        );
+        await client.query('COMMIT');
+        return newUser;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 // Column allowlist for dynamic SET
 const USER_COLUMN_MAP = {
     username:        'username',
@@ -359,6 +404,23 @@ async function createInviteCode(code, createdBy) {
     };
 }
 
+async function createInviteCodeIfNotExists(code, createdBy) {
+    const { rows } = await pool.query(
+        'INSERT INTO invite_codes (code, created_by) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING RETURNING *',
+        [code, String(createdBy)]
+    );
+    if (!rows[0]) return null;
+    const row = rows[0];
+    return {
+        code:      row.code,
+        createdAt: row.created_at.toISOString(),
+        createdBy: row.created_by,
+        isUsed:    row.is_used,
+        usedAt:    null,
+        usedBy:    null
+    };
+}
+
 async function consumeInviteCode(code, usedBy) {
     const { rowCount } = await pool.query(
         `UPDATE invite_codes SET is_used = TRUE, used_at = NOW(), used_by = $1
@@ -465,6 +527,7 @@ module.exports = {
     unlinkCouple,
     getActiveAdminCount,
     getAdminCount,
+    registerWithInviteCode,
 
     // Entries
     getEntriesByUser,
@@ -479,6 +542,7 @@ module.exports = {
     // Invite Codes
     findInviteCode,
     createInviteCode,
+    createInviteCodeIfNotExists,
     consumeInviteCode,
     updateInviteCodeUsedBy,
     rollbackInviteCode,

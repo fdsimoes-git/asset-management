@@ -327,12 +327,12 @@ function generateInviteCode() {
 }
 
 async function createInviteCodeHelper(createdBy) {
-    let code, existing;
-    do {
-        code = generateInviteCode();
-        existing = await db.findInviteCode(code);
-    } while (existing);
-    return db.createInviteCode(code, createdBy);
+    for (let attempts = 0; attempts < 10; attempts++) {
+        const code = generateInviteCode();
+        const created = await db.createInviteCodeIfNotExists(code, createdBy);
+        if (created) return created;
+    }
+    throw new Error('Failed to generate unique invite code after 10 attempts');
 }
 
 // Migration: Create initial admin user from env vars if no users exist
@@ -689,14 +689,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     try {
-        // Consume invite code atomically before async bcrypt to prevent race conditions
-        const inviteConsumed = await db.consumeInviteCode(inviteCode, null);
-        if (!inviteConsumed) {
-            return res.status(409).json({ message: 'Invalid or already used invite code' });
-        }
-
         const passwordHash = await bcrypt.hash(password, 10);
-        const newUser = await db.createUser({
+        // Atomic transaction: consume invite code + create user + set used_by
+        const newUser = await db.registerWithInviteCode(inviteCode, {
             username: username,
             email: encryptString(email),
             passwordHash: passwordHash,
@@ -707,8 +702,9 @@ app.post('/api/register', registerLimiter, async (req, res) => {
             backupCodes: []
         });
 
-        // Update the invite code with the actual user ID
-        await db.updateInviteCodeUsedBy(inviteCode, newUser.id);
+        if (!newUser) {
+            return res.status(409).json({ message: 'Invalid or already used invite code' });
+        }
 
         res.status(201).json({
             message: 'Registration successful',
@@ -1377,6 +1373,11 @@ app.post('/api/entries', requireAuth, async (req, res) => {
         return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
     const sanitizedTags = Array.isArray(tags)
         ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
         : [];
@@ -1394,7 +1395,7 @@ app.post('/api/entries', requireAuth, async (req, res) => {
         userId: req.user.id,
         month,
         type,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         description: description.trim(),
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
@@ -1428,6 +1429,11 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
         return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
     const sanitizedTags = Array.isArray(tags)
         ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
         : [];
@@ -1444,7 +1450,7 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
     const updated = await db.updateEntry(id, req.user.id, {
         month,
         type,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         description: description.trim(),
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
