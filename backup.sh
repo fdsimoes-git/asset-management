@@ -26,6 +26,18 @@ else
     echo "Info: No .env file found (expected in production — secrets are in system env vars)"
 fi
 
+# PostgreSQL backup
+if command -v pg_dump &> /dev/null; then
+    pg_dump asset_management | gzip > /tmp/pg_backup_$DATETIME.sql.gz
+    rclone copy /tmp/pg_backup_$DATETIME.sql.gz "$BACKUP_DIR/"
+    rm /tmp/pg_backup_$DATETIME.sql.gz
+    echo "Backed up: PostgreSQL dump"
+else
+    echo "Warning: pg_dump not found — skipping PostgreSQL backup"
+fi
+
+# NOTE: data/ folder backup can be removed after 30 days post-migration
+
 echo "Backup completed: $BACKUP_DIR at $(date)"
 
 # Optional: Remove backups older than 30 days
