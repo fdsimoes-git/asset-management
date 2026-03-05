@@ -133,9 +133,14 @@ async function migrate() {
             console.log(`Set users_id_seq to ${seqRows[0].seq_max}`);
         }
 
+        // Build set of valid user IDs for FK safety
+        const validUserIds = new Set(users.map(u => u.id));
+
         // Insert invite codes
         let codesInserted = 0;
         for (const ic of inviteCodes) {
+            // Only set used_by if the referenced user exists (may have been deleted)
+            const safeUsedBy = ic.usedBy && validUserIds.has(ic.usedBy) ? ic.usedBy : null;
             const result = await client.query(
                 `INSERT INTO invite_codes (code, created_at, created_by, is_used, used_at, used_by)
                  VALUES ($1,$2,$3,$4,$5,$6)
@@ -146,7 +151,7 @@ async function migrate() {
                     String(ic.createdBy),
                     ic.isUsed || false,
                     ic.usedAt || null,
-                    ic.usedBy || null
+                    safeUsedBy
                 ]
             );
             if (result.rowCount > 0) codesInserted++;
