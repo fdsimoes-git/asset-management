@@ -1254,13 +1254,10 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid email format' });
     }
 
-    await db.updateUser(req.user.id, { email: encryptString(email), updatedAt: new Date().toISOString() });
-
     const parts = email.split('@');
-    if (parts.length !== 2 || !parts[0].length || !parts[1].length) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
     const maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
+
+    await db.updateUser(req.user.id, { email: encryptString(email), updatedAt: new Date().toISOString() });
     res.json({ message: 'Email updated', hasEmail: true, maskedEmail });
 }));
 

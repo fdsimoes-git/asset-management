@@ -28,10 +28,15 @@ fi
 
 # PostgreSQL backup
 if command -v pg_dump &> /dev/null; then
-    pg_dump -h "${PGHOST:-localhost}" -U "${PGUSER:-asset_app}" "${PGDATABASE:-asset_management}" | gzip > /tmp/pg_backup_$DATETIME.sql.gz
-    rclone copy /tmp/pg_backup_$DATETIME.sql.gz "$BACKUP_DIR/"
-    rm /tmp/pg_backup_$DATETIME.sql.gz
-    echo "Backed up: PostgreSQL dump"
+    if [ -z "${PGPASSWORD:-}" ]; then
+        echo "Warning: PGPASSWORD is not set — skipping PostgreSQL backup"
+    else
+        export PGPASSWORD
+        pg_dump -h "${PGHOST:-localhost}" -U "${PGUSER:-asset_app}" "${PGDATABASE:-asset_management}" | gzip > /tmp/pg_backup_$DATETIME.sql.gz
+        rclone copy /tmp/pg_backup_$DATETIME.sql.gz "$BACKUP_DIR/"
+        rm /tmp/pg_backup_$DATETIME.sql.gz
+        echo "Backed up: PostgreSQL dump"
+    fi
 else
     echo "Warning: pg_dump not found — skipping PostgreSQL backup"
 fi

@@ -356,19 +356,19 @@ async function createEntry({ userId, month, type, amount, description, tags, isC
     }
 }
 
+const ENTRY_COL_MAP = {
+    month:           'month',
+    type:            'type',
+    amount:          'amount',
+    description:     'description',
+    tags:            'tags',
+    isCoupleExpense: 'is_couple_expense'
+};
+
 async function updateEntry(entryId, userId, fields) {
     const setClauses = [];
     const values = [];
     let paramIndex = 1;
-
-    const ENTRY_COL_MAP = {
-        month:           'month',
-        type:            'type',
-        amount:          'amount',
-        description:     'description',
-        tags:            'tags',
-        isCoupleExpense: 'is_couple_expense'
-    };
 
     for (const [jsKey, value] of Object.entries(fields)) {
         const col = ENTRY_COL_MAP[jsKey];
@@ -554,8 +554,8 @@ async function cleanupExpiredPaypalOrders(maxAgeMs) {
     await pool.query(
         `DELETE FROM paypal_orders
          WHERE status != 'COMPLETED'
-           AND created_at < NOW() - ($1 || ' milliseconds')::INTERVAL`,
-        [String(maxAgeMs)]
+           AND created_at < NOW() - ($1::bigint * INTERVAL '1 millisecond')`,
+        [maxAgeMs]
     );
 }
 

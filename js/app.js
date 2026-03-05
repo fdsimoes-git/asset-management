@@ -1217,9 +1217,6 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                 savedEntries.push(await response.json());
             }
 
-            // Brief pause before reload to let the server settle
-            await new Promise(resolve => setTimeout(resolve, 500));
-
             // Reload entries from server to ensure view mode filtering is applied correctly
             await window.loadEntries();
 
