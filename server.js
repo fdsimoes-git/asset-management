@@ -2446,10 +2446,9 @@ async function toolEditEntry(userId, args) {
         }
     }
 
-    const expectedUpdated = { ...entry, ...updates };
-    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...expectedUpdated } });
-
+    const before = { ...entry };
     const updated = await db.updateEntry(entryId, userId, updates);
+    lastEditSnapshots.set(snapshotKey, { before, after: { ...updated } });
     const result = {
         success: true,
         message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
