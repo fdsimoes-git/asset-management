@@ -1186,10 +1186,15 @@ function renderBulkPreviewTable() {
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
+        const originalText = confirmBulkEntriesBtn.textContent;
+        confirmBulkEntriesBtn.disabled = true;
         try {
-            // Save each entry to the server with their current type and tags
+            // Save each entry sequentially to avoid overwhelming the DB pool
             const savedEntries = [];
+            const total = bulkExtractedEntries.length;
             for (const entry of bulkExtractedEntries) {
+                confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
+
                 const response = await fetch('/api/entries', {
                     method: 'POST',
                     headers: {
@@ -1206,11 +1211,14 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to save entry ${savedEntries.length + 1}/${bulkExtractedEntries.length}: ${response.statusText}`);
+                    throw new Error(`Failed to save entry ${savedEntries.length + 1}/${total}: ${response.statusText}`);
                 }
 
                 savedEntries.push(await response.json());
             }
+
+            // Brief pause before reload to let the server settle
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             // Reload entries from server to ensure view mode filtering is applied correctly
             await window.loadEntries();
@@ -1222,6 +1230,9 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
         } catch (error) {
             console.error('Error saving bulk entries:', error);
             alert(t('bulk.errorSave', { message: error.message }));
+        } finally {
+            confirmBulkEntriesBtn.disabled = false;
+            confirmBulkEntriesBtn.textContent = originalText;
         }
     }
 });
