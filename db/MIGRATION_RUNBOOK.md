@@ -179,7 +179,7 @@ sudo systemctl stop asset-management
 cd ~/projects/asset-management
 git checkout pre-pg-migration
 
-# Remove PG env vars from systemd (or they'll cause config.js to fail-fast)
+# (Optional) Remove PG env vars from systemd (otherwise they'll be unused and add clutter)
 # Edit /etc/systemd/system/asset-management.service and remove PG* lines
 sudo systemctl daemon-reload
 
