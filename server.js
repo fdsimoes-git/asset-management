@@ -2356,7 +2356,7 @@ async function toolSearchEntries(userId, args) {
  * Validates editEntry arguments and resolves the target entry without applying changes.
  * @param {number} userId - The authenticated user's ID.
  * @param {object} args - Tool arguments (entryId, description, amount, type, month, tags).
- * @returns {object} { entry, updates, entryIndex, rejectedTags } on success, or { error } on failure.
+ * @returns {object} { entry, updates, rejectedTags } on success, or { error } on failure.
  */
 async function validateEditArgs(userId, args) {
     const entryId = args.entryId != null ? Number(args.entryId) : NaN;
@@ -3255,62 +3255,62 @@ const PORT = config.port;
     }
 
     app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on https://localhost:${PORT}`);
+        console.log(`Server running on https://localhost:${PORT}`);
 
-    // Verify SMTP configuration
-    if (smtpTransport) {
-        console.log('SMTP configured — self-service password reset is available.');
-    } else {
-        console.log('No SMTP configured — password resets require admin action.');
-    }
+        // Verify SMTP configuration
+        if (smtpTransport) {
+            console.log('SMTP configured — self-service password reset is available.');
+        } else {
+            console.log('No SMTP configured — password resets require admin action.');
+        }
 
-    // Verify PayPal configuration
-    if (paypalClient) {
-        console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
-    } else {
-        console.log('No PayPal configured — invite code purchases disabled.');
-    }
+        // Verify PayPal configuration
+        if (paypalClient) {
+            console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
+        } else {
+            console.log('No PayPal configured — invite code purchases disabled.');
+        }
 
-    // Verify Gemini API configuration
-    if (config.geminiApiKey) {
-        console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
-        const startupGenAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
-        startupGenAI.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: 'Hello'
-        }).then(() => {
-            console.log('Gemini API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: Gemini API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
-    }
+        // Verify Gemini API configuration
+        if (config.geminiApiKey) {
+            console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
+            const startupGenAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
+            startupGenAI.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: 'Hello'
+            }).then(() => {
+                console.log('Gemini API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: Gemini API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
+        }
 
-    // Verify OpenAI API configuration
-    if (config.openaiApiKey) {
-        console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
-        const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
-        openaiStartup.models.list().then(() => {
-            console.log('OpenAI API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: OpenAI API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
-    }
+        // Verify OpenAI API configuration
+        if (config.openaiApiKey) {
+            console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
+            const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
+            openaiStartup.models.list().then(() => {
+                console.log('OpenAI API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: OpenAI API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
+        }
 
-    // Verify Anthropic API configuration
-    if (config.anthropicApiKey) {
-        console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
-        const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
-        anthropicStartup.models.list({ limit: 1 }).then(() => {
-            console.log('Anthropic API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: Anthropic API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
-    }
-});
+        // Verify Anthropic API configuration
+        if (config.anthropicApiKey) {
+            console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
+            const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
+            anthropicStartup.models.list({ limit: 1 }).then(() => {
+                console.log('Anthropic API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: Anthropic API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
+        }
+    });
 })();
