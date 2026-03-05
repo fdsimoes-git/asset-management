@@ -1188,7 +1188,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
         try {
             // Save each entry to the server with their current type and tags
-            const savePromises = bulkExtractedEntries.map(async (entry) => {
+            const savedEntries = [];
+            for (const entry of bulkExtractedEntries) {
                 const response = await fetch('/api/entries', {
                     method: 'POST',
                     headers: {
@@ -1205,14 +1206,11 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to save entry: ${response.statusText}`);
+                    throw new Error(`Failed to save entry ${savedEntries.length + 1}/${bulkExtractedEntries.length}: ${response.statusText}`);
                 }
 
-                return await response.json();
-            });
-
-            // Wait for all entries to be saved
-            const savedEntries = await Promise.all(savePromises);
+                savedEntries.push(await response.json());
+            }
 
             // Reload entries from server to ensure view mode filtering is applied correctly
             await window.loadEntries();
