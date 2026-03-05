@@ -503,22 +503,8 @@ async function getAllInviteCodes() {
 
 // ── PayPal Order Queries ─────────────────────────────────────────────
 
-async function createPaypalOrder({ orderId, amount, currency, status, userId }) {
-    const { rows } = await pool.query(
-        `INSERT INTO paypal_orders (order_id, amount, currency, status, user_id)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-        [orderId, amount, currency || 'BRL', status, userId || null]
-    );
-    return rows[0];
-}
-
-async function findPaypalOrder(orderId) {
-    const { rows } = await pool.query(
-        'SELECT * FROM paypal_orders WHERE order_id = $1',
-        [orderId]
-    );
-    if (!rows[0]) return null;
-    const row = rows[0];
+function dbRowToPaypalOrder(row) {
+    if (!row) return null;
     return {
         orderId:     row.order_id,
         amount:      parseFloat(row.amount),
@@ -531,12 +517,30 @@ async function findPaypalOrder(orderId) {
     };
 }
 
+async function createPaypalOrder({ orderId, amount, currency, status, userId }) {
+    const { rows } = await pool.query(
+        `INSERT INTO paypal_orders (order_id, amount, currency, status, user_id)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [orderId, amount, currency || 'BRL', status, userId || null]
+    );
+    return dbRowToPaypalOrder(rows[0]);
+}
+
+async function findPaypalOrder(orderId) {
+    const { rows } = await pool.query(
+        'SELECT * FROM paypal_orders WHERE order_id = $1',
+        [orderId]
+    );
+    return dbRowToPaypalOrder(rows[0]);
+}
+
 async function completePaypalOrder(orderId, inviteCode) {
-    await pool.query(
+    const { rows } = await pool.query(
         `UPDATE paypal_orders SET status = 'COMPLETED', invite_code = $1, confirmed_at = NOW()
-         WHERE order_id = $2`,
+         WHERE order_id = $2 AND invite_code IS NULL RETURNING *`,
         [inviteCode, orderId]
     );
+    return dbRowToPaypalOrder(rows[0]);
 }
 
 async function updatePaypalOrderStatus(orderId, status) {

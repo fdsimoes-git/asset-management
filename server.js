@@ -594,6 +594,23 @@ db.deleteUser = async function(userId, ...args) {
     invalidateCachedUser(userId);
     return _origDeleteUser.call(this, userId, ...args);
 };
+const _origLinkCouple = db.linkCouple;
+db.linkCouple = async function(id1, id2, ...args) {
+    const result = await _origLinkCouple.call(this, id1, id2, ...args);
+    invalidateCachedUser(id1);
+    invalidateCachedUser(id2);
+    return result;
+};
+const _origUnlinkCouple = db.unlinkCouple;
+db.unlinkCouple = async function(userId, ...args) {
+    const result = await _origUnlinkCouple.call(this, userId, ...args);
+    invalidateCachedUser(userId);
+    // Also invalidate the partner — unlinkCouple clears both sides
+    for (const [, cached] of userCache) {
+        if (cached.user && cached.user.partnerId === userId) invalidateCachedUser(cached.user.id);
+    }
+    return result;
+};
 
 const requireAuth = async (req, res, next) => {
     if (req.session && req.session.user && req.session.user.id) {
@@ -1840,7 +1857,16 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, asyncHandler(
             }
 
             const newCode = await createInviteCodeHelper('paypal');
-            await db.completePaypalOrder(orderId, newCode.code);
+            const completed = await db.completePaypalOrder(orderId, newCode.code);
+
+            // If conditional update returned null, a concurrent request won the race
+            if (!completed) {
+                const existing = await db.findPaypalOrder(orderId);
+                if (existing && existing.inviteCode) {
+                    return res.json({ inviteCode: existing.inviteCode });
+                }
+                return res.status(500).json({ message: 'Failed to finalize PayPal order' });
+            }
 
             return res.json({ inviteCode: newCode.code });
         }
