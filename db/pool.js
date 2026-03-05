@@ -25,6 +25,14 @@ pool.on('error', (err) => {
     console.error('Unexpected PostgreSQL pool error:', err.message);
 });
 
+pool.on('connect', () => {
+    console.log(`PG pool: new connection (total: ${pool.totalCount}, idle: ${pool.idleCount}, waiting: ${pool.waitingCount})`);
+});
+
+pool.on('remove', () => {
+    console.log(`PG pool: connection removed (total: ${pool.totalCount}, idle: ${pool.idleCount}, waiting: ${pool.waitingCount})`);
+});
+
 async function testConnection() {
     const client = await pool.connect();
     try {

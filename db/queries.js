@@ -68,8 +68,13 @@ async function findUserByUsername(username) {
 }
 
 async function findUserById(id) {
-    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-    return dbRowToUser(rows[0]);
+    try {
+        const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        return dbRowToUser(rows[0]);
+    } catch (err) {
+        console.error(`DB findUserById failed: id=${id} — ${err.message}`);
+        throw err;
+    }
 }
 
 async function getAllUsers() {
@@ -317,12 +322,17 @@ async function getEntryByIdAndUser(entryId, userId) {
 }
 
 async function createEntry({ userId, month, type, amount, description, tags, isCoupleExpense }) {
-    const { rows } = await pool.query(
-        `INSERT INTO entries (user_id, month, type, amount, description, tags, is_couple_expense)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [userId, month, type, amount, description, tags || [], isCoupleExpense || false]
-    );
-    return dbRowToEntry(rows[0]);
+    try {
+        const { rows } = await pool.query(
+            `INSERT INTO entries (user_id, month, type, amount, description, tags, is_couple_expense)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+            [userId, month, type, amount, description, tags || [], isCoupleExpense || false]
+        );
+        return dbRowToEntry(rows[0]);
+    } catch (err) {
+        console.error(`DB createEntry failed: userId=${userId} month=${month} type=${type} amount=${amount} — ${err.message}`);
+        throw err;
+    }
 }
 
 async function updateEntry(entryId, userId, fields) {
@@ -350,19 +360,29 @@ async function updateEntry(entryId, userId, fields) {
     if (setClauses.length === 0) return null;
 
     values.push(entryId, userId);
-    const { rows } = await pool.query(
-        `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} RETURNING *`,
-        values
-    );
-    return dbRowToEntry(rows[0]);
+    try {
+        const { rows } = await pool.query(
+            `UPDATE entries SET ${setClauses.join(', ')} WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} RETURNING *`,
+            values
+        );
+        return dbRowToEntry(rows[0]);
+    } catch (err) {
+        console.error(`DB updateEntry failed: entryId=${entryId} userId=${userId} — ${err.message}`);
+        throw err;
+    }
 }
 
 async function deleteEntry(entryId, userId) {
-    const { rowCount } = await pool.query(
-        'DELETE FROM entries WHERE id = $1 AND user_id = $2',
-        [entryId, userId]
-    );
-    return rowCount > 0;
+    try {
+        const { rowCount } = await pool.query(
+            'DELETE FROM entries WHERE id = $1 AND user_id = $2',
+            [entryId, userId]
+        );
+        return rowCount > 0;
+    } catch (err) {
+        console.error(`DB deleteEntry failed: entryId=${entryId} userId=${userId} — ${err.message}`);
+        throw err;
+    }
 }
 
 async function deleteEntriesByUser(userId) {
