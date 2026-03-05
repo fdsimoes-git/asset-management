@@ -22,6 +22,9 @@ const QRCode = require('qrcode');
 
 const app = express();
 
+// Wrap async route handlers so rejected promises are forwarded to Express error middleware
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 // ============ SMTP CONFIGURATION ============
 
 let smtpTransport = null;
@@ -588,7 +591,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Login endpoint
-app.post('/api/login', loginLimiter, async (req, res) => {
+app.post('/api/login', loginLimiter, asyncHandler(async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
@@ -637,10 +640,10 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         recordFailedLogin(username);
         res.status(401).json({ message: 'Invalid credentials' });
     }
-});
+}));
 
 // Registration endpoint
-app.post('/api/register', registerLimiter, async (req, res) => {
+app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
     const { username, email, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
@@ -720,10 +723,10 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         console.error('Registration error:', error);
         res.status(500).json({ message: 'Registration failed' });
     }
-});
+}));
 
 // Forgot password endpoint
-app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
+app.post('/api/forgot-password', forgotPasswordLimiter, asyncHandler(async (req, res) => {
     const { username } = req.body;
 
     if (!username || typeof username !== 'string') {
@@ -755,10 +758,10 @@ app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
             console.error('Error in forgot-password flow:', error.message);
         }
     });
-});
+}));
 
 // Reset password endpoint
-app.post('/api/reset-password', loginLimiter, async (req, res) => {
+app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
     const { username, code, newPassword } = req.body;
 
     if (!username || !code || !newPassword
@@ -806,10 +809,10 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
         console.error('Error resetting password:', error);
         res.status(500).json({ message: 'Failed to reset password' });
     }
-});
+}));
 
 // Get current user info
-app.get('/api/user', requireAuth, async (req, res) => {
+app.get('/api/user', requireAuth, asyncHandler(async (req, res) => {
     const response = {
         id: req.user.id,
         username: req.user.username,
@@ -839,10 +842,10 @@ app.get('/api/user', requireAuth, async (req, res) => {
     }
 
     res.json(response);
-});
+}));
 
 // Save Gemini API key (encrypted)
-app.post('/api/user/gemini-key', requireAuth, async (req, res) => {
+app.post('/api/user/gemini-key', requireAuth, asyncHandler(async (req, res) => {
     const { geminiApiKey } = req.body;
 
     if (!geminiApiKey || typeof geminiApiKey !== 'string') {
@@ -857,17 +860,17 @@ app.post('/api/user/gemini-key', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { geminiApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true, hasGeminiKeyAvailable: true });
-});
+}));
 
 // Remove saved Gemini API key
-app.delete('/api/user/gemini-key', requireAuth, async (req, res) => {
+app.delete('/api/user/gemini-key', requireAuth, asyncHandler(async (req, res) => {
     await db.updateUser(req.user.id, { geminiApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false, hasGeminiKeyAvailable: !!config.geminiApiKey });
-});
+}));
 
 // Save OpenAI API key (encrypted)
-app.post('/api/user/openai-key', requireAuth, async (req, res) => {
+app.post('/api/user/openai-key', requireAuth, asyncHandler(async (req, res) => {
     const { openaiApiKey } = req.body;
 
     if (!openaiApiKey || typeof openaiApiKey !== 'string') {
@@ -882,17 +885,17 @@ app.post('/api/user/openai-key', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { openaiApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true, hasOpenaiKeyAvailable: true });
-});
+}));
 
 // Remove saved OpenAI API key
-app.delete('/api/user/openai-key', requireAuth, async (req, res) => {
+app.delete('/api/user/openai-key', requireAuth, asyncHandler(async (req, res) => {
     await db.updateUser(req.user.id, { openaiApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false, hasOpenaiKeyAvailable: !!config.openaiApiKey });
-});
+}));
 
 // Save Anthropic API key (encrypted)
-app.post('/api/user/anthropic-key', requireAuth, async (req, res) => {
+app.post('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) => {
     const { anthropicApiKey } = req.body;
 
     if (!anthropicApiKey || typeof anthropicApiKey !== 'string') {
@@ -907,17 +910,17 @@ app.post('/api/user/anthropic-key', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { anthropicApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Anthropic API key saved successfully.', hasAnthropicApiKey: true, hasAnthropicKeyAvailable: true });
-});
+}));
 
 // Remove saved Anthropic API key
-app.delete('/api/user/anthropic-key', requireAuth, async (req, res) => {
+app.delete('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) => {
     await db.updateUser(req.user.id, { anthropicApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Anthropic API key removed.', hasAnthropicApiKey: false, hasAnthropicKeyAvailable: !!config.anthropicApiKey });
-});
+}));
 
 // Save AI provider preference
-app.put('/api/user/ai-provider', requireAuth, async (req, res) => {
+app.put('/api/user/ai-provider', requireAuth, asyncHandler(async (req, res) => {
     const { aiProvider } = req.body;
 
     if (!aiProvider || !ALLOWED_AI_PROVIDERS.includes(aiProvider)) {
@@ -927,10 +930,10 @@ app.put('/api/user/ai-provider', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { aiProvider, aiModel: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'AI provider saved.', aiProvider, aiModel: null });
-});
+}));
 
 // List available AI models for the user's current provider
-app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
+app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req, res) => {
     const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
@@ -1029,10 +1032,10 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
         }
         res.status(500).json({ message: 'Failed to fetch model list.' });
     }
-});
+}));
 
 // Save AI model preference
-app.put('/api/user/ai-model', requireAuth, async (req, res) => {
+app.put('/api/user/ai-model', requireAuth, asyncHandler(async (req, res) => {
     const { aiModel: rawAiModel } = req.body;
     let newModel = null;
 
@@ -1060,11 +1063,11 @@ app.put('/api/user/ai-model', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { aiModel: newModel, updatedAt: new Date().toISOString() });
 
     res.json({ aiModel: newModel });
-});
+}));
 
 // ============ 2FA VERIFICATION (LOGIN STEP 2) ============
 
-app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
+app.post('/api/login/verify-2fa', totpLimiter, asyncHandler(async (req, res) => {
     const { tempToken, totpCode } = req.body;
 
     if (!tempToken || !totpCode || typeof tempToken !== 'string' || typeof totpCode !== 'string') {
@@ -1147,7 +1150,7 @@ app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
             res.json({ message: 'Login successful', user: userData });
         });
     });
-});
+}));
 
 // ============ USER SELF-SERVICE EMAIL ENDPOINTS ============
 
@@ -1172,7 +1175,7 @@ app.get('/api/user/email', requireAuth, (req, res) => {
 });
 
 // Update current user's email
-app.put('/api/user/email', requireAuth, async (req, res) => {
+app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
     const { email } = req.body;
 
     if (email === undefined) {
@@ -1204,7 +1207,7 @@ app.put('/api/user/email', requireAuth, async (req, res) => {
     }
     const maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
     res.json({ message: 'Email updated', hasEmail: true, maskedEmail });
-});
+}));
 
 // ============ TOTP 2FA ENDPOINTS ============
 
@@ -1217,7 +1220,7 @@ app.get('/api/user/2fa/status', requireAuth, (req, res) => {
 });
 
 // Start 2FA setup - generate secret and QR code
-app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
+app.post('/api/user/2fa/setup', requireAuth, asyncHandler(async (req, res) => {
     if (req.user.totpEnabled) {
         return res.status(400).json({ message: 'Two-factor authentication is already enabled. Disable it first before setting up again.' });
     }
@@ -1236,10 +1239,10 @@ app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
         console.error('Error generating QR code:', error);
         res.status(500).json({ message: 'Failed to setup 2FA' });
     }
-});
+}));
 
 // Verify 2FA setup - enable 2FA and generate backup codes
-app.post('/api/user/2fa/verify', requireAuth, async (req, res) => {
+app.post('/api/user/2fa/verify', requireAuth, asyncHandler(async (req, res) => {
     const { totpCode } = req.body;
 
     if (!totpCode || typeof totpCode !== 'string') {
@@ -1281,10 +1284,10 @@ app.post('/api/user/2fa/verify', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { totpEnabled: true, backupCodes: hashedCodes, updatedAt: new Date().toISOString() });
 
     res.json({ message: '2FA enabled successfully', backupCodes });
-});
+}));
 
 // Disable 2FA
-app.post('/api/user/2fa/disable', requireAuth, async (req, res) => {
+app.post('/api/user/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
     const { totpCode } = req.body;
 
     if (!totpCode || typeof totpCode !== 'string') {
@@ -1316,7 +1319,7 @@ app.post('/api/user/2fa/disable', requireAuth, async (req, res) => {
     await db.updateUser(req.user.id, { totpSecret: null, totpEnabled: false, backupCodes: [], updatedAt: new Date().toISOString() });
 
     res.json({ message: '2FA disabled successfully' });
-});
+}));
 
 // Logout endpoint
 app.post('/api/logout', (req, res) => {
@@ -1325,7 +1328,7 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Get all entries for current user
-app.get('/api/entries', requireAuth, async (req, res) => {
+app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     const viewMode = req.query.viewMode || 'individual';
     let userEntries;
 
@@ -1348,7 +1351,7 @@ app.get('/api/entries', requireAuth, async (req, res) => {
     }
 
     res.json(userEntries);
-});
+}));
 
 // Entry field validation constants
 const VALID_ENTRY_TYPES = ['income', 'expense'];
@@ -1356,7 +1359,7 @@ const VALID_TAGS = ['food', 'groceries', 'transport', 'travel', 'entertainment',
 const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Add new entry
-app.post('/api/entries', requireAuth, async (req, res) => {
+app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
     if (!month || !type || !amount || !description
@@ -1402,10 +1405,10 @@ app.post('/api/entries', requireAuth, async (req, res) => {
     });
 
     res.status(201).json(newEntry);
-});
+}));
 
 // Update entry - ensure user owns the entry
-app.put('/api/entries/:id', requireAuth, async (req, res) => {
+app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
     const existing = await db.getEntryByIdAndUser(id, req.user.id);
 
@@ -1457,10 +1460,10 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
     });
 
     res.json(updated);
-});
+}));
 
 // Delete entry - ensure user owns the entry
-app.delete('/api/entries/:id', requireAuth, async (req, res) => {
+app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
     const deleted = await db.deleteEntry(id, req.user.id);
 
@@ -1469,12 +1472,12 @@ app.delete('/api/entries/:id', requireAuth, async (req, res) => {
     }
 
     res.json({ message: 'Entry deleted successfully' });
-});
+}));
 
 // ============ ADMIN ENDPOINTS ============
 
 // Get all users (admin only)
-app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const allUsers = await db.getAllUsers();
     const entriesCountByUserId = await db.getEntriesCountByUser();
 
@@ -1506,10 +1509,10 @@ app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
         return userData;
     });
     res.json(sanitizedUsers);
-});
+}));
 
 // Create user (admin only)
-app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { username, password, role } = req.body;
 
     if (!username || !password) {
@@ -1546,10 +1549,10 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: 'Failed to create user' });
     }
-});
+}));
 
 // Update user (admin only)
-app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+app.put('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id);
     const user = await db.findUserById(userId);
 
@@ -1599,10 +1602,10 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
         updatedAt: updated.updatedAt,
         isActive: updated.isActive
     });
-});
+}));
 
 // Delete user (admin only)
-app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id);
     const user = await db.findUserById(userId);
 
@@ -1632,12 +1635,12 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) =
     await db.deleteUser(userId);
 
     res.json({ message: 'User deleted successfully' });
-});
+}));
 
 // ============ COUPLE MANAGEMENT ENDPOINTS ============
 
 // Get all couples (admin only)
-app.get('/api/admin/couples', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/admin/couples', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const allUsers = await db.getAllUsers();
     const couples = [];
     const processedIds = new Set();
@@ -1660,10 +1663,10 @@ app.get('/api/admin/couples', requireAuth, requireAdmin, async (req, res) => {
     });
 
     res.json({ couples });
-});
+}));
 
 // Link two users as a couple (admin only)
-app.post('/api/admin/couples/link', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/couples/link', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId1, userId2 } = req.body;
 
     if (!userId1 || !userId2) {
@@ -1683,10 +1686,10 @@ app.post('/api/admin/couples/link', requireAuth, requireAdmin, async (req, res) 
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
-});
+}));
 
 // Unlink a couple (admin only)
-app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.body;
 
     if (!userId) {
@@ -1702,7 +1705,7 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, async (req, res
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
-});
+}));
 
 // ============ INVITE CODE ENDPOINTS ============
 
@@ -1725,7 +1728,7 @@ app.get('/api/paypal/config', (req, res) => {
 });
 
 // POST /api/paypal/create-order — public, rate-limited, creates a PayPal order
-app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
+app.post('/api/paypal/create-order', paypalOrderLimiter, asyncHandler(async (req, res) => {
     if (!ordersController) {
         return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
@@ -1762,10 +1765,10 @@ app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
         console.error('Error creating PayPal order:', error.message || error);
         res.status(500).json({ message: 'Failed to create PayPal order' });
     }
-});
+}));
 
 // POST /api/paypal/capture-order/:orderId — public, rate-limited, captures a PayPal order after approval
-app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, res) => {
+app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, asyncHandler(async (req, res) => {
     if (!ordersController) {
         return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
@@ -1816,10 +1819,10 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
             res.status(500).json({ message: 'Failed to capture payment' });
         }
     }
-});
+}));
 
 // Generate a new invite code (admin only)
-app.post('/api/admin/invite-codes', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/invite-codes', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     try {
         const inviteCode = await createInviteCodeHelper(req.user.id);
         res.status(201).json({ code: inviteCode.code, createdAt: inviteCode.createdAt });
@@ -1827,10 +1830,10 @@ app.post('/api/admin/invite-codes', requireAuth, requireAdmin, async (req, res) 
         console.error('Error generating invite code:', error);
         res.status(500).json({ message: 'Failed to generate invite code' });
     }
-});
+}));
 
 // List all invite codes (admin only)
-app.get('/api/admin/invite-codes', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/admin/invite-codes', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const allCodes = await db.getAllInviteCodes();
     const allUsers = await db.getAllUsers();
     const usersById = {};
@@ -1854,10 +1857,10 @@ app.get('/api/admin/invite-codes', requireAuth, requireAdmin, async (req, res) =
         };
     });
     res.json(codesWithDetails);
-});
+}));
 
 // Delete an unused invite code (admin only)
-app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const code = req.params.code.toUpperCase();
     const ic = await db.findInviteCode(code);
 
@@ -1870,7 +1873,7 @@ app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, async (re
 
     await db.deleteInviteCode(code);
     res.json({ message: 'Invite code deleted' });
-});
+}));
 
 // Serve the main application
 app.get('/', (req, res) => {
@@ -2549,7 +2552,7 @@ async function executeTool(name, userId, args) {
 // AI Chat endpoint
 const MAX_CHAT_MESSAGE_LENGTH = 8000;
 
-app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
+app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, res) => {
     const { messages: clientMessages, message: rawMessage } = req.body;
 
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim()) {
@@ -2859,7 +2862,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.status(500).json({ error: 'generic' });
     }
-});
+}));
 
 // Confirm a pending AI edit via UI button
 const editActionLimiter = rateLimit({
@@ -2871,7 +2874,7 @@ const editActionLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
-app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, async (req, res) => {
+app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const allPending = pendingEdits.get(userId);
 
@@ -2910,7 +2913,7 @@ app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, async (req, res
     }
 
     res.json(result);
-});
+}));
 
 // Cancel a pending AI edit via UI button
 app.post('/api/ai/cancel-edit', requireAuth, editActionLimiter, (req, res) => {

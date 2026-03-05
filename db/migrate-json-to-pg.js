@@ -122,11 +122,15 @@ async function migrate() {
         }
         console.log('Partner relationships set');
 
-        // Set user ID sequence
+        // Set user ID sequence (use GREATEST to avoid regressing on idempotent re-runs)
         if (users.length > 0) {
-            const maxUserId = Math.max(...users.map(u => u.id));
-            await client.query(`SELECT setval('users_id_seq', $1)`, [maxUserId]);
-            console.log(`Set users_id_seq to ${maxUserId}`);
+            const maxJsonUserId = Math.max(...users.map(u => u.id));
+            const { rows: seqRows } = await client.query(
+                `SELECT GREATEST(COALESCE(MAX(id), 0), $1) AS seq_max FROM users`,
+                [maxJsonUserId]
+            );
+            await client.query(`SELECT setval('users_id_seq', $1, true)`, [seqRows[0].seq_max]);
+            console.log(`Set users_id_seq to ${seqRows[0].seq_max}`);
         }
 
         // Insert invite codes
@@ -193,11 +197,15 @@ async function migrate() {
         }
         console.log(`Entries: ${entriesInserted} inserted (${entries.length - entriesInserted} already existed)`);
 
-        // Set entries ID sequence
+        // Set entries ID sequence (use GREATEST to avoid regressing on idempotent re-runs)
         if (entries.length > 0) {
-            const maxEntryId = Math.max(...entries.map(e => e.id));
-            await client.query(`SELECT setval('entries_id_seq', $1)`, [maxEntryId]);
-            console.log(`Set entries_id_seq to ${maxEntryId}`);
+            const maxJsonEntryId = Math.max(...entries.map(e => e.id));
+            const { rows: entrySeqRows } = await client.query(
+                `SELECT GREATEST(COALESCE(MAX(id), 0), $1) AS seq_max FROM entries`,
+                [maxJsonEntryId]
+            );
+            await client.query(`SELECT setval('entries_id_seq', $1, true)`, [entrySeqRows[0].seq_max]);
+            console.log(`Set entries_id_seq to ${entrySeqRows[0].seq_max}`);
         }
 
         // ── Verification ─────────────────────────────────────────────
