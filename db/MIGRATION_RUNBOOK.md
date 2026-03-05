@@ -87,6 +87,7 @@ npm install pg
 Add to your systemd service file (`/etc/systemd/system/asset-management.service`):
 
 ```ini
+Environment=NODE_ENV=production
 Environment=PGHOST=localhost
 Environment=PGDATABASE=asset_management
 Environment=PGUSER=asset_app
