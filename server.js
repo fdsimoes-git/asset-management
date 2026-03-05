@@ -8,6 +8,8 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const db = require('./db/queries');
+const { testConnection: testDbConnection } = require('./db/pool');
 const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
@@ -19,6 +21,9 @@ const otplib = require('otplib');
 const QRCode = require('qrcode');
 
 const app = express();
+
+// Wrap async route handlers so rejected promises are forwarded to Express error middleware
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ============ SMTP CONFIGURATION ============
 
@@ -124,9 +129,6 @@ function resolveModel(user, provider, usage) {
     return usage === 'chat' ? GEMINI_CHAT_MODEL : GEMINI_MODEL;
 }
 
-// Data file path
-const DATA_FILE = path.join(__dirname, 'data', 'entries.json');
-
 const ENCRYPTION_KEY = config.encryptionKey;
 const ALGORITHM = 'aes-256-cbc';
 
@@ -164,102 +166,7 @@ function decryptString(encryptedData, iv) {
     return decrypted;
 }
 
-// Initialize entries from file or create empty array
-let entries = [];
-let nextId = 1;
-
-// Load entries from file
-function loadEntries() {
-    try {
-        if (fs.existsSync(DATA_FILE)) {
-            const data = fs.readFileSync(DATA_FILE, 'utf8');
-            const parsed = JSON.parse(data);
-            if (parsed.iv && parsed.encryptedData) {
-                entries = decryptData(parsed.encryptedData, parsed.iv);
-            } else {
-                entries = parsed;
-            }
-            // Set nextId to the highest id + 1
-            nextId = Math.max(...entries.map(e => e.id), 0) + 1;
-        }
-    } catch (error) {
-        console.error('Error loading entries:', error);
-        entries = [];
-    }
-}
-
-// Save entries to file
-function saveEntries() {
-    try {
-        // Ensure data directory exists
-        const dataDir = path.dirname(DATA_FILE);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        const encrypted = encryptData(entries);
-        fs.writeFileSync(DATA_FILE, JSON.stringify(encrypted, null, 2));
-    } catch (error) {
-        console.error('Error saving entries:', error);
-    }
-}
-
-// ============ USER STORAGE SYSTEM ============
-
-// Users file path
-const USERS_FILE = path.join(__dirname, 'data', 'users.json');
-
-// Initialize users storage
-let users = [];
-let nextUserId = 1;
-let inviteCodes = [];
-let paypalOrders = [];
-
-// Load users from file
-function loadUsers() {
-    try {
-        if (fs.existsSync(USERS_FILE)) {
-            const data = fs.readFileSync(USERS_FILE, 'utf8');
-            const parsed = JSON.parse(data);
-            if (parsed.iv && parsed.encryptedData) {
-                const decrypted = decryptData(parsed.encryptedData, parsed.iv);
-                users = decrypted.users || [];
-                nextUserId = decrypted.nextUserId || 1;
-                inviteCodes = decrypted.inviteCodes || [];
-                // Migration: pixCharges → paypalOrders
-                paypalOrders = decrypted.paypalOrders || decrypted.pixCharges || [];
-            }
-        }
-    } catch (error) {
-        console.error('Error loading users:', error);
-        users = [];
-        inviteCodes = [];
-        paypalOrders = [];
-    }
-}
-
-// Save users to file
-function saveUsers() {
-    try {
-        const dataDir = path.dirname(USERS_FILE);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        const encrypted = encryptData({ users, nextUserId, inviteCodes, paypalOrders });
-        fs.writeFileSync(USERS_FILE, JSON.stringify(encrypted, null, 2));
-    } catch (error) {
-        console.error('Error saving users:', error);
-    }
-}
-
-// Find user by username (case-insensitive)
-function findUserByUsername(username) {
-    return users.find(u => u.username.toLowerCase() === username.toLowerCase());
-}
-
-// Find user by ID
-function findUserById(id) {
-    return users.find(u => u.id === id);
-}
+// ============ USER STORAGE SYSTEM (PostgreSQL) ============
 
 // ============ BRUTE-FORCE PROTECTION ============
 
@@ -422,117 +329,40 @@ function generateInviteCode() {
     return crypto.randomBytes(6).toString('base64url').substring(0, 8).toUpperCase();
 }
 
-function findInviteCode(code) {
-    return inviteCodes.find(ic => ic.code === code.toUpperCase());
-}
-
-function createInviteCode(adminUserId) {
-    let code;
-    do {
-        code = generateInviteCode();
-    } while (findInviteCode(code));
-
-    const inviteCode = {
-        code,
-        createdAt: new Date().toISOString(),
-        createdBy: adminUserId,
-        isUsed: false,
-        usedAt: null,
-        usedBy: null
-    };
-
-    inviteCodes.push(inviteCode);
-    saveUsers();
-    return inviteCode;
-}
-
-function consumeInviteCode(code, userId) {
-    const invite = findInviteCode(code);
-    if (!invite || invite.isUsed) return false;
-    invite.isUsed = true;
-    invite.usedAt = new Date().toISOString();
-    invite.usedBy = userId;
-    saveUsers();
-    return true;
+async function createInviteCodeHelper(createdBy) {
+    for (let attempts = 0; attempts < 10; attempts++) {
+        const code = generateInviteCode();
+        const created = await db.createInviteCodeIfNotExists(code, createdBy);
+        if (created) return created;
+    }
+    throw new Error('Failed to generate unique invite code after 10 attempts');
 }
 
 // Migration: Create initial admin user from env vars if no users exist
 async function migrateInitialAdmin() {
-    if (users.length === 0) {
+    const allUsers = await db.getAllUsers();
+    if (allUsers.length === 0) {
         const adminUsername = config.adminUsername;
         const adminPasswordHash = config.adminPasswordHash;
 
         if (adminPasswordHash) {
-            users.push({
-                id: nextUserId++,
+            await db.createUser({
                 username: adminUsername,
                 passwordHash: adminPasswordHash,
                 role: 'admin',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
                 isActive: true
             });
-            saveUsers();
             console.log(`Migrated admin user: ${adminUsername}`);
         }
     }
 }
 
-// Migration: Add userId to existing entries (assign to first admin)
-function migrateExistingEntries() {
-    const adminUser = users.find(u => u.role === 'admin');
-    if (adminUser) {
-        let migrated = false;
-        entries.forEach(entry => {
-            if (!entry.userId) {
-                entry.userId = adminUser.id;
-                migrated = true;
-            }
-        });
-        if (migrated) {
-            saveEntries();
-            console.log('Migrated existing entries to admin user');
-        }
-    }
-}
-
-// Migration: Add partnerId field to existing users
-function migrateUsersForCouples() {
-    let migrated = false;
-    users.forEach(user => {
-        if (user.partnerId === undefined) {
-            user.partnerId = null;
-            user.partnerLinkedAt = null;
-            migrated = true;
-        }
-    });
-    if (migrated) {
-        saveUsers();
-        console.log('Migrated users for couples feature');
-    }
-}
-
-// Migration: Add isCoupleExpense field to existing entries
-function migrateEntriesForCouples() {
-    let migrated = false;
-    entries.forEach(entry => {
-        if (entry.isCoupleExpense === undefined) {
-            entry.isCoupleExpense = false;
-            migrated = true;
-        }
-    });
-    if (migrated) {
-        saveEntries();
-        console.log('Migrated entries for couples feature');
-    }
-}
-
 // ============ COUPLE MANAGEMENT HELPERS ============
 
-// Link two users as a couple
-function linkCouple(userId1, userId2) {
-    const user1 = findUserById(userId1);
-    const user2 = findUserById(userId2);
+// Link two users as a couple (validation wrapper around db.linkCouple)
+async function linkCouple(userId1, userId2) {
+    const user1 = await db.findUserById(userId1);
+    const user2 = await db.findUserById(userId2);
 
     if (!user1 || !user2) {
         throw new Error('One or both users not found');
@@ -551,106 +381,13 @@ function linkCouple(userId1, userId2) {
     }
 
     const now = new Date().toISOString();
+    await db.linkCouple(userId1, userId2, now);
 
-    user1.partnerId = userId2;
-    user1.partnerLinkedAt = now;
-    user1.updatedAt = now;
-
-    user2.partnerId = userId1;
-    user2.partnerLinkedAt = now;
-    user2.updatedAt = now;
-
-    saveUsers();
-
-    return { user1, user2, linkedAt: now };
+    // Reload users for the response
+    const updated1 = await db.findUserById(userId1);
+    const updated2 = await db.findUserById(userId2);
+    return { user1: updated1, user2: updated2, linkedAt: now };
 }
-
-// Unlink a couple (idempotent - safe to call even if user has no partner)
-function unlinkCouple(userId) {
-    const user = findUserById(userId);
-    const now = new Date().toISOString();
-    const affectedUsers = [];
-
-    // Make unlinkCouple idempotent so it can be safely called from
-    // user deletion/deactivation flows even if the user is already
-    // unlinked or missing.
-    if (!user || !user.partnerId) {
-        return affectedUsers;
-    }
-
-    const partner = findUserById(user.partnerId);
-
-    affectedUsers.push(user.id);
-
-    user.partnerId = null;
-    user.partnerLinkedAt = null;
-    user.updatedAt = now;
-
-    if (partner) {
-        partner.partnerId = null;
-        partner.partnerLinkedAt = null;
-        partner.updatedAt = now;
-        affectedUsers.push(partner.id);
-    }
-
-    saveUsers();
-
-    return affectedUsers;
-}
-
-// Load data on startup
-loadUsers();
-loadEntries();
-
-// Run migrations
-migrateInitialAdmin();
-migrateExistingEntries();
-migrateUsersForCouples();
-migrateEntriesForCouples();
-
-// Migration: Add email field to existing users
-function migrateUsersForEmail() {
-    let migrated = false;
-    users.forEach(user => {
-        if (user.email === undefined) {
-            user.email = null;
-            migrated = true;
-        }
-    });
-    if (migrated) {
-        saveUsers();
-        console.log('Migrated users for email field');
-    }
-}
-migrateUsersForEmail();
-
-// Migration: Add TOTP 2FA fields to existing users
-function migrateUsersForTOTP() {
-    let migrated = false;
-    users.forEach(user => {
-        let userUpdated = false;
-        if (user.totpSecret === undefined) {
-            user.totpSecret = null;
-            userUpdated = true;
-        }
-        if (user.totpEnabled === undefined) {
-            user.totpEnabled = false;
-            userUpdated = true;
-        }
-        if (user.backupCodes === undefined) {
-            user.backupCodes = [];
-            userUpdated = true;
-        }
-        if (userUpdated) {
-            migrated = true;
-        }
-    });
-    if (migrated) {
-        saveUsers();
-        console.log('Migrated users for TOTP 2FA');
-    }
-}
-migrateUsersForTOTP();
 
 // ============ PENDING 2FA SESSIONS ============
 
@@ -673,11 +410,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is", "https://*.paypal.com"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cloud.umami.is", "https://*.paypal.com", "https://static.cloudflareinsights.com"],
             scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net", "https://*.paypal.com"],
+            connectSrc: ["'self'", "https://cloud.umami.is", "https://api-gateway.umami.dev", "https://cdn.jsdelivr.net", "https://*.paypal.com", "https://cloudflareinsights.com"],
             imgSrc: ["'self'", "data:", "https://*.paypal.com", "https://*.paypalobjects.com"],
             frameSrc: ["https://*.paypal.com"],
             objectSrc: ["'none'"],
@@ -700,7 +437,7 @@ app.use((req, res, next) => {
     const blocked = [
         '/server.js', '/config.js', '/package.json', '/package-lock.json',
         '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js', '/capacitor.config.json',
-        '/data', '/ssl', '/certs', '/node_modules', '/ios', '/www'
+        '/data', '/db', '/ssl', '/certs', '/node_modules', '/ios', '/www'
     ];
     if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
         return res.status(404).end();
@@ -741,7 +478,7 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true,
+        secure: process.env.NODE_ENV !== 'development',
         httpOnly: true,
         sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
@@ -827,16 +564,78 @@ const generalLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 
-// Authentication middleware
-const requireAuth = (req, res, next) => {
+// Authentication middleware with short-lived user cache to avoid DB hit on every request
+const userCache = new Map();
+const USER_CACHE_TTL = 5000; // 5 seconds
+
+function getCachedUser(id) {
+    const key = Number(id);
+    const cached = userCache.get(key);
+    if (!cached) return undefined;
+    if (Date.now() - cached.ts < USER_CACHE_TTL) return cached.user;
+    userCache.delete(key);
+    return undefined;
+}
+
+function setCachedUser(user) {
+    userCache.set(Number(user.id), { user, ts: Date.now() });
+}
+
+function invalidateCachedUser(id) {
+    userCache.delete(Number(id));
+}
+
+// Auto-invalidate user cache on writes
+const _origUpdateUser = db.updateUser;
+db.updateUser = async function(userId, ...args) {
+    const result = await _origUpdateUser.call(this, userId, ...args);
+    invalidateCachedUser(userId);
+    return result;
+};
+const _origDeleteUser = db.deleteUser;
+db.deleteUser = async function(userId, ...args) {
+    invalidateCachedUser(userId);
+    return _origDeleteUser.call(this, userId, ...args);
+};
+const _origLinkCouple = db.linkCouple;
+db.linkCouple = async function(id1, id2, ...args) {
+    const result = await _origLinkCouple.call(this, id1, id2, ...args);
+    invalidateCachedUser(id1);
+    invalidateCachedUser(id2);
+    return result;
+};
+const _origUnlinkCouple = db.unlinkCouple;
+db.unlinkCouple = async function(userId, ...args) {
+    const result = await _origUnlinkCouple.call(this, userId, ...args);
+    invalidateCachedUser(userId);
+    // Also invalidate the partner — unlinkCouple clears both sides
+    for (const [, cached] of userCache) {
+        if (cached.user && cached.user.partnerId === userId) invalidateCachedUser(cached.user.id);
+    }
+    return result;
+};
+
+const requireAuth = async (req, res, next) => {
     if (req.session && req.session.user && req.session.user.id) {
-        const user = findUserById(req.session.user.id);
-        if (user && user.isActive) {
-            req.user = user;
-            return next();
+        try {
+            const userId = req.session.user.id;
+            let user = getCachedUser(userId);
+            if (user === undefined) {
+                user = await db.findUserById(userId);
+                if (user) setCachedUser(user);
+            }
+            if (user && user.isActive) {
+                req.user = user;
+                return next();
+            }
+            // User not found or inactive — session is genuinely invalid
+            req.session.destroy();
+            return res.status(401).json({ message: 'Session invalid. Please log in again.' });
+        } catch (err) {
+            // Transient DB error — don't destroy the session, just fail the request
+            console.error('Auth middleware DB error:', err.message);
+            return res.status(503).json({ message: 'Service temporarily unavailable. Please try again.' });
         }
-        req.session.destroy();
-        return res.status(401).json({ message: 'Session invalid. Please log in again.' });
     }
     res.status(401).json({ message: 'Unauthorized' });
 };
@@ -850,7 +649,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Login endpoint
-app.post('/api/login', loginLimiter, async (req, res) => {
+app.post('/api/login', loginLimiter, asyncHandler(async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
@@ -863,7 +662,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const user = findUserByUsername(username);
+    const user = await db.findUserByUsername(username);
 
     if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
         resetFailedLogins(username);
@@ -899,10 +698,10 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         recordFailedLogin(username);
         res.status(401).json({ message: 'Invalid credentials' });
     }
-});
+}));
 
 // Registration endpoint
-app.post('/api/register', registerLimiter, async (req, res) => {
+app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
     const { username, email, password, confirmPassword, inviteCode } = req.body;
 
     // Validation
@@ -923,7 +722,7 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     // Validate invite code before expensive operations
-    const invite = findInviteCode(inviteCode);
+    const invite = await db.findInviteCode(inviteCode);
     if (!invite || invite.isUsed) {
         return res.status(400).json({ message: 'Invalid or expired invite code' });
     }
@@ -946,38 +745,27 @@ app.post('/api/register', registerLimiter, async (req, res) => {
     }
 
     // Check if username already exists
-    if (findUserByUsername(username)) {
+    if (await db.findUserByUsername(username)) {
         return res.status(409).json({ message: 'Username already taken' });
     }
 
     try {
-        // Consume invite code atomically before async bcrypt to prevent race conditions
-        const inviteConsumed = consumeInviteCode(inviteCode, null);
-        if (!inviteConsumed) {
-            return res.status(409).json({ message: 'Invalid or already used invite code' });
-        }
-
         const passwordHash = await bcrypt.hash(password, 10);
-        const newUser = {
-            id: nextUserId++,
+        // Atomic transaction: consume invite code + create user + set used_by
+        const newUser = await db.registerWithInviteCode(inviteCode, {
             username: username,
             email: encryptString(email),
             passwordHash: passwordHash,
             role: 'user',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
             isActive: true,
             totpSecret: null,
             totpEnabled: false,
             backupCodes: []
-        };
+        });
 
-        users.push(newUser);
-
-        // Update the invite code with the actual user ID
-        const usedInvite = findInviteCode(inviteCode);
-        if (usedInvite) usedInvite.usedBy = newUser.id;
-        saveUsers();
+        if (!newUser) {
+            return res.status(409).json({ message: 'Invalid or already used invite code' });
+        }
 
         res.status(201).json({
             message: 'Registration successful',
@@ -989,19 +777,14 @@ app.post('/api/register', registerLimiter, async (req, res) => {
         });
     } catch (error) {
         // Rollback: unconsume the invite code if registration failed after consumption
-        const burnedInvite = findInviteCode(inviteCode);
-        if (burnedInvite && burnedInvite.isUsed && burnedInvite.usedBy === null) {
-            burnedInvite.isUsed = false;
-            burnedInvite.usedAt = null;
-            saveUsers();
-        }
+        await db.rollbackInviteCode(inviteCode);
         console.error('Registration error:', error);
         res.status(500).json({ message: 'Registration failed' });
     }
-});
+}));
 
 // Forgot password endpoint
-app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
+app.post('/api/forgot-password', forgotPasswordLimiter, asyncHandler(async (req, res) => {
     const { username } = req.body;
 
     if (!username || typeof username !== 'string') {
@@ -1015,9 +798,9 @@ app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
     // to prevent timing-based user enumeration
     res.json({ message: genericMessage });
 
-    setImmediate(() => {
+    setImmediate(async () => {
         try {
-            const user = findUserByUsername(username);
+            const user = await db.findUserByUsername(username);
             if (user && user.isActive && user.email && smtpTransport) {
                 const email = decryptString(user.email.encryptedData, user.email.iv);
                 const code = createResetCode(user.id);
@@ -1033,10 +816,10 @@ app.post('/api/forgot-password', forgotPasswordLimiter, async (req, res) => {
             console.error('Error in forgot-password flow:', error.message);
         }
     });
-});
+}));
 
 // Reset password endpoint
-app.post('/api/reset-password', loginLimiter, async (req, res) => {
+app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
     const { username, code, newPassword } = req.body;
 
     if (!username || !code || !newPassword
@@ -1050,7 +833,7 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
 
     // Validate username and active status before consuming the code
     // to prevent an attacker from burning valid codes via wrong usernames
-    const user = findUserByUsername(username);
+    const user = await db.findUserByUsername(username);
     if (!user) {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
@@ -1070,9 +853,10 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
     }
 
     try {
-        user.passwordHash = await bcrypt.hash(newPassword, 10);
-        user.updatedAt = new Date().toISOString();
-        saveUsers();
+        await db.updateUser(user.id, {
+            passwordHash: await bcrypt.hash(newPassword, 10),
+            updatedAt: new Date().toISOString()
+        });
 
         // Clear brute-force lockouts since user proved identity via email
         resetFailedLogins(username);
@@ -1083,10 +867,10 @@ app.post('/api/reset-password', loginLimiter, async (req, res) => {
         console.error('Error resetting password:', error);
         res.status(500).json({ message: 'Failed to reset password' });
     }
-});
+}));
 
 // Get current user info
-app.get('/api/user', requireAuth, (req, res) => {
+app.get('/api/user', requireAuth, asyncHandler(async (req, res) => {
     const response = {
         id: req.user.id,
         username: req.user.username,
@@ -1107,7 +891,7 @@ app.get('/api/user', requireAuth, (req, res) => {
 
     // Include partner info only if partner exists and is mutually linked
     if (req.user.partnerId) {
-        const partner = findUserById(req.user.partnerId);
+        const partner = await db.findUserById(req.user.partnerId);
         if (partner && partner.isActive && partner.partnerId === req.user.id) {
             response.partnerId = req.user.partnerId;
             response.partnerLinkedAt = req.user.partnerLinkedAt;
@@ -1116,10 +900,10 @@ app.get('/api/user', requireAuth, (req, res) => {
     }
 
     res.json(response);
-});
+}));
 
 // Save Gemini API key (encrypted)
-app.post('/api/user/gemini-key', requireAuth, (req, res) => {
+app.post('/api/user/gemini-key', requireAuth, asyncHandler(async (req, res) => {
     const { geminiApiKey } = req.body;
 
     if (!geminiApiKey || typeof geminiApiKey !== 'string') {
@@ -1131,24 +915,20 @@ app.post('/api/user/gemini-key', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'API key must be between 30 and 60 characters.' });
     }
 
-    req.user.geminiApiKey = encryptString(trimmed);
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { geminiApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Gemini API key saved successfully.', hasGeminiApiKey: true, hasGeminiKeyAvailable: true });
-});
+}));
 
 // Remove saved Gemini API key
-app.delete('/api/user/gemini-key', requireAuth, (req, res) => {
-    delete req.user.geminiApiKey;
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+app.delete('/api/user/gemini-key', requireAuth, asyncHandler(async (req, res) => {
+    await db.updateUser(req.user.id, { geminiApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Gemini API key removed.', hasGeminiApiKey: false, hasGeminiKeyAvailable: !!config.geminiApiKey });
-});
+}));
 
 // Save OpenAI API key (encrypted)
-app.post('/api/user/openai-key', requireAuth, (req, res) => {
+app.post('/api/user/openai-key', requireAuth, asyncHandler(async (req, res) => {
     const { openaiApiKey } = req.body;
 
     if (!openaiApiKey || typeof openaiApiKey !== 'string') {
@@ -1160,24 +940,20 @@ app.post('/api/user/openai-key', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
     }
 
-    req.user.openaiApiKey = encryptString(trimmed);
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { openaiApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'OpenAI API key saved successfully.', hasOpenaiApiKey: true, hasOpenaiKeyAvailable: true });
-});
+}));
 
 // Remove saved OpenAI API key
-app.delete('/api/user/openai-key', requireAuth, (req, res) => {
-    delete req.user.openaiApiKey;
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+app.delete('/api/user/openai-key', requireAuth, asyncHandler(async (req, res) => {
+    await db.updateUser(req.user.id, { openaiApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'OpenAI API key removed.', hasOpenaiApiKey: false, hasOpenaiKeyAvailable: !!config.openaiApiKey });
-});
+}));
 
 // Save Anthropic API key (encrypted)
-app.post('/api/user/anthropic-key', requireAuth, (req, res) => {
+app.post('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) => {
     const { anthropicApiKey } = req.body;
 
     if (!anthropicApiKey || typeof anthropicApiKey !== 'string') {
@@ -1189,40 +965,33 @@ app.post('/api/user/anthropic-key', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'API key must be between 30 and 200 characters.' });
     }
 
-    req.user.anthropicApiKey = encryptString(trimmed);
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { anthropicApiKey: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Anthropic API key saved successfully.', hasAnthropicApiKey: true, hasAnthropicKeyAvailable: true });
-});
+}));
 
 // Remove saved Anthropic API key
-app.delete('/api/user/anthropic-key', requireAuth, (req, res) => {
-    delete req.user.anthropicApiKey;
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+app.delete('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) => {
+    await db.updateUser(req.user.id, { anthropicApiKey: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'Anthropic API key removed.', hasAnthropicApiKey: false, hasAnthropicKeyAvailable: !!config.anthropicApiKey });
-});
+}));
 
 // Save AI provider preference
-app.put('/api/user/ai-provider', requireAuth, (req, res) => {
+app.put('/api/user/ai-provider', requireAuth, asyncHandler(async (req, res) => {
     const { aiProvider } = req.body;
 
     if (!aiProvider || !ALLOWED_AI_PROVIDERS.includes(aiProvider)) {
         return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", or "anthropic".' });
     }
 
-    req.user.aiProvider = aiProvider;
-    req.user.aiModel = null;
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { aiProvider, aiModel: null, updatedAt: new Date().toISOString() });
 
     res.json({ message: 'AI provider saved.', aiProvider, aiModel: null });
-});
+}));
 
 // List available AI models for the user's current provider
-app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
+app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req, res) => {
     const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
@@ -1321,21 +1090,22 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, async (req, res) => {
         }
         res.status(500).json({ message: 'Failed to fetch model list.' });
     }
-});
+}));
 
 // Save AI model preference
-app.put('/api/user/ai-model', requireAuth, (req, res) => {
+app.put('/api/user/ai-model', requireAuth, asyncHandler(async (req, res) => {
     const { aiModel: rawAiModel } = req.body;
+    let newModel = null;
 
     if (rawAiModel === null || rawAiModel === undefined || rawAiModel === '') {
-        req.user.aiModel = null;
+        newModel = null;
     } else {
         if (typeof rawAiModel !== 'string') {
             return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
         }
         const aiModel = rawAiModel.trim();
         if (aiModel === '') {
-            req.user.aiModel = null;
+            newModel = null;
         } else if (aiModel.length > 100) {
             return res.status(400).json({ message: 'aiModel must be a string (max 100 chars) or empty to clear.' });
         } else {
@@ -1344,19 +1114,18 @@ app.put('/api/user/ai-model', requireAuth, (req, res) => {
             if (!modelMatchesProvider(aiModel, provider)) {
                 return res.status(400).json({ message: `Model "${aiModel}" does not match the active provider (${provider}).` });
             }
-            req.user.aiModel = aiModel;
+            newModel = aiModel;
         }
     }
 
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { aiModel: newModel, updatedAt: new Date().toISOString() });
 
-    res.json({ aiModel: req.user.aiModel || null });
-});
+    res.json({ aiModel: newModel });
+}));
 
 // ============ 2FA VERIFICATION (LOGIN STEP 2) ============
 
-app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
+app.post('/api/login/verify-2fa', totpLimiter, asyncHandler(async (req, res) => {
     const { tempToken, totpCode } = req.body;
 
     if (!tempToken || !totpCode || typeof tempToken !== 'string' || typeof totpCode !== 'string') {
@@ -1374,7 +1143,7 @@ app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
         return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
 
-    const user = findUserById(session2FA.userId);
+    const user = await db.findUserById(session2FA.userId);
     if (!user || !user.isActive || !user.totpEnabled || !user.totpSecret) {
         pending2FASessions.delete(tempToken);
         return res.status(401).json({ message: 'Invalid session. Please log in again.' });
@@ -1404,8 +1173,9 @@ app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
         for (let i = 0; i < user.backupCodes.length; i++) {
             try {
                 if (await bcrypt.compare(code, user.backupCodes[i])) {
-                    user.backupCodes.splice(i, 1);
-                    saveUsers();
+                    const updatedCodes = [...user.backupCodes];
+                    updatedCodes.splice(i, 1);
+                    await db.updateUser(user.id, { backupCodes: updatedCodes });
                     verified = true;
                     break;
                 }
@@ -1438,7 +1208,7 @@ app.post('/api/login/verify-2fa', totpLimiter, async (req, res) => {
             res.json({ message: 'Login successful', user: userData });
         });
     });
-});
+}));
 
 // ============ USER SELF-SERVICE EMAIL ENDPOINTS ============
 
@@ -1463,7 +1233,7 @@ app.get('/api/user/email', requireAuth, (req, res) => {
 });
 
 // Update current user's email
-app.put('/api/user/email', requireAuth, (req, res) => {
+app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
     const { email } = req.body;
 
     if (email === undefined) {
@@ -1471,9 +1241,7 @@ app.put('/api/user/email', requireAuth, (req, res) => {
     }
 
     if (email === '' || email === null) {
-        req.user.email = null;
-        req.user.updatedAt = new Date().toISOString();
-        saveUsers();
+        await db.updateUser(req.user.id, { email: null, updatedAt: new Date().toISOString() });
         return res.json({ message: 'Email removed', hasEmail: false, maskedEmail: null });
     }
 
@@ -1489,17 +1257,12 @@ app.put('/api/user/email', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'Invalid email format' });
     }
 
-    req.user.email = encryptString(email);
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
-
     const parts = email.split('@');
-    if (parts.length !== 2 || !parts[0].length || !parts[1].length) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
     const maskedEmail = parts[0].charAt(0) + '***@' + parts[1];
+
+    await db.updateUser(req.user.id, { email: encryptString(email), updatedAt: new Date().toISOString() });
     res.json({ message: 'Email updated', hasEmail: true, maskedEmail });
-});
+}));
 
 // ============ TOTP 2FA ENDPOINTS ============
 
@@ -1512,7 +1275,7 @@ app.get('/api/user/2fa/status', requireAuth, (req, res) => {
 });
 
 // Start 2FA setup - generate secret and QR code
-app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
+app.post('/api/user/2fa/setup', requireAuth, asyncHandler(async (req, res) => {
     if (req.user.totpEnabled) {
         return res.status(400).json({ message: 'Two-factor authentication is already enabled. Disable it first before setting up again.' });
     }
@@ -1524,19 +1287,17 @@ app.post('/api/user/2fa/setup', requireAuth, async (req, res) => {
         const qrCode = await QRCode.toDataURL(otpauth);
 
         // Store encrypted secret but don't enable yet
-        req.user.totpSecret = encryptString(secret);
-        req.user.updatedAt = new Date().toISOString();
-        saveUsers();
+        await db.updateUser(req.user.id, { totpSecret: encryptString(secret), updatedAt: new Date().toISOString() });
 
         res.json({ secret, qrCode });
     } catch (error) {
         console.error('Error generating QR code:', error);
         res.status(500).json({ message: 'Failed to setup 2FA' });
     }
-});
+}));
 
 // Verify 2FA setup - enable 2FA and generate backup codes
-app.post('/api/user/2fa/verify', requireAuth, async (req, res) => {
+app.post('/api/user/2fa/verify', requireAuth, asyncHandler(async (req, res) => {
     const { totpCode } = req.body;
 
     if (!totpCode || typeof totpCode !== 'string') {
@@ -1575,16 +1336,13 @@ app.post('/api/user/2fa/verify', requireAuth, async (req, res) => {
         hashedCodes.push(await bcrypt.hash(code, 10));
     }
 
-    req.user.totpEnabled = true;
-    req.user.backupCodes = hashedCodes;
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { totpEnabled: true, backupCodes: hashedCodes, updatedAt: new Date().toISOString() });
 
     res.json({ message: '2FA enabled successfully', backupCodes });
-});
+}));
 
 // Disable 2FA
-app.post('/api/user/2fa/disable', requireAuth, (req, res) => {
+app.post('/api/user/2fa/disable', requireAuth, asyncHandler(async (req, res) => {
     const { totpCode } = req.body;
 
     if (!totpCode || typeof totpCode !== 'string') {
@@ -1613,14 +1371,10 @@ app.post('/api/user/2fa/disable', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'Invalid verification code' });
     }
 
-    req.user.totpSecret = null;
-    req.user.totpEnabled = false;
-    req.user.backupCodes = [];
-    req.user.updatedAt = new Date().toISOString();
-    saveUsers();
+    await db.updateUser(req.user.id, { totpSecret: null, totpEnabled: false, backupCodes: [], updatedAt: new Date().toISOString() });
 
     res.json({ message: '2FA disabled successfully' });
-});
+}));
 
 // Logout endpoint
 app.post('/api/logout', (req, res) => {
@@ -1629,14 +1383,15 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Get all entries for current user
-app.get('/api/entries', requireAuth, (req, res) => {
+app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     const viewMode = req.query.viewMode || 'individual';
+    const month = req.query.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
     let userEntries;
 
     // Validate partner relationship (used for both combined and individual views)
     let validPartner = null;
     if (req.user.partnerId) {
-        const partner = findUserById(req.user.partnerId);
+        const partner = await db.findUserById(req.user.partnerId);
         // Only treat as valid partner if partner exists, is active, and mutually linked
         if (partner && partner.isActive && partner.partnerId === req.user.id) {
             validPartner = partner;
@@ -1644,26 +1399,15 @@ app.get('/api/entries', requireAuth, (req, res) => {
     }
 
     if (viewMode === 'combined' && validPartner) {
-        // Combined view: Get couple-flagged entries from both user and partner
-        userEntries = entries.filter(entry =>
-            entry.isCoupleExpense === true &&
-            (entry.userId === req.user.id || entry.userId === validPartner.id)
-        );
+        userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'individual' && validPartner) {
-        // Individual view with valid partner: Only non-couple expenses from current user
-        userEntries = entries.filter(entry =>
-            entry.userId === req.user.id &&
-            entry.isCoupleExpense !== true
-        );
+        userEntries = await db.getIndividualEntries(req.user.id, month);
     } else {
-        // No valid partner relationship: return all entries for current user
-        userEntries = entries.filter(entry =>
-            entry.userId === req.user.id
-        );
+        userEntries = await db.getEntriesByUser(req.user.id, month);
     }
 
     res.json(userEntries);
-});
+}));
 
 // Entry field validation constants
 const VALID_ENTRY_TYPES = ['income', 'expense'];
@@ -1671,7 +1415,7 @@ const VALID_TAGS = ['food', 'groceries', 'transport', 'travel', 'entertainment',
 const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Add new entry
-app.post('/api/entries', requireAuth, (req, res) => {
+app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     const { month, type, amount, description, tags, isCoupleExpense } = req.body;
 
     if (!month || !type || !amount || !description
@@ -1688,6 +1432,11 @@ app.post('/api/entries', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
     const sanitizedTags = Array.isArray(tags)
         ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
         : [];
@@ -1695,34 +1444,31 @@ app.post('/api/entries', requireAuth, (req, res) => {
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
     if (isCoupleExpense && req.user.partnerId) {
-        const partner = findUserById(req.user.partnerId);
+        const partner = await db.findUserById(req.user.partnerId);
         if (partner && partner.isActive && partner.partnerId === req.user.id) {
             validCoupleExpense = true;
         }
     }
 
-    const newEntry = {
-        id: nextId++,
-        userId: req.user.id,  // Associate with current user
+    const newEntry = await db.createEntry({
+        userId: req.user.id,
         month,
         type,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         description: description.trim(),
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
-    };
+    });
 
-    entries.push(newEntry);
-    saveEntries();
     res.status(201).json(newEntry);
-});
+}));
 
 // Update entry - ensure user owns the entry
-app.put('/api/entries/:id', requireAuth, (req, res) => {
+app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
-    const index = entries.findIndex(entry => entry.id === id && entry.userId === req.user.id);
+    const existing = await db.getEntryByIdAndUser(id, req.user.id);
 
-    if (index === -1) {
+    if (!existing) {
         return res.status(404).json({ message: 'Entry not found' });
     }
 
@@ -1742,6 +1488,11 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
     const sanitizedTags = Array.isArray(tags)
         ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
         : [];
@@ -1749,57 +1500,48 @@ app.put('/api/entries/:id', requireAuth, (req, res) => {
     // Validate partner relationship before allowing couple expense
     let validCoupleExpense = false;
     if (isCoupleExpense && req.user.partnerId) {
-        const partner = findUserById(req.user.partnerId);
+        const partner = await db.findUserById(req.user.partnerId);
         if (partner && partner.isActive && partner.partnerId === req.user.id) {
             validCoupleExpense = true;
         }
     }
 
-    entries[index] = {
-        ...entries[index],
+    const updated = await db.updateEntry(id, req.user.id, {
         month,
         type,
-        amount: parseFloat(amount),
+        amount: parsedAmount,
         description: description.trim(),
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
-    };
+    });
 
-    saveEntries();
-    res.json(entries[index]);
-});
+    res.json(updated);
+}));
 
 // Delete entry - ensure user owns the entry
-app.delete('/api/entries/:id', requireAuth, (req, res) => {
+app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
-    const index = entries.findIndex(entry => entry.id === id && entry.userId === req.user.id);
+    const deleted = await db.deleteEntry(id, req.user.id);
 
-    if (index === -1) {
+    if (!deleted) {
         return res.status(404).json({ message: 'Entry not found' });
     }
 
-    entries.splice(index, 1);
-    saveEntries();
     res.json({ message: 'Entry deleted successfully' });
-});
+}));
 
 // ============ ADMIN ENDPOINTS ============
 
 // Get all users (admin only)
-app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
-    // Precompute entries count by userId for O(1) lookup
-    const entriesCountByUserId = {};
-    entries.forEach(e => {
-        entriesCountByUserId[e.userId] = (entriesCountByUserId[e.userId] || 0) + 1;
-    });
+app.get('/api/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const allUsers = await db.getAllUsers();
+    const entriesCountByUserId = await db.getEntriesCountByUser();
 
     // Precompute users by ID for O(1) partner lookup
     const usersById = {};
-    users.forEach(u => {
-        usersById[u.id] = u;
-    });
+    allUsers.forEach(u => { usersById[u.id] = u; });
 
-    const sanitizedUsers = users.map(u => {
+    const sanitizedUsers = allUsers.map(u => {
         const userData = {
             id: u.id,
             username: u.username,
@@ -1813,7 +1555,6 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
             has2FA: !!u.totpEnabled
         };
 
-        // Include partner username if linked
         if (u.partnerId) {
             const partner = usersById[u.partnerId];
             if (partner) {
@@ -1824,17 +1565,17 @@ app.get('/api/admin/users', requireAuth, requireAdmin, (req, res) => {
         return userData;
     });
     res.json(sanitizedUsers);
-});
+}));
 
 // Create user (admin only)
-app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/users', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { username, password, role } = req.body;
 
     if (!username || !password) {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    if (findUserByUsername(username)) {
+    if (await db.findUserByUsername(username)) {
         return res.status(409).json({ message: 'Username already exists' });
     }
 
@@ -1843,22 +1584,16 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
 
     try {
         const passwordHash = await bcrypt.hash(password, 10);
-        const newUser = {
-            id: nextUserId++,
+        const newUser = await db.createUser({
             username,
             passwordHash,
             role: userRole,
             email: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
             isActive: true,
             totpSecret: null,
             totpEnabled: false,
             backupCodes: []
-        };
-
-        users.push(newUser);
-        saveUsers();
+        });
 
         res.status(201).json({
             id: newUser.id,
@@ -1870,19 +1605,18 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: 'Failed to create user' });
     }
-});
+}));
 
 // Update user (admin only)
-app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+app.put('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id);
-    const userIndex = users.findIndex(u => u.id === userId);
+    const user = await db.findUserById(userId);
 
-    if (userIndex === -1) {
+    if (!user) {
         return res.status(404).json({ message: 'User not found' });
     }
 
     const { username, role, isActive } = req.body;
-    const user = users[userIndex];
 
     // Prevent admin from demoting themselves
     if (userId === req.user.id && role && role !== 'admin') {
@@ -1891,47 +1625,47 @@ app.put('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
 
     // Prevent deactivating last admin
     if (isActive === false && user.role === 'admin') {
-        const activeAdmins = users.filter(u => u.role === 'admin' && u.isActive);
-        if (activeAdmins.length === 1) {
+        const activeAdmins = await db.getActiveAdminCount();
+        if (activeAdmins === 1) {
             return res.status(400).json({ message: 'Cannot deactivate the last admin' });
         }
     }
 
-    // Update fields
+    const updates = { updatedAt: new Date().toISOString() };
+
     if (username && username !== user.username) {
-        if (findUserByUsername(username)) {
+        if (await db.findUserByUsername(username)) {
             return res.status(409).json({ message: 'Username already taken' });
         }
-        user.username = username;
+        updates.username = username;
     }
 
     if (role && ['user', 'admin'].includes(role)) {
-        user.role = role;
+        updates.role = role;
     }
 
     if (typeof isActive === 'boolean') {
-        user.isActive = isActive;
+        updates.isActive = isActive;
     }
 
-    user.updatedAt = new Date().toISOString();
-    saveUsers();
+    const updated = await db.updateUser(userId, updates);
 
     res.json({
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        isActive: user.isActive
+        id: updated.id,
+        username: updated.username,
+        role: updated.role,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        isActive: updated.isActive
     });
-});
+}));
 
 // Delete user (admin only)
-app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id);
-    const userIndex = users.findIndex(u => u.id === userId);
+    const user = await db.findUserById(userId);
 
-    if (userIndex === -1) {
+    if (!user) {
         return res.status(404).json({ message: 'User not found' });
     }
 
@@ -1941,39 +1675,37 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, (req, res) => {
     }
 
     // Prevent deleting last admin
-    const user = users[userIndex];
     if (user.role === 'admin') {
-        const adminCount = users.filter(u => u.role === 'admin').length;
+        const adminCount = await db.getAdminCount();
         if (adminCount === 1) {
             return res.status(400).json({ message: 'Cannot delete the last admin' });
         }
     }
 
     // Unlink partner if user has one (cleans up partner's state)
-    unlinkCouple(userId);
+    if (user.partnerId) {
+        await db.unlinkCouple(userId);
+    }
 
-    // Delete user's entries
-    entries = entries.filter(e => e.userId !== userId);
-    saveEntries();
-
-    // Delete user
-    users.splice(userIndex, 1);
-    saveUsers();
+    // Delete user (entries cascade via FK)
+    await db.deleteUser(userId);
 
     res.json({ message: 'User deleted successfully' });
-});
+}));
 
 // ============ COUPLE MANAGEMENT ENDPOINTS ============
 
 // Get all couples (admin only)
-app.get('/api/admin/couples', requireAuth, requireAdmin, (req, res) => {
+app.get('/api/admin/couples', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const allUsers = await db.getAllUsers();
     const couples = [];
     const processedIds = new Set();
+    const usersById = {};
+    allUsers.forEach(u => { usersById[u.id] = u; });
 
-    users.forEach(user => {
+    allUsers.forEach(user => {
         if (user.partnerId && !processedIds.has(user.id)) {
-            const partner = findUserById(user.partnerId);
-            // Only include mutual partner relationships to avoid inconsistent or one-sided links
+            const partner = usersById[user.partnerId];
             if (partner && partner.partnerId === user.id) {
                 couples.push({
                     user1: { id: user.id, username: user.username },
@@ -1987,10 +1719,10 @@ app.get('/api/admin/couples', requireAuth, requireAdmin, (req, res) => {
     });
 
     res.json({ couples });
-});
+}));
 
 // Link two users as a couple (admin only)
-app.post('/api/admin/couples/link', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/couples/link', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId1, userId2 } = req.body;
 
     if (!userId1 || !userId2) {
@@ -1998,7 +1730,7 @@ app.post('/api/admin/couples/link', requireAuth, requireAdmin, (req, res) => {
     }
 
     try {
-        const result = linkCouple(parseInt(userId1), parseInt(userId2));
+        const result = await linkCouple(parseInt(userId1), parseInt(userId2));
         res.json({
             message: 'Users linked as couple successfully',
             couple: {
@@ -2010,10 +1742,10 @@ app.post('/api/admin/couples/link', requireAuth, requireAdmin, (req, res) => {
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
-});
+}));
 
 // Unlink a couple (admin only)
-app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.body;
 
     if (!userId) {
@@ -2021,7 +1753,7 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
     }
 
     try {
-        const affectedUsers = unlinkCouple(parseInt(userId));
+        const affectedUsers = await db.unlinkCouple(parseInt(userId));
         res.json({
             message: 'Couple unlinked successfully',
             affectedUsers
@@ -2029,7 +1761,7 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
-});
+}));
 
 // ============ INVITE CODE ENDPOINTS ============
 
@@ -2037,14 +1769,9 @@ app.post('/api/admin/couples/unlink', requireAuth, requireAdmin, (req, res) => {
 
 // Cleanup abandoned/failed PayPal orders every 30 minutes (keep COMPLETED for audit)
 setInterval(() => {
-    const now = Date.now();
-    const expiry = 24 * 60 * 60 * 1000; // 24 hours
-    const before = paypalOrders.length;
-    paypalOrders = paypalOrders.filter(order => {
-        if (order.status === 'COMPLETED') return true;
-        return (now - new Date(order.createdAt).getTime()) < expiry;
+    db.cleanupExpiredPaypalOrders(24 * 60 * 60 * 1000).catch(err => {
+        console.error('PayPal order cleanup error:', err.message);
     });
-    if (paypalOrders.length !== before) saveUsers();
 }, 30 * 60 * 1000);
 
 // GET /api/paypal/config — public, returns whether PayPal is enabled, price, and client ID
@@ -2057,7 +1784,7 @@ app.get('/api/paypal/config', (req, res) => {
 });
 
 // POST /api/paypal/create-order — public, rate-limited, creates a PayPal order
-app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
+app.post('/api/paypal/create-order', paypalOrderLimiter, asyncHandler(async (req, res) => {
     if (!ordersController) {
         return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
@@ -2081,28 +1808,23 @@ app.post('/api/paypal/create-order', paypalOrderLimiter, async (req, res) => {
             }
         });
 
-        const order = {
+        await db.createPaypalOrder({
             orderId: result.id,
             amount,
             currency: 'BRL',
             status: result.status,
-            inviteCode: null,
-            createdAt: new Date().toISOString(),
-            confirmedAt: null
-        };
-
-        paypalOrders.push(order);
-        saveUsers();
+            userId: null
+        });
 
         res.status(201).json({ orderId: result.id });
     } catch (error) {
         console.error('Error creating PayPal order:', error.message || error);
         res.status(500).json({ message: 'Failed to create PayPal order' });
     }
-});
+}));
 
 // POST /api/paypal/capture-order/:orderId — public, rate-limited, captures a PayPal order after approval
-app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, res) => {
+app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, asyncHandler(async (req, res) => {
     if (!ordersController) {
         return res.status(503).json({ message: 'PayPal payments are not configured' });
     }
@@ -2114,7 +1836,7 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
         return res.status(400).json({ message: 'Invalid order ID format' });
     }
 
-    const order = paypalOrders.find(o => o.orderId === orderId);
+    const order = await db.findPaypalOrder(orderId);
     if (!order) {
         return res.status(404).json({ message: 'Order not found' });
     }
@@ -2129,22 +1851,28 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
 
         if (result.status === 'COMPLETED') {
             // Idempotency: re-check after async capture in case a concurrent request already set it
-            if (order.inviteCode) {
-                return res.json({ inviteCode: order.inviteCode });
+            const freshOrder = await db.findPaypalOrder(orderId);
+            if (freshOrder.inviteCode) {
+                return res.json({ inviteCode: freshOrder.inviteCode });
             }
 
-            const newCode = createInviteCode('paypal');
-            order.status = 'COMPLETED';
-            order.inviteCode = newCode.code;
-            order.confirmedAt = new Date().toISOString();
-            saveUsers();
+            const newCode = await createInviteCodeHelper('paypal');
+            const completed = await db.completePaypalOrder(orderId, newCode.code);
+
+            // If conditional update returned null, a concurrent request won the race
+            if (!completed) {
+                const existing = await db.findPaypalOrder(orderId);
+                if (existing && existing.inviteCode) {
+                    return res.json({ inviteCode: existing.inviteCode });
+                }
+                return res.status(500).json({ message: 'Failed to finalize PayPal order' });
+            }
 
             return res.json({ inviteCode: newCode.code });
         }
 
         // Update stored status
-        order.status = result.status;
-        saveUsers();
+        await db.updatePaypalOrderStatus(orderId, result.status);
 
         return res.status(400).json({ message: 'Payment not completed. Status: ' + result.status });
     } catch (error) {
@@ -2156,24 +1884,30 @@ app.post('/api/paypal/capture-order/:orderId', paypalOrderLimiter, async (req, r
             res.status(500).json({ message: 'Failed to capture payment' });
         }
     }
-});
+}));
 
 // Generate a new invite code (admin only)
-app.post('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/invite-codes', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     try {
-        const inviteCode = createInviteCode(req.user.id);
+        const inviteCode = await createInviteCodeHelper(req.user.id);
         res.status(201).json({ code: inviteCode.code, createdAt: inviteCode.createdAt });
     } catch (error) {
         console.error('Error generating invite code:', error);
         res.status(500).json({ message: 'Failed to generate invite code' });
     }
-});
+}));
 
 // List all invite codes (admin only)
-app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
-    const codesWithDetails = inviteCodes.map(ic => {
-        const creator = (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? null : findUserById(ic.createdBy);
-        const consumer = ic.usedBy ? findUserById(ic.usedBy) : null;
+app.get('/api/admin/invite-codes', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const allCodes = await db.getAllInviteCodes();
+    const allUsers = await db.getAllUsers();
+    const usersById = {};
+    allUsers.forEach(u => { usersById[u.id] = u; });
+
+    const codesWithDetails = allCodes.map(ic => {
+        const creatorId = parseInt(ic.createdBy, 10);
+        const creator = (ic.createdBy === 'paypal' || ic.createdBy === 'pix') ? null : usersById[creatorId];
+        const consumer = ic.usedBy ? usersById[ic.usedBy] : null;
         return {
             code: ic.code,
             createdAt: ic.createdAt,
@@ -2188,24 +1922,23 @@ app.get('/api/admin/invite-codes', requireAuth, requireAdmin, (req, res) => {
         };
     });
     res.json(codesWithDetails);
-});
+}));
 
 // Delete an unused invite code (admin only)
-app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, (req, res) => {
+app.delete('/api/admin/invite-codes/:code', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const code = req.params.code.toUpperCase();
-    const index = inviteCodes.findIndex(ic => ic.code === code);
+    const ic = await db.findInviteCode(code);
 
-    if (index === -1) {
+    if (!ic) {
         return res.status(404).json({ message: 'Invite code not found' });
     }
-    if (inviteCodes[index].isUsed) {
+    if (ic.isUsed) {
         return res.status(400).json({ message: 'Cannot delete a used invite code' });
     }
 
-    inviteCodes.splice(index, 1);
-    saveUsers();
+    await db.deleteInviteCode(code);
     res.json({ message: 'Invite code deleted' });
-});
+}));
 
 // Serve the main application
 app.get('/', (req, res) => {
@@ -2504,8 +2237,8 @@ function filterByDateRange(userEntries, startMonth, endMonth) {
     });
 }
 
-function toolGetFinancialSummary(userId, args) {
-    let userEntries = entries.filter(e => e.userId === userId);
+async function toolGetFinancialSummary(userId, args) {
+    let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     const totalIncome = userEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
@@ -2526,9 +2259,10 @@ function toolGetFinancialSummary(userId, args) {
     };
 }
 
-function toolGetCategoryBreakdown(userId, args) {
+async function toolGetCategoryBreakdown(userId, args) {
     const type = args.type || 'expense';
-    let userEntries = entries.filter(e => e.userId === userId && e.type === type);
+    let userEntries = await db.getEntriesByUser(userId);
+    userEntries = userEntries.filter(e => e.type === type);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     const total = userEntries.reduce((s, e) => s + e.amount, 0);
@@ -2550,8 +2284,8 @@ function toolGetCategoryBreakdown(userId, args) {
     return { type, total: total.toFixed(2), breakdown };
 }
 
-function toolGetMonthlyTrends(userId, args) {
-    let userEntries = entries.filter(e => e.userId === userId);
+async function toolGetMonthlyTrends(userId, args) {
+    let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     const byMonth = {};
@@ -2583,8 +2317,9 @@ function toolGetMonthlyTrends(userId, args) {
     };
 }
 
-function toolGetTopExpenses(userId, args) {
-    let userEntries = entries.filter(e => e.userId === userId && e.type === 'expense');
+async function toolGetTopExpenses(userId, args) {
+    let userEntries = await db.getEntriesByUser(userId);
+    userEntries = userEntries.filter(e => e.type === 'expense');
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     if (args.category) {
@@ -2601,7 +2336,6 @@ function toolGetTopExpenses(userId, args) {
 
     return {
         topExpenses: sorted.map(e => ({
-            // id is intentionally included so the editEntry tool can reference entries by ID
             id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
@@ -2612,10 +2346,10 @@ function toolGetTopExpenses(userId, args) {
     };
 }
 
-function toolComparePeriods(userId, args) {
+async function toolComparePeriods(userId, args) {
+    const allEntries = await db.getEntriesByUser(userId);
     const get = (start, end) => {
-        let ue = entries.filter(e => e.userId === userId);
-        ue = filterByDateRange(ue, start, end);
+        const ue = filterByDateRange(allEntries, start, end);
         const income = ue.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
         const expenses = ue.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
         return { income, expenses, net: income - expenses, entryCount: ue.length };
@@ -2646,8 +2380,8 @@ function toolComparePeriods(userId, args) {
     };
 }
 
-function toolSearchEntries(userId, args) {
-    let userEntries = entries.filter(e => e.userId === userId);
+async function toolSearchEntries(userId, args) {
+    let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
 
     if (args.type) userEntries = userEntries.filter(e => e.type === args.type);
@@ -2671,7 +2405,6 @@ function toolSearchEntries(userId, args) {
 
     return {
         results: results.map(e => ({
-            // id is intentionally included so the editEntry tool can reference entries by ID
             id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
@@ -2688,20 +2421,18 @@ function toolSearchEntries(userId, args) {
  * Validates editEntry arguments and resolves the target entry without applying changes.
  * @param {number} userId - The authenticated user's ID.
  * @param {object} args - Tool arguments (entryId, description, amount, type, month, tags).
- * @returns {object} { entry, updates, entryIndex, rejectedTags } on success, or { error } on failure.
+ * @returns {object} { entry, updates, rejectedTags } on success, or { error } on failure.
  */
-function validateEditArgs(userId, args) {
+async function validateEditArgs(userId, args) {
     const entryId = args.entryId != null ? Number(args.entryId) : NaN;
     if (!Number.isInteger(entryId)) {
         return { error: 'entryId is required and must be a valid integer.' };
     }
 
-    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
-    if (index === -1) {
+    const entry = await db.getEntryByIdAndUser(entryId, userId);
+    if (!entry) {
         return { error: 'Entry not found or does not belong to the current user. Use searchEntries to find valid entry IDs.' };
     }
-
-    const entry = entries[index];
     const updates = {};
 
     if (args.description != null) {
@@ -2748,7 +2479,7 @@ function validateEditArgs(userId, args) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags, isCoupleExpense.' };
     }
 
-    return { entry, updates, entryIndex: index, rejectedTags };
+    return { entry, updates, rejectedTags };
 }
 
 /**
@@ -2757,21 +2488,20 @@ function validateEditArgs(userId, args) {
  * @param {object} args - Tool arguments from the AI model.
  * @returns {object} Updated entry on success, or `{ error }` on failure.
  */
-function toolEditEntry(userId, args) {
+async function toolEditEntry(userId, args) {
     // Require explicit confirmation flag
     if (args.confirmed !== true) {
         return { error: 'Edit must be confirmed by the user. Set confirmed: true after user approval.' };
     }
 
-    const validation = validateEditArgs(userId, args);
+    const validation = await validateEditArgs(userId, args);
     if (validation.error) return validation;
 
-    const { entry, updates, entryIndex: index, rejectedTags } = validation;
+    const { entry, updates, rejectedTags } = validation;
     const entryId = entry.id;
 
     // Save pre-edit snapshot so the user can undo this edit.
     const snapshotKey = `${userId}:${entryId}`;
-    // Delete existing key first so re-inserting moves it to most-recent position.
     if (lastEditSnapshots.has(snapshotKey)) {
         lastEditSnapshots.delete(snapshotKey);
     } else if (lastEditSnapshots.size >= SNAPSHOT_MAX_SIZE) {
@@ -2781,15 +2511,9 @@ function toolEditEntry(userId, args) {
         }
     }
 
-    // Build updated entry and store snapshot before persisting,
-    // so undo remains available even if saveEntries() fails.
-    const updated = { ...entry, ...updates };
-    lastEditSnapshots.set(snapshotKey, { before: { ...entry }, after: { ...updated } });
-
-    // Apply updates — spread preserves userId, id, and isCoupleExpense from original entry.
-    // Only the explicitly validated fields above can appear in `updates`.
-    entries[index] = updated;
-    saveEntries();
+    const before = { ...entry };
+    const updated = await db.updateEntry(entryId, userId, updates);
+    lastEditSnapshots.set(snapshotKey, { before, after: { ...updated } });
     const result = {
         success: true,
         message: `Entry updated successfully. This edit can be undone by requesting to undo entry ${updated.id} (undo is only available until the next server restart).`,
@@ -2819,7 +2543,7 @@ function toolEditEntry(userId, args) {
  * @param {number} args.entryId - The entry to undo (required).
  * @returns {object} Restored entry on success, or `{ error }` on failure.
  */
-function toolUndoLastEdit(userId, args) {
+async function toolUndoLastEdit(userId, args) {
     const entryId = args.entryId != null ? Number(args.entryId) : NaN;
     if (!Number.isInteger(entryId)) {
         return { error: 'entryId is required and must be a valid integer.' };
@@ -2832,14 +2556,13 @@ function toolUndoLastEdit(userId, args) {
     }
 
     // Verify the entry still exists and belongs to the user
-    const index = entries.findIndex(e => e.id === entryId && e.userId === userId);
-    if (index === -1) {
+    const current = await db.getEntryByIdAndUser(entryId, userId);
+    if (!current) {
         lastEditSnapshots.delete(snapshotKey);
         return { error: 'Entry not found or does not belong to the current user.' };
     }
 
     // Verify the entry hasn't been modified since the AI edit (e.g. via the UI).
-    const current = entries[index];
     const expected = snapshotData.after;
     if (current.description !== expected.description || current.amount !== expected.amount
         || current.type !== expected.type || current.month !== expected.month
@@ -2850,27 +2573,33 @@ function toolUndoLastEdit(userId, args) {
     }
 
     // Restore the pre-edit snapshot
-    entries[index] = { ...snapshotData.before };
+    const before = snapshotData.before;
+    await db.updateEntry(entryId, userId, {
+        description: before.description,
+        amount: before.amount,
+        type: before.type,
+        month: before.month,
+        tags: before.tags || [],
+        isCoupleExpense: before.isCoupleExpense || false
+    });
     lastEditSnapshots.delete(snapshotKey);
-    saveEntries();
 
-    const restored = entries[index];
     return {
         success: true,
         message: 'Edit undone. Entry restored to its previous state.',
         entry: {
-            id: restored.id,
-            description: restored.description,
-            amount: restored.amount.toFixed(2),
-            type: restored.type,
-            month: restored.month,
-            tags: restored.tags || [],
-            isCoupleExpense: restored.isCoupleExpense || false
+            id: before.id,
+            description: before.description,
+            amount: before.amount.toFixed(2),
+            type: before.type,
+            month: before.month,
+            tags: before.tags || [],
+            isCoupleExpense: before.isCoupleExpense || false
         }
     };
 }
 
-function executeTool(name, userId, args) {
+async function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
         case 'getCategoryBreakdown': return toolGetCategoryBreakdown(userId, args);
@@ -2887,7 +2616,7 @@ function executeTool(name, userId, args) {
 // AI Chat endpoint
 const MAX_CHAT_MESSAGE_LENGTH = 8000;
 
-app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
+app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, res) => {
     const { messages: clientMessages, message: rawMessage } = req.body;
 
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim()) {
@@ -2947,8 +2676,8 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
     // @param {object} toolArgs - Raw arguments from the AI tool call.
     // @param {Array}  pendingEditsList - Accumulator for pending edits to include in the response.
     // @returns {object} - Result to return to the AI as the tool response.
-    function handleEditEntryCall(toolArgs, pendingEditsList) {
-        const validation = validateEditArgs(req.user.id, toolArgs);
+    async function handleEditEntryCall(toolArgs, pendingEditsList) {
+        const validation = await validateEditArgs(req.user.id, toolArgs);
         if (validation.error) return validation;
         const entryId = validation.entry.id;
         const currentEntry = {
@@ -3018,9 +2747,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                     }
                     let result;
                     if (toolName === 'editEntry') {
-                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
                     } else {
-                        result = executeTool(toolName, req.user.id, toolArgs);
+                        result = await executeTool(toolName, req.user.id, toolArgs);
                     }
                     toolResultMessages.push({
                         role: 'tool',
@@ -3083,9 +2812,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                     const toolArgs = toolUse.input || {};
                     let result;
                     if (toolName === 'editEntry') {
-                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
                     } else {
-                        result = executeTool(toolName, req.user.id, toolArgs);
+                        result = await executeTool(toolName, req.user.id, toolArgs);
                     }
                     toolResults.push({
                         type: 'tool_result',
@@ -3166,9 +2895,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
                     const toolArgs = fc.functionCall.args || {};
                     let result;
                     if (toolName === 'editEntry') {
-                        result = handleEditEntryCall(toolArgs, pendingEditsList);
+                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
                     } else {
-                        result = executeTool(toolName, req.user.id, toolArgs);
+                        result = await executeTool(toolName, req.user.id, toolArgs);
                     }
                     toolResultParts.push({
                         functionResponse: { name: toolName, response: result }
@@ -3197,7 +2926,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, async (req, res) => {
         }
         res.status(500).json({ error: 'generic' });
     }
-});
+}));
 
 // Confirm a pending AI edit via UI button
 const editActionLimiter = rateLimit({
@@ -3209,7 +2938,7 @@ const editActionLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
-app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, (req, res) => {
+app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const allPending = pendingEdits.get(userId);
 
@@ -3237,7 +2966,7 @@ app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, (req, res) => {
     }
 
     // Execute the edit via toolEditEntry with confirmed: true
-    const result = toolEditEntry(userId, { entryId: pending.entryId, confirmed: true, ...pending.changes });
+    const result = await toolEditEntry(userId, { entryId: pending.entryId, confirmed: true, ...pending.changes });
 
     // Remove this specific pending edit
     allPending.splice(idx, 1);
@@ -3248,7 +2977,7 @@ app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, (req, res) => {
     }
 
     res.json(result);
-});
+}));
 
 // Cancel a pending AI edit via UI button
 app.post('/api/ai/cancel-edit', requireAuth, editActionLimiter, (req, res) => {
@@ -3578,62 +3307,74 @@ app.use((err, req, res, next) => {
 // HTTPS configuration
 
 const PORT = config.port;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on https://localhost:${PORT}`);
 
-    // Verify SMTP configuration
-    if (smtpTransport) {
-        console.log('SMTP configured — self-service password reset is available.');
-    } else {
-        console.log('No SMTP configured — password resets require admin action.');
+// Test DB connection and run migrations before starting
+(async () => {
+    try {
+        await testDbConnection();
+        await migrateInitialAdmin();
+    } catch (err) {
+        console.error('FATAL: Database initialization failed:', err.message);
+        process.exit(1);
     }
 
-    // Verify PayPal configuration
-    if (paypalClient) {
-        console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
-    } else {
-        console.log('No PayPal configured — invite code purchases disabled.');
-    }
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on https://localhost:${PORT}`);
 
-    // Verify Gemini API configuration
-    if (config.geminiApiKey) {
-        console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
-        const startupGenAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
-        startupGenAI.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: 'Hello'
-        }).then(() => {
-            console.log('Gemini API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: Gemini API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
-    }
+        // Verify SMTP configuration
+        if (smtpTransport) {
+            console.log('SMTP configured — self-service password reset is available.');
+        } else {
+            console.log('No SMTP configured — password resets require admin action.');
+        }
 
-    // Verify OpenAI API configuration
-    if (config.openaiApiKey) {
-        console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
-        const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
-        openaiStartup.models.list().then(() => {
-            console.log('OpenAI API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: OpenAI API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
-    }
+        // Verify PayPal configuration
+        if (paypalClient) {
+            console.log(`PayPal configured — invite code purchases available at R$ ${config.inviteCodePrice}`);
+        } else {
+            console.log('No PayPal configured — invite code purchases disabled.');
+        }
 
-    // Verify Anthropic API configuration
-    if (config.anthropicApiKey) {
-        console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
-        const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
-        anthropicStartup.models.list({ limit: 1 }).then(() => {
-            console.log('Anthropic API key verified successfully.');
-        }).catch((error) => {
-            console.warn('Warning: Anthropic API key may be invalid:', error.message);
-        });
-    } else {
-        console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
-    }
-});
+        // Verify Gemini API configuration
+        if (config.geminiApiKey) {
+            console.log(`Gemini AI configured with model: ${GEMINI_MODEL}`);
+            const startupGenAI = new GoogleGenAI({ apiKey: config.geminiApiKey });
+            startupGenAI.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: 'Hello'
+            }).then(() => {
+                console.log('Gemini API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: Gemini API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global GEMINI_API_KEY configured. PDF processing will use per-user stored keys.');
+        }
+
+        // Verify OpenAI API configuration
+        if (config.openaiApiKey) {
+            console.log(`OpenAI configured with model: ${OPENAI_MODEL}`);
+            const openaiStartup = new OpenAI({ apiKey: config.openaiApiKey });
+            openaiStartup.models.list().then(() => {
+                console.log('OpenAI API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: OpenAI API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global OPENAI_API_KEY configured. OpenAI features will use per-user stored keys.');
+        }
+
+        // Verify Anthropic API configuration
+        if (config.anthropicApiKey) {
+            console.log(`Anthropic configured with model: ${ANTHROPIC_MODEL}`);
+            const anthropicStartup = new Anthropic({ apiKey: config.anthropicApiKey });
+            anthropicStartup.models.list({ limit: 1 }).then(() => {
+                console.log('Anthropic API key verified successfully.');
+            }).catch((error) => {
+                console.warn('Warning: Anthropic API key may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global ANTHROPIC_API_KEY configured. Anthropic features will use per-user stored keys.');
+        }
+    });
+})();

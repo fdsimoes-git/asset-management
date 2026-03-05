@@ -17,7 +17,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Advanced Filtering**: Filter entries by date range, transaction type, and categories
 - **Sortable Columns**: Click table headers to sort by any column
 - **Data Management**: Edit and delete existing entries
-- **Encrypted Storage**: All data encrypted at rest using AES-256-CBC
+- **Encrypted Storage**: Sensitive fields (emails, API keys, TOTP secrets) encrypted with AES-256-CBC
 
 ### Multi-User System
 - **Public Registration**: New users can create accounts
@@ -80,12 +80,13 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **HTTPS Encryption**: All communications secured with SSL/TLS
 - **Network Access**: Available to all devices on your LAN
 - **Session Management**: Secure session-based authentication
-- **Data Encryption**: User and entry data encrypted before storage
+- **Data Encryption**: Sensitive user fields encrypted with AES-256-CBC before storage in PostgreSQL
 
 ## Requirements
 
 - **Node.js** 18.x or higher
 - **npm** (Node Package Manager)
+- **PostgreSQL** 14+ (localhost, scram-sha-256 auth recommended)
 - **Modern web browser** with JavaScript enabled
 - **AI API Key** (optional globally; users can provide their own per provider — Gemini, OpenAI, or Anthropic)
 
@@ -116,6 +117,11 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    ```env
    ENCRYPTION_KEY=your-64-char-hex-key          # Required — generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    SESSION_SECRET=your-secure-session-secret     # Required
+   PGHOST=localhost                              # Required: PostgreSQL host
+   PGPORT=5432                                   # Optional (defaults to 5432)
+   PGDATABASE=asset_management                   # Required: PostgreSQL database name
+   PGUSER=asset_app                              # Required: PostgreSQL user
+   PGPASSWORD=your-pg-password                   # Required: PostgreSQL password (escape % as %% in systemd)
    ADMIN_USERNAME=admin                          # Optional (defaults to "admin")
    ADMIN_PASSWORD_HASH=your-bcrypt-hashed-password
    PORT=443
@@ -128,11 +134,12 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    SMTP_USER=your-email@gmail.com                # Optional
    SMTP_PASS=your-app-password                   # Optional (Gmail: use App Password)
    SMTP_FROM=your-email@gmail.com                # Optional
+   PG_POOL_DEBUG=1                               # Optional: verbose PostgreSQL pool logging
    ```
 
    > **SMTP is optional.** If not configured, password resets can only be done by an admin. All five `SMTP_*` variables must be set for the feature to activate.
 
-   The server validates `ENCRYPTION_KEY` and `SESSION_SECRET` at startup and exits with a clear error if either is missing.
+   The server validates `ENCRYPTION_KEY`, `SESSION_SECRET`, `PGUSER`, and `PGPASSWORD` at startup and exits with a clear error if any is missing.
 
 6. **Generate admin password hash**:
    ```bash
@@ -215,8 +222,8 @@ Available expense/income categories:
 - **HTTPS Encryption**: All data transmitted securely
 - **Password Hashing**: bcrypt with 10 salt rounds
 - **Session Security**: HTTP-only, secure cookies (24-hour expiration)
-- **Data Encryption**: AES-256-CBC for stored data
-- **API Key Encryption**: Per-user AI provider keys encrypted (field-level AES-256-CBC + file-level encryption)
+- **Data Encryption**: AES-256-CBC field-level encryption for sensitive data (emails, API keys, TOTP secrets)
+- **API Key Encryption**: Per-user AI provider keys encrypted with field-level AES-256-CBC
 - **TOTP 2FA**: Time-based one-time passwords with encrypted secret storage and bcrypt-hashed backup codes
 - **Email Encryption**: User emails encrypted at rest with AES-256-CBC
 - **Email Privacy**: Admins see only email/2FA status indicators, not actual addresses
@@ -228,20 +235,20 @@ Available expense/income categories:
 
 ## Data Storage
 
-- **Users**: `data/users.json` (encrypted)
-- **Entries**: `data/entries.json` (encrypted)
-- **Format**: JSON with AES-256-CBC encryption
-- **User Model**: `{ id, username, passwordHash, role, createdAt, updatedAt, isActive, partnerId, partnerLinkedAt, geminiApiKey?, openaiApiKey?, anthropicApiKey?, aiProvider?, aiModel?, email?, totpSecret?, totpEnabled, backupCodes }`
-- **Entry Model**: `{ id, userId, month, type, amount, description, tags, isCoupleExpense }`
+- **Database**: PostgreSQL with parameterized queries (no string interpolation)
+- **Tables**: `users`, `entries`, `invite_codes`, `paypal_orders`
+- **Field Encryption**: Sensitive fields (email, API keys, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
+- **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, partner_id, partner_linked_at, is_active, created_at, updated_at }`
+- **Entry Model**: `{ id, user_id, month, type, amount, description, tags, is_couple_expense }`
 
 ## Technical Details
 
 ### Architecture
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
-- **Database**: Encrypted JSON file storage
+- **Database**: PostgreSQL with `pg` connection pool (parameterized queries)
 - **AI Integration**: Google Gemini, OpenAI, and Anthropic Claude (user-selectable)
-- **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES encryption
+- **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES field encryption
 
 ### API Endpoints
 
@@ -293,40 +300,51 @@ Available expense/income categories:
 ### File Structure
 ```
 asset-management/
-├── ssl/                 # SSL certificates
-├── data/                # Encrypted data storage
-│   ├── users.json       # User accounts (encrypted)
-│   └── entries.json     # Financial entries (encrypted)
+├── db/
+│   ├── schema.sql           # PostgreSQL schema (tables, indexes, constraints)
+│   ├── pool.js              # pg connection pool configuration
+│   ├── queries.js           # All parameterized query functions
+│   ├── migrate-json-to-pg.js # One-shot JSON→PostgreSQL migration (idempotent)
+│   └── MIGRATION_RUNBOOK.md # Step-by-step deployment & cutover guide
+├── ssl/                     # SSL certificates
+├── data/                    # Legacy encrypted JSON files (pre-migration backup)
 ├── js/
-│   ├── app.js           # Main application logic
-│   ├── i18n.js          # Internationalization (EN/PT translations)
-│   ├── login.js         # Login page logic
-│   ├── register.js      # Registration page logic
-│   ├── chat.js          # AI financial advisor chat module
-│   └── forgot-password.js # Password reset page logic
-├── server.js            # Main server application
-├── config.js            # Centralized config with startup validation
-├── index.html           # Main dashboard
-├── login.html           # Login page
-├── register.html        # Registration page
-├── forgot-password.html # Self-service password reset page
-├── package.json         # Dependencies
-└── .env.example         # Environment variable template
+│   ├── app.js               # Main application logic
+│   ├── i18n.js              # Internationalization (EN/PT translations)
+│   ├── login.js             # Login page logic
+│   ├── register.js          # Registration page logic
+│   ├── chat.js              # AI financial advisor chat module
+│   └── forgot-password.js   # Password reset page logic
+├── server.js                # Main server application
+├── config.js                # Centralized config with startup validation
+├── backup.sh                # Backup script (pg_dump + R2 upload)
+├── rotate-key.sh            # Encryption key rotation script
+├── index.html               # Main dashboard
+├── login.html               # Login page
+├── register.html            # Registration page
+├── forgot-password.html     # Self-service password reset page
+├── package.json             # Dependencies
+└── .env.example             # Environment variable template
 ```
 
 ## Migration
 
-When upgrading from single-user to multi-user:
-1. The system automatically creates an admin user from `.env` credentials
-2. Existing entries are automatically assigned to the admin user
-3. No manual migration steps required
+### JSON to PostgreSQL Migration
+The app was migrated from encrypted JSON file storage to PostgreSQL. To run the migration on existing data:
+1. Set up PostgreSQL and run `db/schema.sql` to create tables
+2. Configure PG environment variables
+3. Run `node db/migrate-json-to-pg.js` (idempotent, transactional, rolls back on mismatch)
+4. See `db/MIGRATION_RUNBOOK.md` for the full step-by-step deployment guide
+
+### Admin Auto-Migration
+On first run, the system automatically creates an admin user from `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` environment variables.
 
 ## Maintenance
 
 - **Logs**: Server logs available in terminal output
 - **Updates**: `npm update` to update dependencies
 - **SSL Renewal**: Regenerate certificates annually
-- **Backup**: Run `./backup.sh` to back up `data/` to Google Drive via rclone
+- **Backup**: Run `./backup.sh` to back up PostgreSQL (`pg_dump`) and legacy data files to Cloudflare R2 via rclone
 
 ### Rotating the Encryption Key
 
@@ -336,15 +354,7 @@ To rotate `ENCRYPTION_KEY` without losing access to encrypted data:
 sudo bash rotate-key.sh
 ```
 
-The script will:
-1. Back up current data to Google Drive
-2. Stop the service
-3. Print the old key — save it to a password manager (needed to decrypt old backups)
-4. Re-encrypt `data/entries.json` and `data/users.json` with a new key
-5. Open `systemctl edit --full` for you to update the key
-6. Verify the key was changed and restart the service
-
-`.bak` files are created before any modification. If anything fails, the script automatically rolls back.
+The script re-encrypts all field-level encrypted values (emails, API keys, TOTP secrets) in the PostgreSQL database with a new key. It also updates legacy JSON files if they still exist. Save the old key in a password manager — it's needed to decrypt old backups.
 
 ## Troubleshooting
 
@@ -361,4 +371,4 @@ The script will:
 
 ---
 
-**Note**: This system is designed for personal/family financial management. For production use with many users, consider implementing a proper database system and additional security measures.
+**Note**: This system is designed for personal/family financial management. PostgreSQL is used for persistent storage with parameterized queries, field-level AES-256-CBC encryption for PII, and localhost-only database access.

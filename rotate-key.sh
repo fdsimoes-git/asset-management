@@ -63,7 +63,7 @@ STATUS=$?
 
 if [ $STATUS -ne 0 ]; then
     echo ""
-    echo "Rotation failed. Restarting service with old key..."
+    echo "Rotation failed (transaction rolled back — no data modified). Restarting service..."
     systemctl start asset-management
     exit 1
 fi
@@ -73,7 +73,7 @@ read -p "Open 'sudo systemctl edit --full asset-management' now to update the ke
 
 if [ "$ANSWER" = "n" ] || [ "$ANSWER" = "N" ]; then
     echo ""
-    echo "Data files are now encrypted with the NEW key, but systemd still has the old key."
+    echo "Database fields are now encrypted with the NEW key, but systemd still has the old key."
     echo "The service will NOT be restarted. Update the key manually:"
     echo "  sudo systemctl edit --full asset-management"
     echo "  sudo systemctl daemon-reload"
@@ -91,7 +91,7 @@ NEW_ENCRYPTION_KEY=$(echo "$NEW_ENV_LINE" | grep -oP 'ENCRYPTION_KEY=\K[0-9a-fA-
 if [ "$NEW_ENCRYPTION_KEY" = "$ENCRYPTION_KEY" ]; then
     echo ""
     echo "WARNING: ENCRYPTION_KEY in systemd was not updated (still the old value)."
-    echo "The service will NOT be restarted. Data files use the new key — update systemd:"
+    echo "The service will NOT be restarted. Database uses the new key — update systemd:"
     echo "  sudo systemctl edit --full asset-management"
     echo "  sudo systemctl daemon-reload"
     echo "  sudo systemctl restart asset-management"
