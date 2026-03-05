@@ -564,11 +564,46 @@ const generalLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 
-// Authentication middleware
+// Authentication middleware with short-lived user cache to avoid DB hit on every request
+const userCache = new Map();
+const USER_CACHE_TTL = 5000; // 5 seconds
+
+function getCachedUser(id) {
+    const cached = userCache.get(id);
+    if (cached && Date.now() - cached.ts < USER_CACHE_TTL) return cached.user;
+    return undefined;
+}
+
+function setCachedUser(user) {
+    userCache.set(user.id, { user, ts: Date.now() });
+}
+
+function invalidateCachedUser(id) {
+    userCache.delete(id);
+}
+
+// Auto-invalidate user cache on writes
+const _origUpdateUser = db.updateUser;
+db.updateUser = async function(userId, ...args) {
+    const result = await _origUpdateUser.call(this, userId, ...args);
+    invalidateCachedUser(userId);
+    return result;
+};
+const _origDeleteUser = db.deleteUser;
+db.deleteUser = async function(userId, ...args) {
+    invalidateCachedUser(userId);
+    return _origDeleteUser.call(this, userId, ...args);
+};
+
 const requireAuth = async (req, res, next) => {
     if (req.session && req.session.user && req.session.user.id) {
         try {
-            const user = await db.findUserById(req.session.user.id);
+            const userId = req.session.user.id;
+            let user = getCachedUser(userId);
+            if (user === undefined) {
+                user = await db.findUserById(userId);
+                if (user) setCachedUser(user);
+            }
             if (user && user.isActive) {
                 req.user = user;
                 return next();
@@ -1333,6 +1368,7 @@ app.post('/api/logout', (req, res) => {
 // Get all entries for current user
 app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     const viewMode = req.query.viewMode || 'individual';
+    const month = req.query.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
     let userEntries;
 
     // Validate partner relationship (used for both combined and individual views)
@@ -1346,11 +1382,11 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     }
 
     if (viewMode === 'combined' && validPartner) {
-        userEntries = await db.getCoupleEntries(req.user.id, validPartner.id);
+        userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'individual' && validPartner) {
-        userEntries = await db.getIndividualEntries(req.user.id);
+        userEntries = await db.getIndividualEntries(req.user.id, month);
     } else {
-        userEntries = await db.getEntriesByUser(req.user.id);
+        userEntries = await db.getEntriesByUser(req.user.id, month);
     }
 
     res.json(userEntries);

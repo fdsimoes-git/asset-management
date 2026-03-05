@@ -289,7 +289,14 @@ async function getAdminCount() {
 
 // ── Entry Queries ────────────────────────────────────────────────────
 
-async function getEntriesByUser(userId) {
+async function getEntriesByUser(userId, month) {
+    if (month) {
+        const { rows } = await pool.query(
+            'SELECT * FROM entries WHERE user_id = $1 AND month = $2 ORDER BY id',
+            [userId, month]
+        );
+        return rows.map(dbRowToEntry);
+    }
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE user_id = $1 ORDER BY id',
         [userId]
@@ -297,7 +304,14 @@ async function getEntriesByUser(userId) {
     return rows.map(dbRowToEntry);
 }
 
-async function getCoupleEntries(userId, partnerId) {
+async function getCoupleEntries(userId, partnerId, month) {
+    if (month) {
+        const { rows } = await pool.query(
+            'SELECT * FROM entries WHERE is_couple_expense = TRUE AND user_id = ANY($1) AND month = $2 ORDER BY id',
+            [[userId, partnerId], month]
+        );
+        return rows.map(dbRowToEntry);
+    }
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE is_couple_expense = TRUE AND user_id = ANY($1) ORDER BY id',
         [[userId, partnerId]]
@@ -305,7 +319,14 @@ async function getCoupleEntries(userId, partnerId) {
     return rows.map(dbRowToEntry);
 }
 
-async function getIndividualEntries(userId) {
+async function getIndividualEntries(userId, month) {
+    if (month) {
+        const { rows } = await pool.query(
+            'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = FALSE AND month = $2 ORDER BY id',
+            [userId, month]
+        );
+        return rows.map(dbRowToEntry);
+    }
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = FALSE ORDER BY id',
         [userId]
