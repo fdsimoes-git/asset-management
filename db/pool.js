@@ -15,9 +15,10 @@ const pool = new Pool({
     database: process.env.PGDATABASE || 'asset_management',
     user:     process.env.PGUSER,
     password: process.env.PGPASSWORD,
-    max:              5,
-    idleTimeoutMillis: 30000,
-    ssl:              false
+    max:                10,
+    idleTimeoutMillis:  30000,
+    connectionTimeoutMillis: 5000,
+    ssl:                false
 });
 
 pool.on('error', (err) => {

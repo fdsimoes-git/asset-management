@@ -573,11 +573,14 @@ const requireAuth = async (req, res, next) => {
                 req.user = user;
                 return next();
             }
+            // User not found or inactive — session is genuinely invalid
+            req.session.destroy();
+            return res.status(401).json({ message: 'Session invalid. Please log in again.' });
         } catch (err) {
+            // Transient DB error — don't destroy the session, just fail the request
             console.error('Auth middleware DB error:', err.message);
+            return res.status(503).json({ message: 'Service temporarily unavailable. Please try again.' });
         }
-        req.session.destroy();
-        return res.status(401).json({ message: 'Session invalid. Please log in again.' });
     }
     res.status(401).json({ message: 'Unauthorized' });
 };
