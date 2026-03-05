@@ -569,17 +569,20 @@ const userCache = new Map();
 const USER_CACHE_TTL = 5000; // 5 seconds
 
 function getCachedUser(id) {
-    const cached = userCache.get(id);
-    if (cached && Date.now() - cached.ts < USER_CACHE_TTL) return cached.user;
+    const key = Number(id);
+    const cached = userCache.get(key);
+    if (!cached) return undefined;
+    if (Date.now() - cached.ts < USER_CACHE_TTL) return cached.user;
+    userCache.delete(key);
     return undefined;
 }
 
 function setCachedUser(user) {
-    userCache.set(user.id, { user, ts: Date.now() });
+    userCache.set(Number(user.id), { user, ts: Date.now() });
 }
 
 function invalidateCachedUser(id) {
-    userCache.delete(id);
+    userCache.delete(Number(id));
 }
 
 // Auto-invalidate user cache on writes

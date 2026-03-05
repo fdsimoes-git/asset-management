@@ -111,13 +111,18 @@ async function migrate() {
         }
         console.log(`Users: ${usersInserted} inserted (${users.length - usersInserted} already existed)`);
 
+        // Build set of valid user IDs for FK safety (used for partner links and invite codes)
+        const validUserIds = new Set(users.map(u => u.id));
+
         // Now set partner relationships (all user rows exist, FK safe)
         for (const u of users) {
-            if (u.partnerId) {
+            if (u.partnerId && validUserIds.has(u.partnerId)) {
                 await client.query(
                     'UPDATE users SET partner_id = $1, partner_linked_at = $2 WHERE id = $3',
                     [u.partnerId, u.partnerLinkedAt || null, u.id]
                 );
+            } else if (u.partnerId) {
+                console.log(`Skipping partner_id ${u.partnerId} for user ${u.id} (partner not in dataset)`);
             }
         }
         console.log('Partner relationships set');
@@ -132,9 +137,6 @@ async function migrate() {
             await client.query(`SELECT setval('users_id_seq', $1, true)`, [seqRows[0].seq_max]);
             console.log(`Set users_id_seq to ${seqRows[0].seq_max}`);
         }
-
-        // Build set of valid user IDs for FK safety
-        const validUserIds = new Set(users.map(u => u.id));
 
         // Insert invite codes
         let codesInserted = 0;

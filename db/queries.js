@@ -48,7 +48,12 @@ function dbRowToEntry(row) {
 function parseJsonField(val) {
     if (val == null) return null;
     if (typeof val === 'object') return val;
-    try { return JSON.parse(val); } catch { return null; }
+    try {
+        return JSON.parse(val);
+    } catch (err) {
+        console.error('Failed to parse JSON field:', err.message, '— value preview:', String(val).slice(0, 50));
+        return null;
+    }
 }
 
 function stringifyJsonField(val) {
