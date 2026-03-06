@@ -15,8 +15,11 @@
 
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
+        const submitBtn = loginForm.querySelector('button[type="submit"]');
 
         errorMessage.classList.remove('show');
+        submitBtn.classList.add('loading');
+        submitBtn.disabled = true;
 
         try {
             const response = await fetch('/api/login', {
@@ -42,6 +45,9 @@
         } catch (error) {
             errorMessage.textContent = t('login.errorGeneric');
             errorMessage.classList.add('show');
+        } finally {
+            submitBtn.classList.remove('loading');
+            submitBtn.disabled = false;
         }
     });
 
