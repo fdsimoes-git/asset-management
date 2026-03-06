@@ -1201,12 +1201,14 @@ function renderBulkPreviewTable() {
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
-        setButtonLoading(confirmBulkEntriesBtn, true);
+        const originalText = confirmBulkEntriesBtn.textContent;
+        confirmBulkEntriesBtn.disabled = true;
         try {
             // Save each entry sequentially to avoid overwhelming the DB pool
             const savedEntries = [];
             const total = bulkExtractedEntries.length;
             for (const entry of bulkExtractedEntries) {
+                confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
                 const response = await fetch('/api/entries', {
                     method: 'POST',
                     headers: {
@@ -1240,7 +1242,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             console.error('Error saving bulk entries:', error);
             alert(t('bulk.errorSave', { message: error.message }));
         } finally {
-            setButtonLoading(confirmBulkEntriesBtn, false);
+            confirmBulkEntriesBtn.disabled = false;
+            confirmBulkEntriesBtn.textContent = originalText;
         }
     }
 });
