@@ -1207,8 +1207,6 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             const savedEntries = [];
             const total = bulkExtractedEntries.length;
             for (const entry of bulkExtractedEntries) {
-                confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
-
                 const response = await fetch('/api/entries', {
                     method: 'POST',
                     headers: {
