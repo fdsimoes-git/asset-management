@@ -600,21 +600,21 @@
             position: relative;
             color: transparent !important;
             pointer-events: none;
-            opacity: 0.7;
+            opacity: 0.85;
             cursor: not-allowed;
         }
 
         button.loading::after {
             content: '';
             position: absolute;
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
             top: 50%;
             left: 50%;
-            margin-top: -9px;
-            margin-left: -9px;
-            border: 2px solid var(--color-border);
-            border-top: 2px solid var(--color-text-primary);
+            margin-top: -10px;
+            margin-left: -10px;
+            border: 2.5px solid rgba(255, 255, 255, 0.3);
+            border-top: 2.5px solid var(--color-text-primary);
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
         }
