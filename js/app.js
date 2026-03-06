@@ -2590,9 +2590,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td>${user.entriesCount || 0}</td>
                 <td class="user-actions">
-                    <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
+                    <button class="edit-btn" onclick="toggleUserStatus(this, ${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
                     ${user.id !== currentUser.id ?
-                        `<button class="delete-btn" onclick="deleteUser(${user.id})">${t('common.delete')}</button>` : ''}
+                        `<button class="delete-btn" onclick="deleteUser(this, ${user.id})">${t('common.delete')}</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);
@@ -2600,8 +2600,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Toggle user active status
-    window.toggleUserStatus = async function(userId, newStatus) {
-        const btn = event ? event.target : null;
+    window.toggleUserStatus = async function(btn, userId, newStatus) {
         setButtonLoading(btn, true);
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
@@ -2624,12 +2623,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Delete user
-    window.deleteUser = async function(userId) {
+    window.deleteUser = async function(btn, userId) {
         if (!confirm(t('admin.confirmDeleteUser'))) {
             return;
         }
 
-        const btn = event ? event.target : null;
         setButtonLoading(btn, true);
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
@@ -2739,7 +2737,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${couple.user2.username}</td>
                 <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
                 <td>
-                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">${t('admin.unlink')}</button>
+                    <button class="delete-btn" onclick="unlinkCouple(this, ${couple.user1.id})">${t('admin.unlink')}</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -2818,10 +2816,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Unlink couple
-    window.unlinkCouple = async function(userId) {
+    window.unlinkCouple = async function(btn, userId) {
         if (!confirm(t('admin.confirmUnlink'))) return;
 
-        const btn = event ? event.target : null;
         setButtonLoading(btn, true);
         try {
             const response = await fetch('/api/admin/couples/unlink', {
