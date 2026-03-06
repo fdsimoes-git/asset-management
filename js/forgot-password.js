@@ -19,7 +19,6 @@ document.getElementById('step1Form').addEventListener('submit', async (e) => {
 
     btn.disabled = true;
     btn.classList.add('loading');
-    btn.textContent = t('forgot.sending');
 
     try {
         const response = await fetch('/api/forgot-password', {
@@ -46,7 +45,6 @@ document.getElementById('step1Form').addEventListener('submit', async (e) => {
     } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
-        btn.textContent = t('forgot.sendCode');
     }
 });
 
@@ -84,7 +82,6 @@ document.getElementById('step2Form').addEventListener('submit', async (e) => {
 
     btn.disabled = true;
     btn.classList.add('loading');
-    btn.textContent = t('forgot.resetting');
 
     try {
         const response = await fetch('/api/reset-password', {
@@ -116,6 +113,5 @@ document.getElementById('step2Form').addEventListener('submit', async (e) => {
     } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
-        btn.textContent = t('forgot.resetBtn');
     }
 });

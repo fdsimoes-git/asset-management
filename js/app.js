@@ -1,3 +1,20 @@
+// Button loading state utility
+function setButtonLoading(btn, isLoading) {
+    if (!btn) return;
+    if (isLoading) {
+        btn.dataset.originalText = btn.textContent;
+        btn.classList.add('loading');
+        btn.disabled = true;
+    } else {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+        if (btn.dataset.originalText !== undefined) {
+            btn.textContent = btn.dataset.originalText;
+            delete btn.dataset.originalText;
+        }
+    }
+}
+
 let entries = [];
 let monthlyBalanceChart = null;
 let incomeVsExpenseChart = null;
@@ -927,8 +944,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
 
     // Show loading indicator
     loadingIndicator.style.display = 'block';
-    processBulkPdfBtn.disabled = true;
-    processBulkPdfBtn.textContent = t('bulk.processing');
+    setButtonLoading(processBulkPdfBtn, true);
 
     const formData = new FormData();
     formData.append('pdfFile', pdfFile);
@@ -962,8 +978,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
     } finally {
         // Hide loading indicator and reset button
         loadingIndicator.style.display = 'none';
-        processBulkPdfBtn.disabled = false;
-        processBulkPdfBtn.textContent = t('bulk.uploadProcess');
+        setButtonLoading(processBulkPdfBtn, false);
     }
 });
 
@@ -1194,7 +1209,6 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             const total = bulkExtractedEntries.length;
             for (const entry of bulkExtractedEntries) {
                 confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
-
                 const response = await fetch('/api/entries', {
                     method: 'POST',
                     headers: {
@@ -1290,10 +1304,7 @@ document.addEventListener('DOMContentLoaded', () => {
     newForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const submitBtn = newForm.querySelector('button[type="submit"]');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = t('modal.saving');
-        }
+        setButtonLoading(submitBtn, true);
 
         // --- Manual Entry Logic ---
         let rawAmount = document.getElementById('amount').value;
@@ -1303,10 +1314,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const parsedAmount = parseFloat(amountValue);
         if (isNaN(parsedAmount) || amountValue.trim() === '') {
             alert(t('entry.alertValidAmount'));
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = t('modal.addEntryBtn');
-            }
+            setButtonLoading(submitBtn, false);
             return;
         }
 
@@ -1325,10 +1333,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         if (!entry.month || !entry.type || !entry.amount) {
             alert(t('entry.alertFillFields'));
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = t('modal.addEntryBtn');
-            }
+            setButtonLoading(submitBtn, false);
             return;
         }
         try {
@@ -1351,10 +1356,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Fetch error:', error);
             alert(t('entry.alertAddFailed'));
         } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = t('modal.addEntryBtn');
-            }
+            setButtonLoading(submitBtn, false);
         }
     });
 
@@ -1368,6 +1370,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const confirmation = confirm(t('entry.confirmDelete'));
             if (confirmation) {
+                const deleteBtn = e.target;
+                setButtonLoading(deleteBtn, true);
                 try {
                     const response = await fetch(`/api/entries/${id}`, {
                         method: 'DELETE'
@@ -1385,6 +1389,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) {
                     console.error('Error deleting entry:', error);
                      alert(t('entry.alertDeleteError'));
+                } finally {
+                    setButtonLoading(deleteBtn, false);
                 }
             }
         }
@@ -1412,6 +1418,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Edit entry form submission
     document.getElementById('editEntryForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const editSubmitBtn = e.target.querySelector('button[type="submit"]');
+        setButtonLoading(editSubmitBtn, true);
+
         const id = parseInt(document.getElementById('editEntryId').value);
         const tagsInput = document.getElementById('editTags').value;
         const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean) : [];
@@ -1444,6 +1453,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error updating entry:', error);
             alert(t('entry.alertUpdateError'));
+        } finally {
+            setButtonLoading(editSubmitBtn, false);
         }
     });
 
@@ -1514,15 +1525,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Logout button
     document.getElementById('logoutBtn').addEventListener('click', async function() {
+        const logoutBtn = this;
+        setButtonLoading(logoutBtn, true);
         try {
             await fetch('/api/logout', { method: 'POST', credentials: 'include' });
             window.location.href = '/login.html';
         } catch (error) {
             alert(t('logout.failed'));
+            setButtonLoading(logoutBtn, false);
         }
     });
 
-    document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+    document.getElementById('settingsBtn').addEventListener('click', async function() {
+        setButtonLoading(this, true);
+        try {
+            await openSettingsModal();
+        } finally {
+            setButtonLoading(this, false);
+        }
+    });
 
     document.getElementById('monthFilterStart').addEventListener('input', filterEntries);
     document.getElementById('monthFilterEnd').addEventListener('input', filterEntries);
@@ -1758,6 +1779,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(t('settings.enterValidEmail'));
                 return;
             }
+            setButtonLoading(saveBtn, true);
             try {
                 const response = await fetch('/api/user/email', {
                     method: 'PUT',
@@ -1775,6 +1797,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {
                 alert(t('error.generic'));
+            } finally {
+                setButtonLoading(saveBtn, false);
             }
         });
 
@@ -1806,6 +1830,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 disableDiv.querySelector('#settings2FAConfirmDisable').addEventListener('click', async () => {
                     const code = disableDiv.querySelector('#settings2FADisableCode').value.trim();
                     if (!code) return;
+                    const confirmDisableBtn = disableDiv.querySelector('#settings2FAConfirmDisable');
+                    setButtonLoading(confirmDisableBtn, true);
                     try {
                         const response = await fetch('/api/user/2fa/disable', {
                             method: 'POST',
@@ -1822,6 +1848,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {
                         alert(t('error.generic'));
+                    } finally {
+                        setButtonLoading(confirmDisableBtn, false);
                     }
                 });
 
@@ -1836,8 +1864,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!enableBtn) return;
 
             enableBtn.addEventListener('click', async () => {
-                enableBtn.disabled = true;
-                enableBtn.textContent = t('common.loading');
+                setButtonLoading(enableBtn, true);
 
                 try {
                     const response = await fetch('/api/user/2fa/setup', {
@@ -1848,8 +1875,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (!response.ok) {
                         alert(t('error.generic'));
-                        enableBtn.disabled = false;
-                        enableBtn.textContent = t('settings.enable2FA');
+                        setButtonLoading(enableBtn, false);
                         return;
                     }
 
@@ -1887,7 +1913,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
 
-                        verifyBtn.disabled = true;
+                        setButtonLoading(verifyBtn, true);
                         try {
                             const vRes = await fetch('/api/user/2fa/verify', {
                                 method: 'POST',
@@ -1926,11 +1952,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             } else {
                                 const vErrData = await vRes.json();
                                 alert(vErrData.message || t('settings.enterValidCode'));
-                                verifyBtn.disabled = false;
+                                setButtonLoading(verifyBtn, false);
                             }
                         } catch (e) {
                             alert(t('error.generic'));
-                            verifyBtn.disabled = false;
+                            setButtonLoading(verifyBtn, false);
                         }
                     }
 
@@ -1941,8 +1967,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 } catch (e) {
                     alert(t('error.generic'));
-                    enableBtn.disabled = false;
-                    enableBtn.textContent = t('settings.enable2FA');
+                    setButtonLoading(enableBtn, false);
                 }
             });
         }
@@ -1991,6 +2016,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removeBtn) {
                 removeBtn.addEventListener('click', async () => {
                     if (!confirm(t('gemini.confirmRemove'))) return;
+                    setButtonLoading(removeBtn, true);
                     try {
                         const response = await fetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
@@ -2008,6 +2034,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {
                         alert(t('gemini.removeFailed'));
+                    } finally {
+                        setButtonLoading(removeBtn, false);
                     }
                 });
             }
@@ -2034,6 +2062,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     input.focus();
                     return;
                 }
+                setButtonLoading(saveBtn, true);
                 try {
                     const response = await fetch('/api/user/gemini-key', {
                         method: 'POST',
@@ -2057,6 +2086,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (e) {
                     alert(t('error.generic'));
+                } finally {
+                    setButtonLoading(saveBtn, false);
                 }
             });
         }
@@ -2113,6 +2144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removeBtn) {
                 removeBtn.addEventListener('click', async () => {
                     if (!confirm(t('openai.confirmRemove'))) return;
+                    setButtonLoading(removeBtn, true);
                     try {
                         const response = await fetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
@@ -2130,6 +2162,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {
                         alert(t('openai.removeFailed'));
+                    } finally {
+                        setButtonLoading(removeBtn, false);
                     }
                 });
             }
@@ -2153,6 +2187,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     input.focus();
                     return;
                 }
+                setButtonLoading(saveBtn, true);
                 try {
                     const response = await fetch('/api/user/openai-key', {
                         method: 'POST',
@@ -2176,6 +2211,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (e) {
                     alert(t('error.generic'));
+                } finally {
+                    setButtonLoading(saveBtn, false);
                 }
             });
         }
@@ -2231,6 +2268,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removeBtn) {
                 removeBtn.addEventListener('click', async () => {
                     if (!confirm(t('anthropic.confirmRemove'))) return;
+                    setButtonLoading(removeBtn, true);
                     try {
                         const response = await fetch('/api/user/anthropic-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
@@ -2248,6 +2286,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } catch (e) {
                         alert(t('anthropic.removeFailed'));
+                    } finally {
+                        setButtonLoading(removeBtn, false);
                     }
                 });
             }
@@ -2271,6 +2311,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     input.focus();
                     return;
                 }
+                setButtonLoading(saveBtn, true);
                 try {
                     const response = await fetch('/api/user/anthropic-key', {
                         method: 'POST',
@@ -2294,6 +2335,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (e) {
                     alert(t('error.generic'));
+                } finally {
+                    setButtonLoading(saveBtn, false);
                 }
             });
         }
@@ -2314,6 +2357,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selected = overlay.querySelector('input[name="aiProvider"]:checked');
             if (!selected) return;
             const provider = selected.value;
+            setButtonLoading(saveBtn, true);
             try {
                 const response = await fetch('/api/user/ai-provider', {
                     method: 'PUT',
@@ -2332,6 +2376,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {
                 alert(t('settings.aiProviderSaveError'));
+            } finally {
+                setButtonLoading(saveBtn, false);
             }
         });
     }
@@ -2388,6 +2434,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         saveBtn.addEventListener('click', async () => {
             const aiModel = select.value || null;
+            setButtonLoading(saveBtn, true);
             try {
                 const response = await fetch('/api/user/ai-model', {
                     method: 'PUT',
@@ -2404,6 +2451,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {
                 alert(t('settings.aiModelSaveError'));
+            } finally {
+                setButtonLoading(saveBtn, false);
             }
         });
 
@@ -2542,9 +2591,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                 <td>${user.entriesCount || 0}</td>
                 <td class="user-actions">
-                    <button class="edit-btn" onclick="toggleUserStatus(${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
+                    <button class="edit-btn" onclick="toggleUserStatus(this, ${user.id}, ${!user.isActive})">${user.isActive ? t('admin.deactivate') : t('admin.activate')}</button>
                     ${user.id !== currentUser.id ?
-                        `<button class="delete-btn" onclick="deleteUser(${user.id})">${t('common.delete')}</button>` : ''}
+                        `<button class="delete-btn" onclick="deleteUser(this, ${user.id})">${t('common.delete')}</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);
@@ -2552,7 +2601,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Toggle user active status
-    window.toggleUserStatus = async function(userId, newStatus) {
+    window.toggleUserStatus = async function(btn, userId, newStatus) {
+        setButtonLoading(btn, true);
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
                 method: 'PUT',
@@ -2568,15 +2618,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             alert(t('error.updateUser'));
+        } finally {
+            setButtonLoading(btn, false);
         }
     };
 
     // Delete user
-    window.deleteUser = async function(userId) {
+    window.deleteUser = async function(btn, userId) {
         if (!confirm(t('admin.confirmDeleteUser'))) {
             return;
         }
 
+        setButtonLoading(btn, true);
         try {
             const response = await fetch(`/api/admin/users/${userId}`, {
                 method: 'DELETE'
@@ -2591,6 +2644,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             alert(t('error.deleteUser'));
+        } finally {
+            setButtonLoading(btn, false);
         }
     };
 
@@ -2601,6 +2656,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('newUsername').value;
         const password = document.getElementById('newPassword').value;
         const role = document.getElementById('newRole').value;
+        const createBtn = e.target.querySelector('button[type="submit"]');
+        setButtonLoading(createBtn, true);
 
         try {
             const response = await fetch('/api/admin/users', {
@@ -2619,6 +2676,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             alert(t('error.createUser'));
+        } finally {
+            setButtonLoading(createBtn, false);
         }
     });
 
@@ -2679,7 +2738,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${couple.user2.username}</td>
                 <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
                 <td>
-                    <button class="delete-btn" onclick="unlinkCouple(${couple.user1.id})">${t('admin.unlink')}</button>
+                    <button class="delete-btn" onclick="unlinkCouple(this, ${couple.user1.id})">${t('admin.unlink')}</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -2730,6 +2789,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            const linkBtn = e.target.querySelector('button[type="submit"]');
+            setButtonLoading(linkBtn, true);
             try {
                 const response = await fetch('/api/admin/couples/link', {
                     method: 'POST',
@@ -2749,14 +2810,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 alert(t('error.linkCouple'));
+            } finally {
+                setButtonLoading(linkBtn, false);
             }
         });
     }
 
     // Unlink couple
-    window.unlinkCouple = async function(userId) {
+    window.unlinkCouple = async function(btn, userId) {
         if (!confirm(t('admin.confirmUnlink'))) return;
 
+        setButtonLoading(btn, true);
         try {
             const response = await fetch('/api/admin/couples/unlink', {
                 method: 'POST',
@@ -2775,6 +2839,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             alert(t('error.unlinkCouple'));
+        } finally {
+            setButtonLoading(btn, false);
         }
     };
 
@@ -2860,6 +2926,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const codeVal = e.target.dataset.code;
                 if (!confirm(t('admin.confirmDeleteCode', { code: codeVal }))) return;
 
+                const deleteCodeBtn = e.target;
+                setButtonLoading(deleteCodeBtn, true);
                 try {
                     const response = await fetch(`/api/admin/invite-codes/${codeVal}`, {
                         method: 'DELETE'
@@ -2872,6 +2940,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (error) {
                     alert(t('error.deleteCode'));
+                } finally {
+                    setButtonLoading(deleteCodeBtn, false);
                 }
             });
         });
@@ -2880,6 +2950,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateInviteCodeBtn = document.getElementById('generateInviteCodeBtn');
     if (generateInviteCodeBtn) {
         generateInviteCodeBtn.addEventListener('click', async () => {
+            setButtonLoading(generateInviteCodeBtn, true);
             try {
                 const response = await fetch('/api/admin/invite-codes', {
                     method: 'POST'
@@ -2898,6 +2969,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 alert(t('error.generateCode'));
+            } finally {
+                setButtonLoading(generateInviteCodeBtn, false);
             }
         });
     }
