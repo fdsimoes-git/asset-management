@@ -22,6 +22,9 @@ const QRCode = require('qrcode');
 
 const app = express();
 
+// Pre-computed valid bcrypt hash for constant-time comparison on unknown users
+const DUMMY_HASH = bcrypt.hashSync('dummy-constant-time-placeholder', 10);
+
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -450,7 +453,14 @@ if (UMAMI_WEBSITE_ID) {
     });
 }
 
-app.use(express.static(__dirname, { maxAge: '1h' }));
+app.use(express.static(__dirname, {
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+        if (path.extname(filePath).toLowerCase() === '.html') {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+    }
+}));
 
 // Trust Nginx proxy
 app.set('trust proxy', 1);
@@ -483,7 +493,7 @@ app.use((req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         return next();
     }
-    // Skip CSRF for PayPal webhook-style endpoints (no session context)
+    // Skip CSRF for pre-auth endpoints (login/register/password-reset) and external callbacks (PayPal)
     if (req.path === '/api/login' || req.path === '/api/register'
         || req.path === '/api/forgot-password' || req.path === '/api/reset-password'
         || req.path === '/api/login/verify-2fa'
@@ -672,14 +682,13 @@ app.post('/api/login', loginLimiter, asyncHandler(async (req, res) => {
     const lockStatus = getLoginLockStatus(username);
     if (lockStatus.locked) {
         // Perform a dummy hash comparison to prevent timing-based user enumeration
-        await bcrypt.compare(password, '$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123');
+        await bcrypt.compare(password, DUMMY_HASH);
         return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = await db.findUserByUsername(username);
 
     // Always perform a bcrypt compare to prevent timing-based user enumeration
-    const DUMMY_HASH = '$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123';
     const passwordValid = await bcrypt.compare(password, user ? user.passwordHash : DUMMY_HASH);
 
     if (user && user.isActive && passwordValid) {
@@ -1392,7 +1401,16 @@ app.post('/api/user/2fa/disable', requireAuth, asyncHandler(async (req, res) => 
 }));
 
 // Logout endpoint
-app.post('/api/logout', generalLimiter, (req, res) => {
+const logoutLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many logout requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+app.post('/api/logout', logoutLimiter, (req, res) => {
     req.session.destroy();
     res.json({ message: 'Logged out successfully' });
 });

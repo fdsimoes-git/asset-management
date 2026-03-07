@@ -8,7 +8,11 @@ async function getCsrfToken() {
         _csrfPromise = fetch('/api/csrf-token', { credentials: 'include' })
             .then(r => r.json())
             .then(d => { _csrfToken = d.csrfToken; return _csrfToken; })
-            .catch(() => '');
+            .catch(err => {
+                _csrfPromise = null;
+                console.error('Failed to fetch CSRF token', err);
+                return '';
+            });
     }
     return _csrfPromise;
 }

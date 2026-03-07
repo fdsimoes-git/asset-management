@@ -414,10 +414,6 @@ async function deleteEntry(entryId, userId) {
     }
 }
 
-async function deleteEntriesByUser(userId) {
-    await pool.query('DELETE FROM entries WHERE user_id = $1', [userId]);
-}
-
 // ── Invite Code Queries ──────────────────────────────────────────────
 
 async function findInviteCode(code) {
@@ -477,13 +473,6 @@ async function consumeInviteCode(code, usedBy) {
         [usedBy, code.toUpperCase()]
     );
     return rowCount > 0;
-}
-
-async function updateInviteCodeUsedBy(code, usedBy) {
-    await pool.query(
-        'UPDATE invite_codes SET used_by = $1 WHERE code = $2',
-        [usedBy, code.toUpperCase()]
-    );
 }
 
 async function rollbackInviteCode(code) {
