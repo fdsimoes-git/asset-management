@@ -41,7 +41,9 @@ function dbRowToEntry(row) {
         amount:          parseFloat(row.amount),
         description:     row.description,
         tags:            row.tags || [],
-        isCoupleExpense: row.is_couple_expense
+        isCoupleExpense: row.is_couple_expense,
+        createdAt:       row.created_at ? row.created_at.toISOString() : null,
+        updatedAt:       row.updated_at ? row.updated_at.toISOString() : null
     };
 }
 
@@ -385,6 +387,7 @@ async function updateEntry(entryId, userId, fields) {
 
     if (setClauses.length === 0) return null;
 
+    setClauses.push(`updated_at = NOW()`);
     values.push(entryId, userId);
     try {
         const { rows } = await pool.query(

@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS entries (
     amount            NUMERIC(15,2) NOT NULL CHECK (amount > 0),
     description       TEXT NOT NULL,
     tags              TEXT[] NOT NULL DEFAULT '{}',
-    is_couple_expense BOOLEAN NOT NULL DEFAULT FALSE
+    is_couple_expense BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ── Invite Codes ─────────────────────────────────────────────────────
