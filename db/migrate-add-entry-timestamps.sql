@@ -12,7 +12,8 @@ ALTER TABLE entries
 UPDATE entries
 SET
     created_at = COALESCE(created_at, NOW()),
-    updated_at = COALESCE(updated_at, NOW());
+    updated_at = COALESCE(updated_at, NOW())
+WHERE created_at IS NULL OR updated_at IS NULL;
 
 -- Step 3: Set defaults for new rows going forward
 ALTER TABLE entries
