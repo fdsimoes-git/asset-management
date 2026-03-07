@@ -509,6 +509,25 @@ async function getAllInviteCodes() {
     }));
 }
 
+// ── Couple Queries ───────────────────────────────────────────────────
+
+async function getCouples() {
+    const { rows } = await pool.query(
+        `SELECT u1.id AS u1_id, u1.username AS u1_username,
+                u2.id AS u2_id, u2.username AS u2_username,
+                u1.partner_linked_at
+         FROM users u1
+         JOIN users u2 ON u1.partner_id = u2.id AND u2.partner_id = u1.id
+         WHERE u1.id < u2.id
+         ORDER BY u1.partner_linked_at DESC`
+    );
+    return rows.map(row => ({
+        user1: { id: Number(row.u1_id), username: row.u1_username },
+        user2: { id: Number(row.u2_id), username: row.u2_username },
+        linkedAt: row.partner_linked_at ? row.partner_linked_at.toISOString() : null
+    }));
+}
+
 // ── PayPal Order Queries ─────────────────────────────────────────────
 
 function dbRowToPaypalOrder(row) {
@@ -590,14 +609,14 @@ module.exports = {
     createEntry,
     updateEntry,
     deleteEntry,
-    deleteEntriesByUser,
+    // Couples
+    getCouples,
 
     // Invite Codes
     findInviteCode,
     createInviteCode,
     createInviteCodeIfNotExists,
     consumeInviteCode,
-    updateInviteCodeUsedBy,
     rollbackInviteCode,
     deleteInviteCode,
     getAllInviteCodes,

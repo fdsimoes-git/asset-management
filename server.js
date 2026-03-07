@@ -132,23 +132,6 @@ function resolveModel(user, provider, usage) {
 const ENCRYPTION_KEY = config.encryptionKey;
 const ALGORITHM = 'aes-256-cbc';
 
-// Function to encrypt data
-function encryptData(data) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return { iv: iv.toString('hex'), encryptedData: encrypted };
-}
-
-// Function to decrypt data
-function decryptData(encryptedData, iv) {
-    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, Buffer.from(iv, 'hex'));
-    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return JSON.parse(decrypted);
-}
-
 // Function to encrypt a raw string (for API keys)
 function encryptString(value) {
     const iv = crypto.randomBytes(16);
@@ -467,7 +450,7 @@ if (UMAMI_WEBSITE_ID) {
     });
 }
 
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, { maxAge: '1h' }));
 
 // Trust Nginx proxy
 app.set('trust proxy', 1);
@@ -484,6 +467,35 @@ app.use(session({
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
+
+// ============ CSRF PROTECTION ============
+
+// Generate a CSRF token per session
+app.get('/api/csrf-token', (req, res) => {
+    if (!req.session.csrfToken) {
+        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+    }
+    res.json({ csrfToken: req.session.csrfToken });
+});
+
+// Validate CSRF token on state-changing requests
+app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        return next();
+    }
+    // Skip CSRF for PayPal webhook-style endpoints (no session context)
+    if (req.path === '/api/login' || req.path === '/api/register'
+        || req.path === '/api/forgot-password' || req.path === '/api/reset-password'
+        || req.path === '/api/login/verify-2fa'
+        || req.path === '/api/paypal/create-order' || req.path.startsWith('/api/paypal/capture-order/')) {
+        return next();
+    }
+    const token = req.headers['x-csrf-token'];
+    if (!token || !req.session.csrfToken || token !== req.session.csrfToken) {
+        return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+    }
+    next();
+});
 
 // Rate limiting
 const loginLimiter = rateLimit({
@@ -659,12 +671,18 @@ app.post('/api/login', loginLimiter, asyncHandler(async (req, res) => {
     // Check brute-force lockout before any password check
     const lockStatus = getLoginLockStatus(username);
     if (lockStatus.locked) {
+        // Perform a dummy hash comparison to prevent timing-based user enumeration
+        await bcrypt.compare(password, '$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123');
         return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = await db.findUserByUsername(username);
 
-    if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
+    // Always perform a bcrypt compare to prevent timing-based user enumeration
+    const DUMMY_HASH = '$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123';
+    const passwordValid = await bcrypt.compare(password, user ? user.passwordHash : DUMMY_HASH);
+
+    if (user && user.isActive && passwordValid) {
         resetFailedLogins(username);
 
         // Check if user has 2FA enabled
@@ -831,20 +849,17 @@ app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters' });
     }
 
-    // Validate username and active status before consuming the code
-    // to prevent an attacker from burning valid codes via wrong usernames
-    const user = await db.findUserByUsername(username);
-    if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired reset code' });
-    }
-
-    if (!user.isActive) {
-        return res.status(403).json({ message: 'User account is inactive' });
-    }
-
     // Per-username attempt tracking to prevent reset code brute-force
     if (!checkAndRecordResetAttempt(username)) {
         return res.status(429).json({ message: 'Too many failed reset attempts. Please request a new code.' });
+    }
+
+    // Validate username and active status before consuming the code
+    // to prevent an attacker from burning valid codes via wrong usernames
+    const user = await db.findUserByUsername(username);
+
+    if (!user || !user.isActive) {
+        return res.status(400).json({ message: 'Invalid or expired reset code' });
     }
 
     const userId = consumeResetCode(code);
@@ -1377,7 +1392,7 @@ app.post('/api/user/2fa/disable', requireAuth, asyncHandler(async (req, res) => 
 }));
 
 // Logout endpoint
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', generalLimiter, (req, res) => {
     req.session.destroy();
     res.json({ message: 'Logged out successfully' });
 });
@@ -1422,6 +1437,10 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         || typeof month !== 'string' || typeof type !== 'string'
         || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (description.length > 500) {
+        return res.status(400).json({ message: 'Description must be 500 characters or less' });
     }
 
     if (!MONTH_FORMAT.test(month)) {
@@ -1478,6 +1497,10 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
         || typeof month !== 'string' || typeof type !== 'string'
         || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (description.length > 500) {
+        return res.status(400).json({ message: 'Description must be 500 characters or less' });
     }
 
     if (!MONTH_FORMAT.test(month)) {
@@ -1697,27 +1720,7 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async
 
 // Get all couples (admin only)
 app.get('/api/admin/couples', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-    const allUsers = await db.getAllUsers();
-    const couples = [];
-    const processedIds = new Set();
-    const usersById = {};
-    allUsers.forEach(u => { usersById[u.id] = u; });
-
-    allUsers.forEach(user => {
-        if (user.partnerId && !processedIds.has(user.id)) {
-            const partner = usersById[user.partnerId];
-            if (partner && partner.partnerId === user.id) {
-                couples.push({
-                    user1: { id: user.id, username: user.username },
-                    user2: { id: partner.id, username: partner.username },
-                    linkedAt: user.partnerLinkedAt
-                });
-                processedIds.add(user.id);
-                processedIds.add(partner.id);
-            }
-        }
-    });
-
+    const couples = await db.getCouples();
     res.json({ couples });
 }));
 

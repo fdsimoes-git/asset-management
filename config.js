@@ -33,6 +33,12 @@ if (!SESSION_SECRET) {
     process.exit(1);
 }
 
+if (SESSION_SECRET.length < 32) {
+    console.error('FATAL: SESSION_SECRET must be at least 32 characters long.');
+    console.error('Generate one with:  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64\'))"');
+    process.exit(1);
+}
+
 // ── Optional validation ─────────────────────────────────────────────
 
 const INVITE_CODE_PRICE = process.env.INVITE_CODE_PRICE || '5.00';

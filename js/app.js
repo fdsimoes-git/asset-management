@@ -949,7 +949,7 @@ processBulkPdfBtn.addEventListener('click', async () => {
     const formData = new FormData();
     formData.append('pdfFile', pdfFile);
     try {
-        const response = await fetch('/api/process-pdf', {
+        const response = await csrfFetch('/api/process-pdf', {
             method: 'POST',
             body: formData
         });
@@ -1209,7 +1209,7 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             const total = bulkExtractedEntries.length;
             for (const entry of bulkExtractedEntries) {
                 confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
-                const response = await fetch('/api/entries', {
+                const response = await csrfFetch('/api/entries', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1337,7 +1337,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const response = await fetch('/api/entries', {
+            const response = await csrfFetch('/api/entries', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(entry)
@@ -1373,7 +1373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const deleteBtn = e.target;
                 setButtonLoading(deleteBtn, true);
                 try {
-                    const response = await fetch(`/api/entries/${id}`, {
+                    const response = await csrfFetch(`/api/entries/${id}`, {
                         method: 'DELETE'
                     });
 
@@ -1437,7 +1437,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            const response = await fetch(`/api/entries/${id}`, {
+            const response = await csrfFetch(`/api/entries/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedEntry)
@@ -1528,7 +1528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const logoutBtn = this;
         setButtonLoading(logoutBtn, true);
         try {
-            await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+            await csrfFetch('/api/logout', { method: 'POST', credentials: 'include' });
             window.location.href = '/login.html';
         } catch (error) {
             alert(t('logout.failed'));
@@ -1781,7 +1781,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             setButtonLoading(saveBtn, true);
             try {
-                const response = await fetch('/api/user/email', {
+                const response = await csrfFetch('/api/user/email', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: value || '' }),
@@ -1833,7 +1833,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const confirmDisableBtn = disableDiv.querySelector('#settings2FAConfirmDisable');
                     setButtonLoading(confirmDisableBtn, true);
                     try {
-                        const response = await fetch('/api/user/2fa/disable', {
+                        const response = await csrfFetch('/api/user/2fa/disable', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ totpCode: code }),
@@ -1867,7 +1867,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setButtonLoading(enableBtn, true);
 
                 try {
-                    const response = await fetch('/api/user/2fa/setup', {
+                    const response = await csrfFetch('/api/user/2fa/setup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'include'
@@ -1915,7 +1915,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         setButtonLoading(verifyBtn, true);
                         try {
-                            const vRes = await fetch('/api/user/2fa/verify', {
+                            const vRes = await csrfFetch('/api/user/2fa/verify', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ totpCode: code }),
@@ -2018,7 +2018,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!confirm(t('gemini.confirmRemove'))) return;
                     setButtonLoading(removeBtn, true);
                     try {
-                        const response = await fetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
+                        const response = await csrfFetch('/api/user/gemini-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
                             const data = await response.json();
                             currentUser.hasGeminiApiKey = false;
@@ -2064,7 +2064,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 setButtonLoading(saveBtn, true);
                 try {
-                    const response = await fetch('/api/user/gemini-key', {
+                    const response = await csrfFetch('/api/user/gemini-key', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ geminiApiKey: value }),
@@ -2146,7 +2146,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!confirm(t('openai.confirmRemove'))) return;
                     setButtonLoading(removeBtn, true);
                     try {
-                        const response = await fetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
+                        const response = await csrfFetch('/api/user/openai-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
                             const data = await response.json();
                             currentUser.hasOpenaiApiKey = false;
@@ -2189,7 +2189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 setButtonLoading(saveBtn, true);
                 try {
-                    const response = await fetch('/api/user/openai-key', {
+                    const response = await csrfFetch('/api/user/openai-key', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ openaiApiKey: value }),
@@ -2270,7 +2270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!confirm(t('anthropic.confirmRemove'))) return;
                     setButtonLoading(removeBtn, true);
                     try {
-                        const response = await fetch('/api/user/anthropic-key', { method: 'DELETE', credentials: 'include' });
+                        const response = await csrfFetch('/api/user/anthropic-key', { method: 'DELETE', credentials: 'include' });
                         if (response.ok) {
                             const data = await response.json();
                             currentUser.hasAnthropicApiKey = false;
@@ -2313,7 +2313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 setButtonLoading(saveBtn, true);
                 try {
-                    const response = await fetch('/api/user/anthropic-key', {
+                    const response = await csrfFetch('/api/user/anthropic-key', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ anthropicApiKey: value }),
@@ -2359,7 +2359,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const provider = selected.value;
             setButtonLoading(saveBtn, true);
             try {
-                const response = await fetch('/api/user/ai-provider', {
+                const response = await csrfFetch('/api/user/ai-provider', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ aiProvider: provider }),
@@ -2393,7 +2393,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loading.style.display = 'inline';
             select.disabled = true;
             try {
-                const response = await fetch('/api/ai/models', { credentials: 'include' });
+                const response = await csrfFetch('/api/ai/models', { credentials: 'include' });
                 if (!response.ok) throw new Error('fetch failed');
                 const data = await response.json();
 
@@ -2436,7 +2436,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const aiModel = select.value || null;
             setButtonLoading(saveBtn, true);
             try {
-                const response = await fetch('/api/user/ai-model', {
+                const response = await csrfFetch('/api/user/ai-model', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ aiModel }),
@@ -2468,7 +2468,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch current user info on load
     async function fetchCurrentUser() {
         try {
-            const response = await fetch('/api/user');
+            const response = await csrfFetch('/api/user');
             if (response.ok) {
                 currentUser = await response.json();
                 hasPartner = !!currentUser.partnerId;
@@ -2529,7 +2529,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load entries from server with viewMode
     async function loadEntries() {
         try {
-            const response = await fetch(`/api/entries?viewMode=${currentViewMode}`);
+            const response = await csrfFetch(`/api/entries?viewMode=${currentViewMode}`);
             if (response.ok) {
                 entries = await response.json();
                 // Re-apply any active filters so the UI stays consistent
@@ -2544,7 +2544,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load users for admin panel
     async function loadUsersForAdmin() {
         try {
-            const response = await fetch('/api/admin/users');
+            const response = await csrfFetch('/api/admin/users');
             if (response.ok) {
                 const users = await response.json();
                 displayUsersTable(users);
@@ -2604,7 +2604,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.toggleUserStatus = async function(btn, userId, newStatus) {
         setButtonLoading(btn, true);
         try {
-            const response = await fetch(`/api/admin/users/${userId}`, {
+            const response = await csrfFetch(`/api/admin/users/${userId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ isActive: newStatus })
@@ -2631,7 +2631,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setButtonLoading(btn, true);
         try {
-            const response = await fetch(`/api/admin/users/${userId}`, {
+            const response = await csrfFetch(`/api/admin/users/${userId}`, {
                 method: 'DELETE'
             });
 
@@ -2660,7 +2660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setButtonLoading(createBtn, true);
 
         try {
-            const response = await fetch('/api/admin/users', {
+            const response = await csrfFetch('/api/admin/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, role })
@@ -2709,7 +2709,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load couples for admin
     async function loadCouplesForAdmin() {
         try {
-            const response = await fetch('/api/admin/couples');
+            const response = await csrfFetch('/api/admin/couples');
             if (response.ok) {
                 const data = await response.json();
                 displayCouplesTable(data.couples);
@@ -2748,7 +2748,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Populate couple dropdowns with unlinked users
     async function populateCoupleDropdowns() {
         try {
-            const response = await fetch('/api/admin/users');
+            const response = await csrfFetch('/api/admin/users');
             if (response.ok) {
                 const users = await response.json();
                 const unlinkedUsers = users.filter(u => !u.partnerId && u.isActive);
@@ -2792,7 +2792,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const linkBtn = e.target.querySelector('button[type="submit"]');
             setButtonLoading(linkBtn, true);
             try {
-                const response = await fetch('/api/admin/couples/link', {
+                const response = await csrfFetch('/api/admin/couples/link', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId1, userId2 })
@@ -2822,7 +2822,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setButtonLoading(btn, true);
         try {
-            const response = await fetch('/api/admin/couples/unlink', {
+            const response = await csrfFetch('/api/admin/couples/unlink', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId })
@@ -2848,7 +2848,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadInviteCodesForAdmin() {
         try {
-            const response = await fetch('/api/admin/invite-codes');
+            const response = await csrfFetch('/api/admin/invite-codes');
             if (response.ok) {
                 const codes = await response.json();
                 displayInviteCodesTable(codes);
@@ -2929,7 +2929,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const deleteCodeBtn = e.target;
                 setButtonLoading(deleteCodeBtn, true);
                 try {
-                    const response = await fetch(`/api/admin/invite-codes/${codeVal}`, {
+                    const response = await csrfFetch(`/api/admin/invite-codes/${codeVal}`, {
                         method: 'DELETE'
                     });
                     if (response.ok) {
@@ -2952,7 +2952,7 @@ document.addEventListener('DOMContentLoaded', () => {
         generateInviteCodeBtn.addEventListener('click', async () => {
             setButtonLoading(generateInviteCodeBtn, true);
             try {
-                const response = await fetch('/api/admin/invite-codes', {
+                const response = await csrfFetch('/api/admin/invite-codes', {
                     method: 'POST'
                 });
 

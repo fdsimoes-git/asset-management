@@ -154,7 +154,7 @@
             // Send last 20 messages (user + assistant) as conversation context
             const history = chatMessages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-21, -1);
 
-            const res = await fetch('/api/ai/chat', {
+            const res = await csrfFetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ messages: history, message: text })
@@ -259,7 +259,7 @@
                 let failed = 0;
                 let expired = false;
                 for (const pe of pendingEdits) {
-                    const res = await fetch('/api/ai/confirm-edit', {
+                    const res = await csrfFetch('/api/ai/confirm-edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ entryId: pe.entryId })
@@ -292,7 +292,7 @@
             cancelBtn.disabled = true;
             try {
                 for (const pe of pendingEdits) {
-                    await fetch('/api/ai/cancel-edit', {
+                    await csrfFetch('/api/ai/cancel-edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ entryId: pe.entryId })
