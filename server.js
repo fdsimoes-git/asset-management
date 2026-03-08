@@ -22,8 +22,8 @@ const QRCode = require('qrcode');
 
 const app = express();
 
-// Dummy bcrypt hash computed once at startup for constant-time comparison on unknown users
-const DUMMY_HASH = bcrypt.hashSync('dummy-constant-time-placeholder', 10);
+// Precomputed dummy bcrypt hash (cost factor 10) for constant-time comparison on unknown users
+const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8VS.wG.ZyWQ/2t6WvTDWv1Q5I8bHHy';
 
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
