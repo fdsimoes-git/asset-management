@@ -224,7 +224,7 @@ setInterval(() => {
 
 const resetCodes = new Map();
 const RESET_CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
-const resetAttempts = new Map(); // per-username failed reset code attempts
+const resetAttempts = new Map(); // per-(username|ip) failed reset code attempts
 const MAX_RESET_ATTEMPTS = 5;
 const RESET_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
@@ -271,8 +271,8 @@ function consumeResetCode(code) {
     return data.userId;
 }
 
-function checkAndRecordResetAttempt(username) {
-    const key = username.toLowerCase();
+function checkAndRecordResetAttempt(username, ip) {
+    const key = `${username.toLowerCase()}|${ip}`;
     const now = Date.now();
     let record = resetAttempts.get(key);
     if (record && (now - record.firstAttempt) > RESET_ATTEMPT_WINDOW) {
@@ -291,7 +291,12 @@ function checkAndRecordResetAttempt(username) {
 }
 
 function clearResetAttempts(username) {
-    resetAttempts.delete(username.toLowerCase());
+    const prefix = `${username.toLowerCase()}|`;
+    for (const key of resetAttempts.keys()) {
+        if (key.startsWith(prefix)) {
+            resetAttempts.delete(key);
+        }
+    }
 }
 
 // Cleanup expired reset codes and attempt records every 15 minutes
@@ -872,8 +877,8 @@ app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters' });
     }
 
-    // Per-username attempt tracking to prevent reset code brute-force
-    if (!checkAndRecordResetAttempt(username)) {
+    // Per-(username + IP) attempt tracking to prevent reset code brute-force and limit DoS impact
+    if (!checkAndRecordResetAttempt(username, req.ip)) {
         return res.status(429).json({ message: 'Too many failed reset attempts. Please request a new code.' });
     }
 
