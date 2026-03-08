@@ -1477,7 +1477,9 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    if (description.length > 500) {
+    const trimmedDescription = description.trim();
+
+    if (trimmedDescription.length > 500) {
         return res.status(400).json({ message: 'Description must be 500 characters or less' });
     }
 
@@ -1512,7 +1514,7 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         month,
         type,
         amount: parsedAmount,
-        description: description.trim(),
+        description: trimmedDescription,
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     });
@@ -1537,7 +1539,9 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    if (description.length > 500) {
+    const trimmedDescription = description.trim();
+
+    if (trimmedDescription.length > 500) {
         return res.status(400).json({ message: 'Description must be 500 characters or less' });
     }
 
@@ -1571,7 +1575,7 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
         month,
         type,
         amount: parsedAmount,
-        description: description.trim(),
+        description: trimmedDescription,
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     });
