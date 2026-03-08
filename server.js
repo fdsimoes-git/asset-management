@@ -22,7 +22,7 @@ const QRCode = require('qrcode');
 
 const app = express();
 
-// Pre-computed valid bcrypt hash for constant-time comparison on unknown users
+// Dummy bcrypt hash computed once at startup for constant-time comparison on unknown users
 const DUMMY_HASH = bcrypt.hashSync('dummy-constant-time-placeholder', 10);
 
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
@@ -501,11 +501,8 @@ app.use((req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         return next();
     }
-    // Skip CSRF for pre-auth endpoints (login/register/password-reset) and external callbacks (PayPal)
-    if (req.path === '/api/login' || req.path === '/api/register'
-        || req.path === '/api/forgot-password' || req.path === '/api/reset-password'
-        || req.path === '/api/login/verify-2fa'
-        || req.path === '/api/paypal/create-order' || req.path.startsWith('/api/paypal/capture-order/')) {
+    // Skip CSRF only for external callbacks (PayPal) that cannot carry a session token
+    if (req.path === '/api/paypal/create-order' || req.path.startsWith('/api/paypal/capture-order/')) {
         return next();
     }
     const token = req.headers['x-csrf-token'];

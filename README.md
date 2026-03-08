@@ -246,7 +246,7 @@ Available expense/income categories:
 - **Email Privacy**: Admins see only email/2FA status indicators, not actual addresses
 - **Reset Code Security**: Single-use, 15-min expiry, one active per user, code-username binding verified
 - **Anti-Enumeration**: Generic responses on forgot-password; constant-time login (always runs bcrypt)
-- **CSRF Protection**: Per-session tokens validated on all state-changing requests
+- **CSRF Protection**: Per-session tokens validated on all state-changing requests (only external PayPal callbacks are exempt)
 - **Input Validation**: Server-side validation for all inputs
 - **Data Isolation**: Users can only access their own entries
 - **Role-Based Access**: Admin-only endpoints protected

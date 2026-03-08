@@ -24,7 +24,7 @@
         }
 
         try {
-            const response = await fetch('/api/login', {
+            const response = await csrfFetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
@@ -79,7 +79,7 @@
         verify2FABtn.disabled = true;
 
         try {
-            const response = await fetch('/api/login/verify-2fa', {
+            const response = await csrfFetch('/api/login/verify-2fa', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tempToken: pendingTempToken, totpCode: code }),
