@@ -448,6 +448,7 @@ if (UMAMI_WEBSITE_ID) {
             let html = fs.readFileSync(filePath, 'utf8');
             const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
             html = html.replace('</head>', `    ${script}\n</head>`);
+            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.type('html').send(html);
         });
     });
@@ -485,6 +486,8 @@ app.get('/api/csrf-token', (req, res) => {
     if (!req.session.csrfToken) {
         req.session.csrfToken = crypto.randomBytes(32).toString('hex');
     }
+    res.set('Cache-Control', 'no-store');
+    res.set('Pragma', 'no-cache');
     res.json({ csrfToken: req.session.csrfToken });
 });
 
@@ -501,7 +504,18 @@ app.use((req, res, next) => {
         return next();
     }
     const token = req.headers['x-csrf-token'];
-    if (!token || !req.session.csrfToken || token !== req.session.csrfToken) {
+    const sessionToken = req.session.csrfToken;
+    if (!token || !sessionToken) {
+        return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+    }
+    try {
+        const tokenBuffer = Buffer.from(token, 'hex');
+        const sessionTokenBuffer = Buffer.from(sessionToken, 'hex');
+        if (tokenBuffer.length !== sessionTokenBuffer.length ||
+            !crypto.timingSafeEqual(tokenBuffer, sessionTokenBuffer)) {
+            return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+        }
+    } catch (e) {
         return res.status(403).json({ message: 'Invalid or missing CSRF token' });
     }
     next();
@@ -1411,8 +1425,14 @@ const logoutLimiter = rateLimit({
 });
 
 app.post('/api/logout', logoutLimiter, (req, res) => {
-    req.session.destroy();
-    res.json({ message: 'Logged out successfully' });
+    req.session.destroy(err => {
+        if (err) {
+            console.error('Error destroying session during logout:', err);
+            return res.status(500).json({ message: 'Failed to log out' });
+        }
+        res.clearCookie('connect.sid');
+        return res.json({ message: 'Logged out successfully' });
+    });
 });
 
 // Get all entries for current user
