@@ -22,6 +22,9 @@ const QRCode = require('qrcode');
 
 const app = express();
 
+// Precomputed dummy bcrypt hash (cost factor 10) for constant-time comparison on unknown users
+const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8VS.wG.ZyWQ/2t6WvTDWv1Q5I8bHHy';
+
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -132,23 +135,6 @@ function resolveModel(user, provider, usage) {
 const ENCRYPTION_KEY = config.encryptionKey;
 const ALGORITHM = 'aes-256-cbc';
 
-// Function to encrypt data
-function encryptData(data) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return { iv: iv.toString('hex'), encryptedData: encrypted };
-}
-
-// Function to decrypt data
-function decryptData(encryptedData, iv) {
-    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, Buffer.from(iv, 'hex'));
-    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return JSON.parse(decrypted);
-}
-
 // Function to encrypt a raw string (for API keys)
 function encryptString(value) {
     const iv = crypto.randomBytes(16);
@@ -238,7 +224,7 @@ setInterval(() => {
 
 const resetCodes = new Map();
 const RESET_CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
-const resetAttempts = new Map(); // per-username failed reset code attempts
+const resetAttempts = new Map(); // per-(username|ip) failed reset code attempts
 const MAX_RESET_ATTEMPTS = 5;
 const RESET_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
@@ -285,8 +271,8 @@ function consumeResetCode(code) {
     return data.userId;
 }
 
-function checkAndRecordResetAttempt(username) {
-    const key = username.toLowerCase();
+function checkAndRecordResetAttempt(username, ip) {
+    const key = `${username.toLowerCase()}|${ip}`;
     const now = Date.now();
     let record = resetAttempts.get(key);
     if (record && (now - record.firstAttempt) > RESET_ATTEMPT_WINDOW) {
@@ -305,7 +291,12 @@ function checkAndRecordResetAttempt(username) {
 }
 
 function clearResetAttempts(username) {
-    resetAttempts.delete(username.toLowerCase());
+    const prefix = `${username.toLowerCase()}|`;
+    for (const key of resetAttempts.keys()) {
+        if (key.startsWith(prefix)) {
+            resetAttempts.delete(key);
+        }
+    }
 }
 
 // Cleanup expired reset codes and attempt records every 15 minutes
@@ -462,12 +453,20 @@ if (UMAMI_WEBSITE_ID) {
             let html = fs.readFileSync(filePath, 'utf8');
             const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
             html = html.replace('</head>', `    ${script}\n</head>`);
+            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.type('html').send(html);
         });
     });
 }
 
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, {
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+        if (path.extname(filePath).toLowerCase() === '.html') {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+    }
+}));
 
 // Trust Nginx proxy
 app.set('trust proxy', 1);
@@ -484,6 +483,45 @@ app.use(session({
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
+
+// ============ CSRF PROTECTION ============
+
+// Generate a CSRF token per session
+app.get('/api/csrf-token', (req, res) => {
+    if (!req.session.csrfToken) {
+        req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+    }
+    res.set('Cache-Control', 'no-store');
+    res.set('Pragma', 'no-cache');
+    res.json({ csrfToken: req.session.csrfToken });
+});
+
+// Validate CSRF token on state-changing requests
+app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        return next();
+    }
+    // Skip CSRF only for external callbacks (PayPal) that cannot carry a session token
+    if (req.path === '/api/paypal/create-order' || req.path.startsWith('/api/paypal/capture-order/')) {
+        return next();
+    }
+    const token = req.headers['x-csrf-token'];
+    const sessionToken = req.session.csrfToken;
+    if (!token || !sessionToken) {
+        return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+    }
+    try {
+        const tokenBuffer = Buffer.from(token, 'hex');
+        const sessionTokenBuffer = Buffer.from(sessionToken, 'hex');
+        if (tokenBuffer.length !== sessionTokenBuffer.length ||
+            !crypto.timingSafeEqual(tokenBuffer, sessionTokenBuffer)) {
+            return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+        }
+    } catch (e) {
+        return res.status(403).json({ message: 'Invalid or missing CSRF token' });
+    }
+    next();
+});
 
 // Rate limiting
 const loginLimiter = rateLimit({
@@ -659,12 +697,17 @@ app.post('/api/login', loginLimiter, asyncHandler(async (req, res) => {
     // Check brute-force lockout before any password check
     const lockStatus = getLoginLockStatus(username);
     if (lockStatus.locked) {
+        // Perform a dummy hash comparison to prevent timing-based user enumeration
+        await bcrypt.compare(password, DUMMY_HASH);
         return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     const user = await db.findUserByUsername(username);
 
-    if (user && user.isActive && await bcrypt.compare(password, user.passwordHash)) {
+    // Always perform a bcrypt compare to prevent timing-based user enumeration
+    const passwordValid = await bcrypt.compare(password, user ? user.passwordHash : DUMMY_HASH);
+
+    if (user && user.isActive && passwordValid) {
         resetFailedLogins(username);
 
         // Check if user has 2FA enabled
@@ -831,20 +874,17 @@ app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Password must be at least 8 characters' });
     }
 
+    // Per-(username + IP) attempt tracking to prevent reset code brute-force and limit DoS impact
+    if (!checkAndRecordResetAttempt(username, req.ip)) {
+        return res.status(429).json({ message: 'Too many failed reset attempts. Please request a new code.' });
+    }
+
     // Validate username and active status before consuming the code
     // to prevent an attacker from burning valid codes via wrong usernames
     const user = await db.findUserByUsername(username);
-    if (!user) {
+
+    if (!user || !user.isActive) {
         return res.status(400).json({ message: 'Invalid or expired reset code' });
-    }
-
-    if (!user.isActive) {
-        return res.status(403).json({ message: 'User account is inactive' });
-    }
-
-    // Per-username attempt tracking to prevent reset code brute-force
-    if (!checkAndRecordResetAttempt(username)) {
-        return res.status(429).json({ message: 'Too many failed reset attempts. Please request a new code.' });
     }
 
     const userId = consumeResetCode(code);
@@ -1377,9 +1417,24 @@ app.post('/api/user/2fa/disable', requireAuth, asyncHandler(async (req, res) => 
 }));
 
 // Logout endpoint
-app.post('/api/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ message: 'Logged out successfully' });
+const logoutLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many logout requests. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+app.post('/api/logout', logoutLimiter, (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            console.error('Error destroying session during logout:', err);
+            return res.status(500).json({ message: 'Failed to log out' });
+        }
+        res.clearCookie('connect.sid');
+        return res.json({ message: 'Logged out successfully' });
+    });
 });
 
 // Get all entries for current user
@@ -1424,6 +1479,12 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
+    const trimmedDescription = description.trim();
+
+    if (trimmedDescription.length > 500) {
+        return res.status(400).json({ message: 'Description must be 500 characters or less' });
+    }
+
     if (!MONTH_FORMAT.test(month)) {
         return res.status(400).json({ message: 'Month must be in YYYY-MM format' });
     }
@@ -1455,7 +1516,7 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         month,
         type,
         amount: parsedAmount,
-        description: description.trim(),
+        description: trimmedDescription,
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     });
@@ -1478,6 +1539,12 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
         || typeof month !== 'string' || typeof type !== 'string'
         || typeof description !== 'string') {
         return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const trimmedDescription = description.trim();
+
+    if (trimmedDescription.length > 500) {
+        return res.status(400).json({ message: 'Description must be 500 characters or less' });
     }
 
     if (!MONTH_FORMAT.test(month)) {
@@ -1510,7 +1577,7 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
         month,
         type,
         amount: parsedAmount,
-        description: description.trim(),
+        description: trimmedDescription,
         tags: sanitizedTags,
         isCoupleExpense: validCoupleExpense
     });
@@ -1697,27 +1764,7 @@ app.delete('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async
 
 // Get all couples (admin only)
 app.get('/api/admin/couples', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-    const allUsers = await db.getAllUsers();
-    const couples = [];
-    const processedIds = new Set();
-    const usersById = {};
-    allUsers.forEach(u => { usersById[u.id] = u; });
-
-    allUsers.forEach(user => {
-        if (user.partnerId && !processedIds.has(user.id)) {
-            const partner = usersById[user.partnerId];
-            if (partner && partner.partnerId === user.id) {
-                couples.push({
-                    user1: { id: user.id, username: user.username },
-                    user2: { id: partner.id, username: partner.username },
-                    linkedAt: user.partnerLinkedAt
-                });
-                processedIds.add(user.id);
-                processedIds.add(partner.id);
-            }
-        }
-    });
-
+    const couples = await db.getCouples();
     res.json({ couples });
 }));
 

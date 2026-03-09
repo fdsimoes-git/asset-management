@@ -177,7 +177,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     submitBtn.disabled = true;
 
     try {
-        const response = await fetch('/api/register', {
+        const response = await csrfFetch('/api/register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

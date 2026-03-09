@@ -90,6 +90,23 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Modern web browser** with JavaScript enabled
 - **AI API Key** (optional globally; users can provide their own per provider — Gemini, OpenAI, or Anthropic)
 
+## Database Setup
+
+1. **Install PostgreSQL** 14+ if not already installed
+2. **Create the database user and database**:
+   ```bash
+   sudo -u postgres psql
+   ```
+   ```sql
+   CREATE USER asset_app WITH PASSWORD 'your-secure-password';
+   CREATE DATABASE asset_management OWNER asset_app;
+   \q
+   ```
+3. **Run the schema** to create tables and indexes:
+   ```bash
+   psql -U asset_app -d asset_management -f db/schema.sql
+   ```
+
 ## Installation
 
 1. **Clone or download** this repository
@@ -178,8 +195,8 @@ Admins can access the Admin Panel to:
 To access via `https://asset-manager.local`:
 
 1. **Add to hosts file** on each device:
-   - **Linux/macOS**: `echo "192.168.86.80 asset-manager.local" | sudo tee -a /etc/hosts`
-   - **Windows**: Add `192.168.86.80 asset-manager.local` to `C:\Windows\System32\drivers\etc\hosts`
+   - **Linux/macOS**: `echo "<YOUR_SERVER_IP> asset-manager.local" | sudo tee -a /etc/hosts`
+   - **Windows**: Add `<YOUR_SERVER_IP> asset-manager.local` to `C:\Windows\System32\drivers\etc\hosts`
 
 2. **Or configure your router** to use the server as DNS
 
@@ -199,7 +216,7 @@ node server.js
 
 ### Accessing the Application
 - **Local**: `https://asset-manager.local`
-- **Network**: `https://192.168.86.80`
+- **Network**: `https://<YOUR_SERVER_IP>`
 - **Localhost**: `https://localhost:443`
 
 ### Using the System
@@ -228,7 +245,8 @@ Available expense/income categories:
 - **Email Encryption**: User emails encrypted at rest with AES-256-CBC
 - **Email Privacy**: Admins see only email/2FA status indicators, not actual addresses
 - **Reset Code Security**: Single-use, 15-min expiry, one active per user, code-username binding verified
-- **Anti-Enumeration**: Generic responses on forgot-password; timing-safe (background processing)
+- **Anti-Enumeration**: Generic responses on forgot-password; constant-time login (always runs bcrypt)
+- **CSRF Protection**: Per-session tokens validated on all state-changing requests (only external PayPal callbacks are exempt)
 - **Input Validation**: Server-side validation for all inputs
 - **Data Isolation**: Users can only access their own entries
 - **Role-Based Access**: Admin-only endpoints protected
@@ -310,6 +328,7 @@ asset-management/
 ├── data/                    # Legacy encrypted JSON files (pre-migration backup)
 ├── js/
 │   ├── app.js               # Main application logic
+│   ├── csrf.js              # CSRF token helper for fetch requests
 │   ├── i18n.js              # Internationalization (EN/PT translations)
 │   ├── login.js             # Login page logic
 │   ├── register.js          # Registration page logic

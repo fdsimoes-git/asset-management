@@ -414,10 +414,6 @@ async function deleteEntry(entryId, userId) {
     }
 }
 
-async function deleteEntriesByUser(userId) {
-    await pool.query('DELETE FROM entries WHERE user_id = $1', [userId]);
-}
-
 // ── Invite Code Queries ──────────────────────────────────────────────
 
 async function findInviteCode(code) {
@@ -479,13 +475,6 @@ async function consumeInviteCode(code, usedBy) {
     return rowCount > 0;
 }
 
-async function updateInviteCodeUsedBy(code, usedBy) {
-    await pool.query(
-        'UPDATE invite_codes SET used_by = $1 WHERE code = $2',
-        [usedBy, code.toUpperCase()]
-    );
-}
-
 async function rollbackInviteCode(code) {
     await pool.query(
         'UPDATE invite_codes SET is_used = FALSE, used_at = NULL WHERE code = $1 AND used_by IS NULL',
@@ -506,6 +495,25 @@ async function getAllInviteCodes() {
         isUsed:    row.is_used,
         usedAt:    row.used_at ? row.used_at.toISOString() : null,
         usedBy:    row.used_by != null ? Number(row.used_by) : null
+    }));
+}
+
+// ── Couple Queries ───────────────────────────────────────────────────
+
+async function getCouples() {
+    const { rows } = await pool.query(
+        `SELECT u1.id AS u1_id, u1.username AS u1_username,
+                u2.id AS u2_id, u2.username AS u2_username,
+                u1.partner_linked_at
+         FROM users u1
+         JOIN users u2 ON u1.partner_id = u2.id AND u2.partner_id = u1.id
+         WHERE u1.id < u2.id
+         ORDER BY u1.partner_linked_at DESC`
+    );
+    return rows.map(row => ({
+        user1: { id: Number(row.u1_id), username: row.u1_username },
+        user2: { id: Number(row.u2_id), username: row.u2_username },
+        linkedAt: row.partner_linked_at ? row.partner_linked_at.toISOString() : null
     }));
 }
 
@@ -590,14 +598,14 @@ module.exports = {
     createEntry,
     updateEntry,
     deleteEntry,
-    deleteEntriesByUser,
+    // Couples
+    getCouples,
 
     // Invite Codes
     findInviteCode,
     createInviteCode,
     createInviteCodeIfNotExists,
     consumeInviteCode,
-    updateInviteCodeUsedBy,
     rollbackInviteCode,
     deleteInviteCode,
     getAllInviteCodes,

@@ -21,7 +21,7 @@ document.getElementById('step1Form').addEventListener('submit', async (e) => {
     btn.classList.add('loading');
 
     try {
-        const response = await fetch('/api/forgot-password', {
+        const response = await csrfFetch('/api/forgot-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username })
@@ -84,7 +84,7 @@ document.getElementById('step2Form').addEventListener('submit', async (e) => {
     btn.classList.add('loading');
 
     try {
-        const response = await fetch('/api/reset-password', {
+        const response = await csrfFetch('/api/reset-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

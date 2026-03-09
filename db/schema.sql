@@ -69,5 +69,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users(LOWER(userna
 CREATE INDEX IF NOT EXISTS idx_invite_codes_is_used    ON invite_codes(is_used);
 CREATE INDEX IF NOT EXISTS idx_paypal_orders_status     ON paypal_orders(status);
 CREATE INDEX IF NOT EXISTS idx_paypal_orders_created_at ON paypal_orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_users_is_active         ON users(is_active);
+CREATE INDEX IF NOT EXISTS idx_users_partner_id        ON users(partner_id);
+CREATE INDEX IF NOT EXISTS idx_entries_is_couple_expense ON entries(is_couple_expense);
+CREATE INDEX IF NOT EXISTS idx_entries_user_couple_month ON entries(user_id, is_couple_expense, month);
+CREATE INDEX IF NOT EXISTS idx_invite_codes_used_by    ON invite_codes(used_by);
 
 COMMIT;
