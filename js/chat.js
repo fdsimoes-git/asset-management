@@ -65,9 +65,12 @@
     function parseMarkdown(text) {
         // Step 1: Protect fenced code blocks from other processing
         const codeBlocks = [];
-        text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function (match, lang, code) {
+        text = text.replace(/```([^\n]*)\n?([\s\S]*?)```/g, function (match, lang, code) {
             var idx = codeBlocks.length;
-            codeBlocks.push({ lang: lang || '', code: code });
+            lang = (lang || '').trim();
+            var safeLang = lang.replace(/[^A-Za-z0-9_-]+/g, '-');
+            if (!safeLang) { safeLang = ''; }
+            codeBlocks.push({ lang: safeLang, code: code });
             return '\x00CODE' + idx + '\x00';
         });
 
@@ -92,12 +95,15 @@
         // Step 4: Parse markdown tables
         // Ensure trailing newline so the last row is always captured by the regex
         if (!s.endsWith('\n')) s += '\n';
-        s = s.replace(/((?:[ \t]*\|[^\n]+\|[ \t]*\n)+)/g, function (tableBlock) {
+        // Match blocks of consecutive lines that look like markdown tables.
+        // Supports both pipe-bounded rows ("| a | b |") and rows without outer pipes ("a | b").
+        s = s.replace(/((?:[ \t]*(?:\|[^|\n]+(?:\|[^|\n]+)+|[^|\n]+(?:\|[^|\n]+)+)[ \t]*\n)+)/g, function (tableBlock) {
             var rows = tableBlock.trim().split('\n').filter(function (r) { return r.trim(); });
             if (rows.length < 2) return tableBlock;
 
-            // Verify the second row is a separator (e.g. |---|:--|--:|)
-            var isSep = /^\|[\s\-|:]+\|$/.test(rows[1].trim());
+            // Verify the second row is a separator (e.g. |---|:--|--:| or ---|:--|--:)
+            var sep = rows[1].trim();
+            var isSep = /^\|?[\s\-:]+(\|[\s\-:]+)+\|?$/.test(sep);
             if (!isSep) return tableBlock;
 
             var parseRow = function (row) {
@@ -132,6 +138,8 @@
             const olMatch = line.match(/^[ \t]*(\d+)[.)]\s+(.*)/);
             // Block-level HTML elements — don't wrap with <br>
             const isBlockEl = /^<(div|table|h[1-6])/.test(line);
+            // Code block placeholders — restore later, must not get a trailing <br>
+            const isCodePlaceholder = /^\x00CODE\d+\x00$/.test(line.trim());
 
             if (ulMatch) {
                 if (inOl) { html += '</ol>'; inOl = false; }
@@ -146,8 +154,8 @@
                 if (inOl) { html += '</ol>'; inOl = false; }
                 if (line.trim() === '') {
                     html += '<br>';
-                } else if (isBlockEl) {
-                    html += line; // block elements — no trailing <br>
+                } else if (isBlockEl || isCodePlaceholder) {
+                    html += line; // block elements and code placeholders — no trailing <br>
                 } else {
                     html += line + '<br>';
                 }
