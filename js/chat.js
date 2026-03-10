@@ -138,7 +138,13 @@
                 for (var i = 0; i < line.length; i++) {
                     var ch = line[i];
                     if (ch === '|') {
-                        var pipeEscaped = i > 0 && line[i - 1] === '\\';
+                        // Count consecutive backslashes before this pipe.
+                        // Only treat the pipe as escaped when the count is odd
+                        // (even count means all backslashes cancel out, e.g. \\ is a literal \).
+                        var bsCount = 0;
+                        var j = i - 1;
+                        while (j >= 0 && line[j] === '\\') { bsCount++; j--; }
+                        var pipeEscaped = (bsCount % 2 === 1);
                         if (!pipeEscaped) {
                             cells.push(current.trim().replace(/\\\|/g, '|'));
                             current = '';
