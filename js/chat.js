@@ -92,6 +92,18 @@
         // Inline code: `text`
         s = s.replace(/`(.+?)`/g, '<code>$1</code>');
 
+        // Step 3b: Protect inline-code spans with placeholders before table parsing.
+        // By this point, backtick spans have already been converted to <code>…</code>
+        // (Step 3 above), so parseRow()'s inCode/backtick toggle would never fire.
+        // Placeholders prevent pipes inside <code>…</code> from being mis-split as
+        // column separators during the table-parsing step below.
+        const inlineCodeSpans = [];
+        s = s.replace(/<code>[\s\S]*?<\/code>/g, function (match) {
+            var idx = inlineCodeSpans.length;
+            inlineCodeSpans.push(match);
+            return '\x00ICODE' + idx + '\x00';
+        });
+
         // Step 4: Parse markdown tables
         // Ensure trailing newline so the last row is always captured by the regex
         if (!s.endsWith('\n')) s += '\n';
@@ -113,16 +125,11 @@
                 var line = row.trim().replace(/^\|/, '').replace(/\|$/, '');
                 var cells = [];
                 var current = '';
-                var inCode = false;
+                // Note: inline-code spans were replaced with \x00ICODEn\x00 placeholders
+                // before this step, so no pipe inside <code>…</code> will appear here.
                 for (var i = 0; i < line.length; i++) {
                     var ch = line[i];
-                    if (ch === '`') {
-                        var backtickEscaped = i > 0 && line[i - 1] === '\\';
-                        if (!backtickEscaped) { inCode = !inCode; }
-                        current += ch;
-                        continue;
-                    }
-                    if (ch === '|' && !inCode) {
+                    if (ch === '|') {
                         var pipeEscaped = i > 0 && line[i - 1] === '\\';
                         if (!pipeEscaped) {
                             cells.push(current.trim().replace(/\\\|/g, '|'));
@@ -148,6 +155,11 @@
             }
             tHtml += '</tbody></table></div>';
             return tHtml + '\n';
+        });
+
+        // Step 4b: Restore inline-code spans after table parsing
+        s = s.replace(/\x00ICODE(\d+)\x00/g, function (match, idxStr) {
+            return inlineCodeSpans[parseInt(idxStr)] || match;
         });
 
         // Step 5: Line-by-line processing for lists and paragraphs
