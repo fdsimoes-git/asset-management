@@ -63,24 +63,64 @@
     }
 
     function parseMarkdown(text) {
-        // Escape HTML first
+        // Step 1: Protect fenced code blocks from other processing
+        const codeBlocks = [];
+        text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, function (match, lang, code) {
+            var idx = codeBlocks.length;
+            codeBlocks.push({ lang: lang || '', code: code });
+            return '\x00CODE' + idx + '\x00';
+        });
+
+        // Step 2: Escape HTML
         let s = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // Headings: ### h3, ## h2, # h1 (check longer prefixes first)
+        // Step 3: Inline formatting — headings, bold, italic, inline code
+        // Headings: ### h4, ## h3, # h3 (check longer prefixes first)
         s = s.replace(/^### (.+)$/gm, '<h4>$1</h4>');
         s = s.replace(/^## (.+)$/gm, '<h3>$1</h3>');
         s = s.replace(/^# (.+)$/gm, '<h3>$1</h3>');
         // Bold: **text**
         s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic: *text* (negative lookbehind/lookahead to avoid matching inside bold tags)
+        // Italic: *text* (avoid matching inside bold)
         s = s.replace(/(?<!\w)\*(?!\*)(.+?)(?<!\*)\*(?!\w)/g, '<em>$1</em>');
         // Inline code: `text`
         s = s.replace(/`(.+?)`/g, '<code>$1</code>');
 
-        // Convert lines to handle lists and paragraphs
+        // Step 4: Parse markdown tables
+        // Ensure trailing newline so the last row is always captured by the regex
+        if (!s.endsWith('\n')) s += '\n';
+        s = s.replace(/((?:[ \t]*\|[^\n]+\|[ \t]*\n)+)/g, function (tableBlock) {
+            var rows = tableBlock.trim().split('\n').filter(function (r) { return r.trim(); });
+            if (rows.length < 2) return tableBlock;
+
+            // Verify the second row is a separator (e.g. |---|:--|--:|)
+            var isSep = /^\|[\s\-|:]+\|$/.test(rows[1].trim());
+            if (!isSep) return tableBlock;
+
+            var parseRow = function (row) {
+                return row.trim()
+                    .replace(/^\|/, '').replace(/\|$/, '')
+                    .split('|').map(function (c) { return c.trim(); });
+            };
+
+            // Build table as a single HTML line so the line-processor doesn't break it
+            var tHtml = '<div class="chat-md-table-wrap"><table class="chat-md-table"><thead><tr>';
+            parseRow(rows[0]).forEach(function (h) { tHtml += '<th>' + h + '</th>'; });
+            tHtml += '</tr></thead><tbody>';
+            for (var i = 2; i < rows.length; i++) {
+                if (!rows[i].trim()) continue;
+                tHtml += '<tr>';
+                parseRow(rows[i]).forEach(function (c) { tHtml += '<td>' + c + '</td>'; });
+                tHtml += '</tr>';
+            }
+            tHtml += '</tbody></table></div>';
+            return tHtml + '\n';
+        });
+
+        // Step 5: Line-by-line processing for lists and paragraphs
         const lines = s.split('\n');
         let html = '';
         let inUl = false;
@@ -88,8 +128,10 @@
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const ulMatch = line.match(/^[\s]*[-•]\s+(.*)/);
-            const olMatch = line.match(/^[\s]*(\d+)[.)]\s+(.*)/);
+            const ulMatch = line.match(/^[ \t]*[-•]\s+(.*)/);
+            const olMatch = line.match(/^[ \t]*(\d+)[.)]\s+(.*)/);
+            // Block-level HTML elements — don't wrap with <br>
+            const isBlockEl = /^<(div|table|h[1-6])/.test(line);
 
             if (ulMatch) {
                 if (inOl) { html += '</ol>'; inOl = false; }
@@ -104,8 +146,8 @@
                 if (inOl) { html += '</ol>'; inOl = false; }
                 if (line.trim() === '') {
                     html += '<br>';
-                } else if (/^<h[34]>/.test(line)) {
-                    html += line;
+                } else if (isBlockEl) {
+                    html += line; // block elements — no trailing <br>
                 } else {
                     html += line + '<br>';
                 }
@@ -114,8 +156,19 @@
         if (inUl) html += '</ul>';
         if (inOl) html += '</ol>';
 
+        // Step 6: Restore fenced code blocks
+        html = html.replace(/\x00CODE(\d+)\x00/g, function (match, idxStr) {
+            var cb = codeBlocks[parseInt(idxStr)];
+            var escaped = cb.code
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            var cls = cb.lang ? ' class="language-' + cb.lang + '"' : '';
+            return '<pre><code' + cls + '>' + escaped + '</code></pre>';
+        });
+
         // Clean up trailing <br>
-        html = html.replace(/(<br>)+$/, '');
+        html = html.replace(/(<br>\s*)+$/, '');
 
         return html;
     }

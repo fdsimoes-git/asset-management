@@ -1529,6 +1529,62 @@
             border-radius: 0.2rem;
             font-size: 0.8rem;
         }
+        /* Markdown tables inside chat */
+        .chat-md-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0.5rem 0;
+            border-radius: 0.4rem;
+        }
+        .chat-md-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 0.4rem;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .chat-md-table th {
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--color-accent-primary, #f59e0b);
+            padding: 0.4rem 0.65rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+            white-space: nowrap;
+        }
+        .chat-md-table td {
+            padding: 0.35rem 0.65rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.07);
+            color: var(--color-text-primary, #e0e0e8);
+            white-space: nowrap;
+        }
+        .chat-md-table tr:last-child td {
+            border-bottom: none;
+        }
+        .chat-md-table tr:hover td {
+            background: rgba(245, 158, 11, 0.04);
+        }
+        /* Fenced code blocks inside chat */
+        .chat-message-assistant pre {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 0.4rem;
+            padding: 0.65rem 0.85rem;
+            overflow-x: auto;
+            margin: 0.4rem 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        .chat-message-assistant pre code {
+            background: none;
+            padding: 0;
+            font-size: 0.78rem;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--color-text-primary, #e0e0e8);
+        }
 
         .chat-input-area {
             display: flex;
