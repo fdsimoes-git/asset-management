@@ -97,7 +97,8 @@
         if (!s.endsWith('\n')) s += '\n';
         // Match blocks of consecutive lines that look like markdown tables.
         // Supports both pipe-bounded rows ("| a | b |") and rows without outer pipes ("a | b").
-        s = s.replace(/((?:[ \t]*(?:\|[^|\n]+(?:\|[^|\n]+)+|[^|\n]+(?:\|[^|\n]+)+)[ \t]*\n)+)/g, function (tableBlock) {
+        // [^|\n]* (zero-or-more) lets empty cells like "| a | | c |" be detected correctly.
+        s = s.replace(/((?:[ \t]*(?:\|[^|\n]*(?:\|[^|\n]*)+|[^|\n]+(?:\|[^|\n]*)+)[ \t]*\n)+)/g, function (tableBlock) {
             var rows = tableBlock.trim().split('\n').filter(function (r) { return r.trim(); });
             if (rows.length < 2) return tableBlock;
 
@@ -106,10 +107,33 @@
             var isSep = /^\|?[\s\-:]+(\|[\s\-:]+)+\|?$/.test(sep);
             if (!isSep) return tableBlock;
 
+            // Proper cell splitter: respects inline code spans and escaped pipes,
+            // and handles empty cells (adjacent pipes with nothing between them).
             var parseRow = function (row) {
-                return row.trim()
-                    .replace(/^\|/, '').replace(/\|$/, '')
-                    .split('|').map(function (c) { return c.trim(); });
+                var line = row.trim().replace(/^\|/, '').replace(/\|$/, '');
+                var cells = [];
+                var current = '';
+                var inCode = false;
+                for (var i = 0; i < line.length; i++) {
+                    var ch = line[i];
+                    if (ch === '`') {
+                        var backtickEscaped = i > 0 && line[i - 1] === '\\';
+                        if (!backtickEscaped) { inCode = !inCode; }
+                        current += ch;
+                        continue;
+                    }
+                    if (ch === '|' && !inCode) {
+                        var pipeEscaped = i > 0 && line[i - 1] === '\\';
+                        if (!pipeEscaped) {
+                            cells.push(current.trim().replace(/\\\|/g, '|'));
+                            current = '';
+                            continue;
+                        }
+                    }
+                    current += ch;
+                }
+                cells.push(current.trim().replace(/\\\|/g, '|'));
+                return cells;
             };
 
             // Build table as a single HTML line so the line-processor doesn't break it
@@ -167,6 +191,7 @@
         // Step 6: Restore fenced code blocks
         html = html.replace(/\x00CODE(\d+)\x00/g, function (match, idxStr) {
             var cb = codeBlocks[parseInt(idxStr)];
+            if (!cb) { return match; } // defensive: entry missing, leave placeholder
             var escaped = cb.code
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
