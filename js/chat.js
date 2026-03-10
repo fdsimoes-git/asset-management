@@ -116,6 +116,14 @@
 
             // Verify the second row is a separator (e.g. |---|:--|--:| or ---|:--|--:)
             var sep = rows[1].trim();
+
+            // Guard: if the header or separator line starts with a list marker
+            // (e.g. "- ", "* ", "+ ", "1. ", "2) "), treat this block as a list,
+            // not as a table, so that list parsing can handle it correctly.
+            if (/^[-*+]\s|^\d+[.)]\s/.test(rows[0].trim()) || /^[-*+]\s|^\d+[.)]\s/.test(sep)) {
+                return tableBlock;
+            }
+
             var isSep = /^\|?[\s\-:]+(\|[\s\-:]+)+\|?$/.test(sep);
             if (!isSep) return tableBlock;
 
