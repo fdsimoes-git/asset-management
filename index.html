@@ -2374,7 +2374,7 @@
                     </button>
                 </div>
                 <div class="filters-body" id="filtersBody">
-                    <div class="filter-quick-ranges" role="group" aria-label="Quick date ranges">
+                    <div class="filter-quick-ranges" role="group" data-i18n-aria-label="filter.quickRange" aria-label="Quick date ranges">
                         <span class="filter-quick-label" data-i18n="filter.quickRange">Quick range</span>
                         <button type="button" class="quick-range-btn" data-range="3m" data-i18n="filter.last3m">Last 3 months</button>
                         <button type="button" class="quick-range-btn" data-range="6m" data-i18n="filter.last6m">Last 6 months</button>
@@ -2401,7 +2401,7 @@
                         </div>
                         <div class="form-group form-group-categories">
                             <label data-i18n="dash.category">Category</label>
-                            <div id="categoryChips" class="category-chips" role="group" aria-label="Categories"></div>
+                            <div id="categoryChips" class="category-chips" role="group" data-i18n-aria-label="dash.category" aria-label="Categories"></div>
                             <!-- Hidden native select kept for backwards-compat / testing; populated from chips -->
                             <select id="categoryFilter" multiple hidden aria-hidden="true" tabindex="-1">
                                 <option value="food">Food</option>
@@ -2473,9 +2473,9 @@
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                     <div class="chart-wrapper" data-chart="category">
-                        <div class="chart-type-toggle" role="group" aria-label="Chart type">
-                            <button type="button" class="chart-type-btn active" data-type="bar" data-i18n="filter.chartBar" title="Bar">Bar</button>
-                            <button type="button" class="chart-type-btn" data-type="doughnut" data-i18n="filter.chartDoughnut" title="Doughnut">Doughnut</button>
+                        <div class="chart-type-toggle" role="group" data-i18n-aria-label="filter.chartType" aria-label="Chart type">
+                            <button type="button" class="chart-type-btn active" data-type="bar" data-i18n="filter.chartBar" data-i18n-title="filter.chartBar" title="Bar">Bar</button>
+                            <button type="button" class="chart-type-btn" data-type="doughnut" data-i18n="filter.chartDoughnut" data-i18n-title="filter.chartDoughnut" title="Doughnut">Doughnut</button>
                         </div>
                         <canvas id="categoryChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>

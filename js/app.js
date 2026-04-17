@@ -739,12 +739,13 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryStackedChart.update();
 
     // Empty-state overlays: show when a chart has no meaningful data for the
-    // current filter window.
-    const hasBalanceData = totalAssetData.some(v => v !== 0);
+    // current filter window. Base "monthly balance" emptiness on whether any
+    // income/expense activity exists — a cumulative series summing to zero
+    // (e.g. matched income and expense) is still meaningful data.
     const hasIncomeExpenseData = incomeValues.some(v => v > 0) || expenseValues.some(v => v > 0);
     const hasCategoryData = categoryValues.length > 0 && categoryValues.some(v => v > 0);
     const hasStackedData = categoriesWithData.length > 0;
-    setChartEmpty('monthlyBalance', !hasBalanceData);
+    setChartEmpty('monthlyBalance', !hasIncomeExpenseData);
     setChartEmpty('incomeVsExpense', !hasIncomeExpenseData);
     setChartEmpty('category', !hasCategoryData);
     setChartEmpty('categoryStacked', !hasStackedData);
@@ -1092,7 +1093,7 @@ function displayEntries(entriesToShow) {
                <button class="delete-btn" data-id="${entry.id}">${t('common.delete')}</button>`
             : (inMyShare && entry.isCoupleExpense)
                 ? `<span style="color: var(--color-text-muted); font-size: 0.75rem;" title="${escapeHtml(t('dash.halfSharedTooltip'))}">${escapeHtml(t('dash.halfSharedBadge'))}</span>`
-                : `<span style="color: var(--text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`;
+                : `<span style="color: var(--color-text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`;
 
         row.innerHTML = `
             <td>${escapeHtml(entry.month)}</td>
