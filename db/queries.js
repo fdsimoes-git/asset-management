@@ -341,6 +341,43 @@ async function getIndividualEntries(userId, month) {
     return rows.map(dbRowToEntry);
 }
 
+/**
+ * "My Share" view: user's own individual (non-couple) entries + all couple
+ * entries from either partner, with couple amounts divided by 2 so the total
+ * reflects the user's fair share of household finances.
+ *
+ * The halving happens here (server-side) so callers/frontend can treat the
+ * returned rows like any other entry list. Rows still carry their real `id`
+ * and `userId`, and `isCoupleExpense` is preserved so the UI can decorate
+ * halved rows and disable edit/delete on them.
+ */
+async function getMyShareEntries(userId, partnerId, month) {
+    const params = month ? [userId, partnerId, month] : [userId, partnerId];
+    const sql = month
+        ? `SELECT * FROM entries
+           WHERE month = $3
+             AND (
+               (user_id = $1 AND is_couple_expense = FALSE)
+               OR (user_id = ANY(ARRAY[$1, $2]::bigint[]) AND is_couple_expense = TRUE)
+             )
+           ORDER BY id`
+        : `SELECT * FROM entries
+           WHERE
+             (user_id = $1 AND is_couple_expense = FALSE)
+             OR (user_id = ANY(ARRAY[$1, $2]::bigint[]) AND is_couple_expense = TRUE)
+           ORDER BY id`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(row => {
+        const entry = dbRowToEntry(row);
+        if (entry.isCoupleExpense) {
+            // Keep exact half (may include sub-cent precision) so aggregated
+            // totals remain accurate; per-row display is formatted client-side.
+            entry.amount = entry.amount / 2;
+        }
+        return entry;
+    });
+}
+
 async function getEntryByIdAndUser(entryId, userId) {
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE id = $1 AND user_id = $2',
@@ -594,6 +631,7 @@ module.exports = {
     getEntriesByUser,
     getCoupleEntries,
     getIndividualEntries,
+    getMyShareEntries,
     getEntryByIdAndUser,
     createEntry,
     updateEntry,

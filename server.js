@@ -1455,6 +1455,12 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
 
     if (viewMode === 'combined' && validPartner) {
         userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
+    } else if (viewMode === 'myshare' && validPartner) {
+        userEntries = await db.getMyShareEntries(req.user.id, validPartner.id, month);
+    } else if (viewMode === 'myshare') {
+        // Without a valid partner there are no couple entries to halve, so
+        // My Share is equivalent to the user's individual entries.
+        userEntries = await db.getIndividualEntries(req.user.id, month);
     } else if (viewMode === 'individual' && validPartner) {
         userEntries = await db.getIndividualEntries(req.user.id, month);
     } else {

@@ -414,6 +414,191 @@
             color: var(--color-text-primary);
         }
 
+        /* ── Filter section header + collapse ── */
+        .filters-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .filters-header h2 { margin: 0; }
+        .filters-collapse-btn {
+            background: transparent;
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            width: 36px; height: 36px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+        .filters-collapse-btn:hover { color: var(--color-text-primary); border-color: var(--color-accent-primary); }
+        .filters-collapse-btn .filters-collapse-icon {
+            transition: transform var(--transition-fast);
+            display: inline-block;
+        }
+        .filters-collapse-btn[aria-expanded="false"] .filters-collapse-icon {
+            transform: rotate(-90deg);
+        }
+        .filters-body[hidden] { display: none; }
+
+        /* ── Quick-range preset buttons ── */
+        .filter-quick-ranges {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--color-border-subtle);
+        }
+        .filter-quick-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-text-muted);
+            margin-right: 0.25rem;
+        }
+        .quick-range-btn {
+            background: var(--color-bg-base);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 9999px;
+            padding: 0.4rem 0.9rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: var(--font-body);
+        }
+        .quick-range-btn:hover {
+            color: var(--color-text-primary);
+            border-color: var(--color-accent-primary);
+        }
+        .quick-range-btn.active {
+            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
+            color: var(--color-bg-deep);
+            border-color: transparent;
+        }
+
+        /* ── Category chip selector ── */
+        .form-group-categories { grid-column: 1 / -1; }
+        .category-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            padding: 0.5rem;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            min-height: 52px;
+        }
+        .cat-chip {
+            background: var(--color-bg-elevated);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 9999px;
+            padding: 0.35rem 0.8rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: var(--font-body);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            user-select: none;
+        }
+        .cat-chip::before {
+            content: "";
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--chip-color, var(--color-text-muted));
+            flex-shrink: 0;
+        }
+        .cat-chip:hover { color: var(--color-text-primary); border-color: var(--chip-color, var(--color-accent-primary)); }
+        .cat-chip.active {
+            background: var(--chip-color-bg, rgba(245, 158, 11, 0.15));
+            color: var(--color-text-primary);
+            border-color: var(--chip-color, var(--color-accent-primary));
+        }
+
+        /* ── Active-filters summary bar ── */
+        .active-filters-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background: var(--color-bg-base);
+            border: 1px solid var(--color-border-subtle);
+            border-radius: var(--radius-md);
+        }
+        .active-filters-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-text-muted);
+        }
+        .active-filters-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            flex: 1;
+            min-width: 0;
+        }
+        .active-filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--color-accent-secondary);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 9999px;
+            padding: 0.25rem 0.6rem 0.25rem 0.7rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .active-filter-chip button {
+            background: transparent;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            padding: 0 0 0 0.1rem;
+            font-size: 0.9rem;
+            line-height: 1;
+            opacity: 0.7;
+        }
+        .active-filter-chip button:hover { opacity: 1; }
+        .filter-results-count {
+            font-size: 0.75rem;
+            color: var(--color-text-secondary);
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        /* ── ½ shared badge (My Share view) ── */
+        .share-half-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            background: rgba(99, 102, 241, 0.15);
+            color: #818cf8;
+            border-radius: 9999px;
+            font-size: 0.6rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            cursor: help;
+        }
+
         .charts-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -433,6 +618,82 @@
         .chart-wrapper:hover {
             border-color: var(--color-accent-primary);
             box-shadow: var(--shadow-glow);
+        }
+
+        /* ── Chart overlays: empty state + loading skeleton ── */
+        .chart-empty-state {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-muted);
+            font-size: 0.85rem;
+            font-style: italic;
+            pointer-events: none;
+            background: linear-gradient(180deg, transparent 0%, rgba(15, 23, 42, 0.5) 100%);
+            border-radius: var(--radius-lg);
+        }
+        .chart-empty-state[hidden] { display: none; }
+        .chart-loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: var(--radius-lg);
+            backdrop-filter: blur(2px);
+            z-index: 2;
+        }
+        .chart-loading-overlay[hidden] { display: none; }
+        .chart-skeleton {
+            width: 85%;
+            height: 70%;
+            background: linear-gradient(
+                90deg,
+                rgba(148, 163, 184, 0.08) 0%,
+                rgba(245, 158, 11, 0.15) 50%,
+                rgba(148, 163, 184, 0.08) 100%
+            );
+            background-size: 200% 100%;
+            border-radius: var(--radius-md);
+            animation: skeletonShimmer 1.4s ease-in-out infinite;
+        }
+        @keyframes skeletonShimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* ── Chart type toggle (bar ↔ doughnut) ── */
+        .chart-type-toggle {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            display: flex;
+            gap: 2px;
+            background: var(--color-bg-elevated);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            padding: 2px;
+            z-index: 3;
+        }
+        .chart-type-btn {
+            background: transparent;
+            border: none;
+            color: var(--color-text-muted);
+            padding: 0.3rem 0.65rem;
+            font-size: 0.7rem;
+            font-weight: 500;
+            border-radius: calc(var(--radius-sm) - 2px);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: var(--font-body);
+        }
+        .chart-type-btn:hover { color: var(--color-text-primary); }
+        .chart-type-btn.active {
+            background: var(--color-accent-primary);
+            color: var(--color-bg-deep);
         }
 
         canvas {
@@ -784,6 +1045,18 @@
 
             .filters {
                 grid-template-columns: 1fr;
+            }
+
+            .filters-collapse-btn {
+                display: inline-flex;
+            }
+
+            .chart-wrapper {
+                height: 340px;
+            }
+
+            .chart-wrapper[data-chart="categoryStacked"] {
+                height: 400px;
             }
 
             .charts-container {
@@ -2089,51 +2362,74 @@
                 <div class="toggle-buttons">
                     <button type="button" id="individualViewBtn" class="view-btn active" data-i18n="dash.individual">Individual</button>
                     <button type="button" id="combinedViewBtn" class="view-btn" data-i18n="dash.combined">Combined (Couple)</button>
+                    <button type="button" id="myShareViewBtn" class="view-btn" data-i18n="dash.myShare" data-i18n-title="dash.myShareDescription" title="Your individual entries + half of all couple expenses">My Share</button>
                 </div>
                 <span id="partnerInfo" style="font-size: 0.8rem; color: var(--color-text-muted);"></span>
             </div>
             <section class="filters-section">
-                <h2 data-i18n="dash.filters">Filters</h2>
-                <div class="filters">
-                    <div class="form-group">
-                        <label for="monthFilterStart" data-i18n="dash.startMonth">Start Month</label>
-                        <input type="month" id="monthFilterStart">
+                <div class="filters-header">
+                    <h2 data-i18n="dash.filters">Filters</h2>
+                    <button type="button" id="filtersCollapseToggle" class="filters-collapse-btn" aria-expanded="true" data-i18n-title="filter.collapse" title="Hide filters">
+                        <span class="filters-collapse-icon" aria-hidden="true">▾</span>
+                    </button>
+                </div>
+                <div class="filters-body" id="filtersBody">
+                    <div class="filter-quick-ranges" role="group" aria-label="Quick date ranges">
+                        <span class="filter-quick-label" data-i18n="filter.quickRange">Quick range</span>
+                        <button type="button" class="quick-range-btn" data-range="3m" data-i18n="filter.last3m">Last 3 months</button>
+                        <button type="button" class="quick-range-btn" data-range="6m" data-i18n="filter.last6m">Last 6 months</button>
+                        <button type="button" class="quick-range-btn" data-range="12m" data-i18n="filter.last12m">Last 12 months</button>
+                        <button type="button" class="quick-range-btn" data-range="ytd" data-i18n="filter.ytd">Year to date</button>
+                        <button type="button" class="quick-range-btn" data-range="all" data-i18n="filter.allTime">All time</button>
                     </div>
-                    <div class="form-group">
-                        <label for="monthFilterEnd" data-i18n="dash.endMonth">End Month</label>
-                        <input type="month" id="monthFilterEnd">
+                    <div class="filters">
+                        <div class="form-group">
+                            <label for="monthFilterStart" data-i18n="dash.startMonth">Start Month</label>
+                            <input type="month" id="monthFilterStart">
+                        </div>
+                        <div class="form-group">
+                            <label for="monthFilterEnd" data-i18n="dash.endMonth">End Month</label>
+                            <input type="month" id="monthFilterEnd">
+                        </div>
+                        <div class="form-group">
+                            <label for="typeFilter" data-i18n="common.type">Type</label>
+                            <select id="typeFilter">
+                                <option value="all" data-i18n="type.all">All</option>
+                                <option value="income" data-i18n="type.income">Income</option>
+                                <option value="expense" data-i18n="type.expense">Expense</option>
+                            </select>
+                        </div>
+                        <div class="form-group form-group-categories">
+                            <label data-i18n="dash.category">Category</label>
+                            <div id="categoryChips" class="category-chips" role="group" aria-label="Categories"></div>
+                            <!-- Hidden native select kept for backwards-compat / testing; populated from chips -->
+                            <select id="categoryFilter" multiple hidden aria-hidden="true" tabindex="-1">
+                                <option value="food">Food</option>
+                                <option value="groceries">Groceries</option>
+                                <option value="transport">Transport</option>
+                                <option value="travel">Travel</option>
+                                <option value="entertainment">Entertainment</option>
+                                <option value="utilities">Utilities</option>
+                                <option value="healthcare">Healthcare</option>
+                                <option value="education">Education</option>
+                                <option value="shopping">Shopping</option>
+                                <option value="subscription">Subscription</option>
+                                <option value="housing">Housing</option>
+                                <option value="salary">Salary</option>
+                                <option value="freelance">Freelance</option>
+                                <option value="investment">Investment</option>
+                                <option value="transfer">Transfer</option>
+                                <option value="wedding">Wedding</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                     </div>
-                    <div class="form-group">
-                        <label for="typeFilter" data-i18n="common.type">Type</label>
-                        <select id="typeFilter">
-                            <option value="all" data-i18n="type.all">All</option>
-                            <option value="income" data-i18n="type.income">Income</option>
-                            <option value="expense" data-i18n="type.expense">Expense</option>
-                        </select>
+                    <div id="activeFiltersBar" class="active-filters-bar" hidden>
+                        <span class="active-filters-label" data-i18n="filter.activeFilters">Active filters</span>
+                        <div id="activeFiltersList" class="active-filters-list"></div>
+                        <span id="filterResultsCount" class="filter-results-count"></span>
                     </div>
-                    <div class="form-group">
-                        <label for="categoryFilter" data-i18n="dash.category">Category</label>
-                        <select id="categoryFilter" multiple size="6">
-                            <option value="food" data-i18n="cat.food">Food</option>
-                            <option value="groceries" data-i18n="cat.groceries">Groceries</option>
-                            <option value="transport" data-i18n="cat.transport">Transport</option>
-                            <option value="travel" data-i18n="cat.travel">Travel</option>
-                            <option value="entertainment" data-i18n="cat.entertainment">Entertainment</option>
-                            <option value="utilities" data-i18n="cat.utilities">Utilities</option>
-                            <option value="healthcare" data-i18n="cat.healthcare">Healthcare</option>
-                            <option value="education" data-i18n="cat.education">Education</option>
-                            <option value="shopping" data-i18n="cat.shopping">Shopping</option>
-                            <option value="subscription" data-i18n="cat.subscription">Subscription</option>
-                            <option value="housing" data-i18n="cat.housing">Housing</option>
-                            <option value="salary" data-i18n="cat.salary">Salary</option>
-                            <option value="freelance" data-i18n="cat.freelance">Freelance</option>
-                            <option value="investment" data-i18n="cat.investment">Investment</option>
-                            <option value="transfer" data-i18n="cat.transfer">Transfer</option>
-                            <option value="wedding" data-i18n="cat.wedding">Wedding</option>
-                            <option value="other" data-i18n="cat.other">Other</option>
-                        </select>
-                    </div>
-                    <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                 </div>
             </section>
             <!-- Couple Expense Share (visible only in combined view) -->
@@ -2166,17 +2462,29 @@
             <section class="charts-section">
                 <h2 data-i18n="dash.dashboard">Dashboard</h2>
                 <div class="charts-container">
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" data-chart="monthlyBalance">
                         <canvas id="monthlyBalanceChart"></canvas>
+                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                        <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" data-chart="incomeVsExpense">
                         <canvas id="incomeVsExpenseChart"></canvas>
+                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                        <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" data-chart="category">
+                        <div class="chart-type-toggle" role="group" aria-label="Chart type">
+                            <button type="button" class="chart-type-btn active" data-type="bar" data-i18n="filter.chartBar" title="Bar">Bar</button>
+                            <button type="button" class="chart-type-btn" data-type="doughnut" data-i18n="filter.chartDoughnut" title="Doughnut">Doughnut</button>
+                        </div>
                         <canvas id="categoryChart"></canvas>
+                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                        <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" data-chart="categoryStacked">
                         <canvas id="categoryStackedChart"></canvas>
+                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                        <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                 </div>
             </section>
