@@ -1964,7 +1964,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const next = !expanded;
             filtersCollapseBtn.setAttribute('aria-expanded', String(next));
             filtersBody.hidden = !next;
-            filtersCollapseBtn.title = t(next ? 'filter.collapse' : 'filter.expand');
+            const label = t(next ? 'filter.collapse' : 'filter.expand');
+            filtersCollapseBtn.title = label;
+            filtersCollapseBtn.setAttribute('aria-label', label);
         });
 
         // Ensure the filters panel never stays hidden above the mobile
