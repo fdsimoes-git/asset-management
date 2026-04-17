@@ -791,7 +791,7 @@ function sanitizeFilterState(raw) {
     if (typeof raw.type === 'string' && VALID_FILTER_TYPES.has(raw.type)) out.type = raw.type;
     if (Array.isArray(raw.categories)) {
         const known = new Set(ENTRY_CATEGORIES);
-        out.categories = raw.categories.filter(c => typeof c === 'string' && known.has(c));
+        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && known.has(c)))];
     }
     if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
         out.quickRange = raw.quickRange || null;
