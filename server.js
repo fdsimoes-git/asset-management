@@ -436,8 +436,12 @@ app.use((req, res, next) => {
     next();
 });
 
-// Serve HTML pages with Umami analytics injection (if configured)
+// Serve HTML pages with Umami analytics injection (if configured) and
+// cache-busting query strings on local JS/CSS references. Each page's
+// final body is rendered once at startup and cached in memory, so the
+// request path never touches the disk or re-runs the rewrites.
 const UMAMI_WEBSITE_ID = config.umamiWebsiteId;
+const BUILD_ID = Date.now().toString(36);
 const htmlPages = {
     '/': 'index.html',
     '/index.html': 'index.html',
@@ -446,18 +450,31 @@ const htmlPages = {
     '/forgot-password.html': 'forgot-password.html'
 };
 
-if (UMAMI_WEBSITE_ID) {
-    Object.entries(htmlPages).forEach(([route, file]) => {
-        app.get(route, (req, res) => {
-            const filePath = path.join(__dirname, file);
-            let html = fs.readFileSync(filePath, 'utf8');
-            const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
-            html = html.replace('</head>', `    ${script}\n</head>`);
-            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.type('html').send(html);
-        });
-    });
+function injectCacheBust(html) {
+    // Only rewrite local asset references; leave absolute URLs alone.
+    return html
+        .replace(/(<script\b[^>]*\bsrc=")(\/[^"?]+\.js)(")/g, `$1$2?v=${BUILD_ID}$3`)
+        .replace(/(<link\b[^>]*\bhref=")(\/[^"?]+\.css)(")/g, `$1$2?v=${BUILD_ID}$3`);
 }
+
+// Pre-render each HTML page once at startup. We dedupe by source file so
+// identical routes ('/' and '/index.html') share the same cached body.
+const htmlCache = {};
+for (const file of new Set(Object.values(htmlPages))) {
+    let html = fs.readFileSync(path.join(__dirname, file), 'utf8');
+    if (UMAMI_WEBSITE_ID) {
+        const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
+        html = html.replace('</head>', `    ${script}\n</head>`);
+    }
+    htmlCache[file] = injectCacheBust(html);
+}
+
+Object.entries(htmlPages).forEach(([route, file]) => {
+    app.get(route, (req, res) => {
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.type('html').send(htmlCache[file]);
+    });
+});
 
 app.use(express.static(__dirname, {
     maxAge: '1h',
@@ -1438,8 +1455,13 @@ app.post('/api/logout', logoutLimiter, (req, res) => {
 });
 
 // Get all entries for current user
+const VALID_VIEW_MODES = new Set(['individual', 'combined', 'myshare']);
 app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
-    const viewMode = req.query.viewMode || 'individual';
+    const requestedViewMode = req.query.viewMode || 'individual';
+    if (!VALID_VIEW_MODES.has(requestedViewMode)) {
+        return res.status(400).json({ message: 'Invalid viewMode. Must be one of: individual, combined, myshare.' });
+    }
+    const viewMode = requestedViewMode;
     const month = req.query.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
     let userEntries;
 
@@ -1455,9 +1477,17 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
 
     if (viewMode === 'combined' && validPartner) {
         userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
+    } else if (viewMode === 'myshare' && validPartner) {
+        userEntries = await db.getMyShareEntries(req.user.id, validPartner.id, month);
+    } else if (viewMode === 'myshare') {
+        // Without a valid partner there are no couple entries to halve, so
+        // My Share is equivalent to the user's individual entries.
+        userEntries = await db.getIndividualEntries(req.user.id, month);
     } else if (viewMode === 'individual' && validPartner) {
         userEntries = await db.getIndividualEntries(req.user.id, month);
     } else {
+        // viewMode === 'individual' without a partner: all entries belong to
+        // this user only, so the legacy per-user query is the right answer.
         userEntries = await db.getEntriesByUser(req.user.id, month);
     }
 

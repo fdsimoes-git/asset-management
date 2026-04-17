@@ -15,11 +15,45 @@ function setButtonLoading(btn, isLoading) {
     }
 }
 
+// Canonical list of entry categories + unified colors shared across
+// the bar chart, stacked bar chart, and filter chips so a given category is
+// always visually consistent. Intentionally neutral-named because the list
+// includes both expense-style tags (food, housing, ...) and income-style
+// tags (salary, freelance, investment, transfer).
+const ENTRY_CATEGORIES = ['food', 'groceries', 'transport', 'travel', 'entertainment',
+    'utilities', 'healthcare', 'education', 'shopping', 'subscription',
+    'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+
+const CATEGORY_COLORS = {
+    food:         '#fbbf24',
+    groceries:    '#22c55e',
+    transport:    '#3b82f6',
+    travel:       '#06b6d4',
+    entertainment:'#a855f7',
+    utilities:    '#6366f1',
+    healthcare:   '#ef4444',
+    education:    '#0ea5e9',
+    shopping:     '#ec4899',
+    subscription: '#8b5cf6',
+    housing:      '#f97316',
+    salary:       '#10b981',
+    freelance:    '#14b8a6',
+    investment:   '#84cc16',
+    transfer:     '#64748b',
+    wedding:      '#f472b6',
+    other:        '#94a3b8'
+};
+function categoryColor(cat) { return CATEGORY_COLORS[cat] || CATEGORY_COLORS.other; }
+
 let entries = [];
 let monthlyBalanceChart = null;
 let incomeVsExpenseChart = null;
 let categoryChart = null;
 let categoryStackedChart = null;
+// Category chart supports two presentations: horizontal bar (default) and doughnut.
+let currentCategoryChartType = 'bar';
+let _categoryCtxRef = null; // kept so setCategoryChartType can rebuild without re-running initializeCharts
+let _chartThemeRef = null;  // theme/color palette reference for rebuilds
 // Add a variable to track currently filtered entries
 let currentFilteredEntries = [];
 // Current user info
@@ -32,6 +66,136 @@ let currentSortDirection = 'asc';
 // Couple feature state
 let currentViewMode = 'individual';
 let hasPartner = false;
+
+// Build the category-distribution chart as either horizontal bar or doughnut.
+// Colors are applied in updateCharts() (sorted by value) so they stay consistent
+// with CATEGORY_COLORS regardless of sort order.
+function buildCategoryChart(ctx, type, colors) {
+    const commonTooltip = {
+        backgroundColor: '#1e293b',
+        titleColor: colors.textPrimary,
+        bodyColor: colors.textSecondary,
+        borderColor: 'rgba(148, 163, 184, 0.2)',
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 8
+    };
+    const title = {
+        display: true,
+        text: t('chart.expensesByCategory'),
+        color: colors.textPrimary,
+        font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+        padding: { bottom: 20 }
+    };
+    if (type === 'doughnut') {
+        return new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: t('chart.amount'),
+                    data: [],
+                    backgroundColor: [],
+                    borderColor: [],
+                    borderWidth: 2,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: colors.textSecondary,
+                            font: { size: 11, family: "'DM Sans', sans-serif" },
+                            boxWidth: 12,
+                            padding: 8
+                        }
+                    },
+                    title,
+                    tooltip: {
+                        ...commonTooltip,
+                        callbacks: {
+                            label: function(ctx) {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                const v = ctx.parsed;
+                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                                return `${ctx.label}: $${v.toFixed(2)} (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    // Default: horizontal bar
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: t('chart.amount'),
+                data: [],
+                backgroundColor: [],
+                borderColor: [],
+                borderWidth: 2,
+                borderRadius: 6,
+                hoverBackgroundColor: []
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                title,
+                tooltip: {
+                    ...commonTooltip,
+                    callbacks: {
+                        label: function(context) {
+                            const v = context.parsed.x;
+                            return `$${v.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: { color: colors.gridColor, drawBorder: false },
+                    ticks: {
+                        color: colors.textMuted,
+                        font: { family: "'DM Sans', sans-serif" },
+                        callback: function(value) { return '$' + value.toFixed(0); }
+                    }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        color: colors.textSecondary,
+                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function setCategoryChartType(type) {
+    if (!['bar', 'doughnut'].includes(type)) return;
+    if (type === currentCategoryChartType) return;
+    currentCategoryChartType = type;
+    if (categoryChart) categoryChart.destroy();
+    categoryChart = buildCategoryChart(_categoryCtxRef, type, _chartThemeRef);
+    // Re-populate with whatever the current filter view is showing
+    if (Array.isArray(currentFilteredEntries)) {
+        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+    }
+}
 
 // Initialize charts
 function initializeCharts() {
@@ -190,7 +354,36 @@ function initializeCharts() {
                 borderWidth: 3
             }]
         },
-        options: commonOptions
+        options: {
+            ...commonOptions,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                ...commonOptions.plugins,
+                tooltip: {
+                    ...commonOptions.plugins.tooltip,
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(ctx) {
+                            const v = ctx.parsed.y;
+                            return `${ctx.dataset.label}: $${v.toFixed(2)}`;
+                        }
+                    }
+                },
+                annotation: {
+                    annotations: {
+                        zeroLine: {
+                            type: 'line',
+                            yMin: 0,
+                            yMax: 0,
+                            borderColor: 'rgba(148, 163, 184, 0.35)',
+                            borderWidth: 1,
+                            borderDash: [4, 4]
+                        }
+                    }
+                }
+            }
+        }
     });
 
     incomeVsExpenseChart = new Chart(incomeVsExpenseCtx, {
@@ -221,102 +414,27 @@ function initializeCharts() {
         options: incomeExpenseOptions
     });
 
-    // Category distribution chart (horizontal bar)
-    const categoryColors = [
-        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
-        '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
-        '#ef4444', '#64748b'
-    ];
+    // Category distribution chart — supports bar (horizontal) or doughnut view.
+    // The type can be toggled by the user via the overlay buttons; we rebuild
+    // the chart on toggle because Chart.js does not allow changing `type` in place.
+    _categoryCtxRef = categoryCtx;
+    _chartThemeRef = colors;
+    categoryChart = buildCategoryChart(categoryCtx, currentCategoryChartType, colors);
 
-    categoryChart = new Chart(categoryCtx, {
-        type: 'bar',
-        data: {
-            labels: [],
-            datasets: [{
-                label: t('chart.amount'),
-                data: [],
-                backgroundColor: categoryColors.map(c => c + 'cc'),
-                borderColor: categoryColors,
-                borderWidth: 2,
-                borderRadius: 6,
-                hoverBackgroundColor: categoryColors
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                title: {
-                    display: true,
-                    text: t('chart.expensesByCategory'),
-                    color: colors.textPrimary,
-                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
-                    padding: { bottom: 20 }
-                },
-                tooltip: {
-                    backgroundColor: '#1e293b',
-                    titleColor: colors.textPrimary,
-                    bodyColor: colors.textSecondary,
-                    borderColor: 'rgba(148, 163, 184, 0.2)',
-                    borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 8,
-                    callbacks: {
-                        label: function(context) {
-                            return `$${context.parsed.x.toFixed(2)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    grid: { color: colors.gridColor, drawBorder: false },
-                    ticks: {
-                        color: colors.textMuted,
-                        font: { family: "'DM Sans', sans-serif" },
-                        callback: function(value) {
-                            return '$' + value.toFixed(0);
-                        }
-                    }
-                },
-                y: {
-                    grid: { display: false },
-                    ticks: {
-                        color: colors.textSecondary,
-                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
-                    }
-                }
-            }
-        }
+    // Stacked bar chart for entry categories by month — uses unified palette
+    const stackedDatasets = ENTRY_CATEGORIES.map((category) => {
+        const color = categoryColor(category);
+        return {
+            label: t('cat.' + category),
+            _category: category,
+            data: [],
+            backgroundColor: color + 'cc',
+            borderColor: color,
+            borderWidth: 1,
+            borderRadius: 3,
+            hoverBackgroundColor: color
+        };
     });
-
-    // Stacked bar chart for expense categories by month
-    const stackedCategoryColors = [
-        '#fbbf24', '#3b82f6', '#a855f7', '#6366f1',
-        '#ec4899', '#10b981', '#f97316', '#22c55e',
-        '#94a3b8', '#14b8a6', '#8b5cf6', '#0ea5e9',
-        '#ef4444', '#64748b', '#06b6d4', '#84cc16'
-    ];
-
-    const expenseCategories = ['food', 'groceries', 'transport', 'travel', 'entertainment',
-        'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
-
-    const stackedDatasets = expenseCategories.map((category, index) => ({
-        label: t('cat.' + category),
-        data: [],
-        backgroundColor: stackedCategoryColors[index % stackedCategoryColors.length] + 'cc',
-        borderColor: stackedCategoryColors[index % stackedCategoryColors.length],
-        borderWidth: 1,
-        borderRadius: 3,
-        hoverBackgroundColor: stackedCategoryColors[index % stackedCategoryColors.length]
-    }));
 
     categoryStackedChart = new Chart(categoryStackedCtx, {
         type: 'bar',
@@ -561,20 +679,22 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
             });
         });
     const sortedTags = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+    const sortedCategoryKeys = sortedTags.map(([tag]) => tag);
+    const sortedColors = sortedCategoryKeys.map(categoryColor);
     categoryChart.data.labels = sortedTags.map(([tag]) => t('cat.' + tag));
-    categoryChart.data.datasets[0].data = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
+    const categoryValues = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
+    categoryChart.data.datasets[0].data = categoryValues;
+    categoryChart.data.datasets[0].backgroundColor = sortedColors.map(c => c + 'cc');
+    categoryChart.data.datasets[0].borderColor = sortedColors;
+    categoryChart.data.datasets[0].hoverBackgroundColor = sortedColors;
     categoryChart.update();
 
     // Update stacked category chart - expenses by category per month
-    const expenseCategoryList = ['food', 'groceries', 'transport', 'travel', 'entertainment',
-        'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-        'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
-
     // Build a map: { month: { category: totalAmount } }
     const categoryMonthlyData = {};
     months.forEach(month => {
         categoryMonthlyData[month] = {};
-        expenseCategoryList.forEach(cat => {
+        ENTRY_CATEGORIES.forEach(cat => {
             categoryMonthlyData[month][cat] = 0;
         });
     });
@@ -590,7 +710,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
             const perTagAmount = parseFloat(entry.amount) / entryTags.length;
 
             entryTags.forEach(tag => {
-                const normalizedTag = expenseCategoryList.includes(tag) ? tag : 'other';
+                const normalizedTag = ENTRY_CATEGORIES.includes(tag) ? tag : 'other';
                 categoryMonthlyData[month][normalizedTag] += perTagAmount;
             });
         });
@@ -599,13 +719,14 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryStackedChart.data.labels = months;
 
     // Determine which categories have any data
-    const categoriesWithData = expenseCategoryList.filter(category => {
+    const categoriesWithData = ENTRY_CATEGORIES.filter(category => {
         return months.some(month => categoryMonthlyData[month][category] > 0);
     });
 
-    // Update each dataset with monthly values for its category
-    categoryStackedChart.data.datasets.forEach((dataset, index) => {
-        const category = expenseCategoryList[index];
+    // Update each dataset using its own `_category` tag (set at init) so we
+    // don't depend on dataset order matching ENTRY_CATEGORIES.
+    categoryStackedChart.data.datasets.forEach((dataset) => {
+        const category = dataset._category;
         dataset.data = months.map(month => {
             const value = categoryMonthlyData[month]?.[category] || 0;
             return Math.round(value * 100) / 100;
@@ -615,15 +736,293 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     });
 
     categoryStackedChart.update();
+
+    // Empty-state overlays: show when a chart has no meaningful data for the
+    // current filter window. Base "monthly balance" emptiness on whether any
+    // income/expense activity exists — a cumulative series summing to zero
+    // (e.g. matched income and expense) is still meaningful data.
+    const hasIncomeExpenseData = incomeValues.some(v => v > 0) || expenseValues.some(v => v > 0);
+    const hasCategoryData = categoryValues.length > 0 && categoryValues.some(v => v > 0);
+    const hasStackedData = categoriesWithData.length > 0;
+    setChartEmpty('monthlyBalance', !hasIncomeExpenseData);
+    setChartEmpty('incomeVsExpense', !hasIncomeExpenseData);
+    setChartEmpty('category', !hasCategoryData);
+    setChartEmpty('categoryStacked', !hasStackedData);
+}
+
+function setChartEmpty(chartName, isEmpty) {
+    const wrapper = document.querySelector(`.chart-wrapper[data-chart="${chartName}"]`);
+    if (!wrapper) return;
+    const overlay = wrapper.querySelector('.chart-empty-state');
+    const canvas = wrapper.querySelector('canvas');
+    if (overlay) overlay.hidden = !isEmpty;
+    if (canvas) canvas.style.opacity = isEmpty ? '0.15' : '1';
+}
+
+function setChartsLoading(isLoading) {
+    document.querySelectorAll('.chart-wrapper .chart-loading-overlay').forEach(el => {
+        el.hidden = !isLoading;
+    });
+}
+
+function setEntriesLoading(isLoading) {
+    const overlay = document.getElementById('entriesTableLoadingOverlay');
+    if (overlay) overlay.hidden = !isLoading;
+    const summary = document.querySelector('.entries-section .summary');
+    if (summary) summary.classList.toggle('is-loading', isLoading);
+}
+
+function setViewLoading(isLoading) {
+    setChartsLoading(isLoading);
+    setEntriesLoading(isLoading);
+}
+
+// ============ FILTER STATE ============
+
+const DEFAULT_FILTER_STATE = Object.freeze({ start: '', end: '', type: 'all', categories: [], quickRange: null });
+// Shallow-spreading DEFAULT_FILTER_STATE leaks the `categories` array by
+// reference, which meant chip clicks mutated the "default" and reset no
+// longer released selected categories. Always build a fresh state through
+// this factory so each consumer gets an independent categories array.
+function freshFilterState() {
+    return { start: '', end: '', type: 'all', categories: [], quickRange: null };
+}
+let filterState = freshFilterState();
+
+function filterStorageKey() {
+    const uid = (currentUser && currentUser.id) || 'anon';
+    return `assetmgmt.filters.v1.${uid}.${currentViewMode}`;
+}
+
+const VALID_FILTER_TYPES = new Set(['all', 'income', 'expense']);
+const VALID_QUICK_RANGES = new Set(['3m', '6m', '12m', 'ytd', 'all']);
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function sanitizeFilterState(raw) {
+    const out = freshFilterState();
+    if (!raw || typeof raw !== 'object') return out;
+    if (typeof raw.start === 'string' && (raw.start === '' || MONTH_RE.test(raw.start))) out.start = raw.start;
+    if (typeof raw.end === 'string' && (raw.end === '' || MONTH_RE.test(raw.end))) out.end = raw.end;
+    if (typeof raw.type === 'string' && VALID_FILTER_TYPES.has(raw.type)) out.type = raw.type;
+    if (Array.isArray(raw.categories)) {
+        const known = new Set(ENTRY_CATEGORIES);
+        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && known.has(c)))];
+    }
+    if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
+        out.quickRange = raw.quickRange || null;
+    }
+    return out;
+}
+
+function loadFilterState() {
+    try {
+        const raw = localStorage.getItem(filterStorageKey());
+        if (!raw) return null;
+        return sanitizeFilterState(JSON.parse(raw));
+    } catch { return null; }
+}
+
+function saveFilterState() {
+    try { localStorage.setItem(filterStorageKey(), JSON.stringify(filterState)); }
+    catch { /* quota — ignore */ }
+}
+
+function applyFilterStateToDOM() {
+    // If a persisted quick-range no longer matches the saved start/end (e.g.
+    // "last 3 months" saved weeks ago now maps to a different window), clear
+    // it so we don't mislead the user with a stale active preset.
+    if (filterState.quickRange && !rangeMatchesQuickRange(filterState.quickRange)) {
+        filterState.quickRange = null;
+    }
+    document.getElementById('monthFilterStart').value = filterState.start || '';
+    document.getElementById('monthFilterEnd').value = filterState.end || '';
+    document.getElementById('typeFilter').value = filterState.type || 'all';
+    renderCategoryChips();
+    syncHiddenCategorySelect();
+    document.querySelectorAll('.quick-range-btn').forEach(btn => {
+        const isActive = btn.dataset.range === filterState.quickRange;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+function renderCategoryChips() {
+    const container = document.getElementById('categoryChips');
+    if (!container) return;
+    container.innerHTML = '';
+    ENTRY_CATEGORIES.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'cat-chip';
+        chip.dataset.cat = cat;
+        chip.textContent = t('cat.' + cat);
+        const color = categoryColor(cat);
+        chip.style.setProperty('--chip-color', color);
+        chip.style.setProperty('--chip-color-bg', hexWithAlpha(color, 0.18));
+        const isSelected = filterState.categories.includes(cat);
+        chip.classList.toggle('active', isSelected);
+        chip.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        chip.addEventListener('click', () => {
+            const i = filterState.categories.indexOf(cat);
+            if (i === -1) filterState.categories.push(cat);
+            else filterState.categories.splice(i, 1);
+            const pressed = filterState.categories.includes(cat);
+            chip.classList.toggle('active', pressed);
+            chip.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+            syncHiddenCategorySelect();
+            onFilterChanged();
+        });
+        container.appendChild(chip);
+    });
+}
+
+function hexWithAlpha(hex, alpha) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function syncHiddenCategorySelect() {
+    const select = document.getElementById('categoryFilter');
+    if (!select) return;
+    Array.from(select.options).forEach(opt => {
+        opt.selected = filterState.categories.includes(opt.value);
+    });
+}
+
+function readFilterStateFromInputs() {
+    filterState.start = document.getElementById('monthFilterStart').value;
+    filterState.end = document.getElementById('monthFilterEnd').value;
+    filterState.type = document.getElementById('typeFilter').value;
+    // categories managed directly by chip click handlers
+}
+
+function onFilterChanged() {
+    readFilterStateFromInputs();
+    // If user edits month inputs manually, drop the "quick range" active state
+    // unless they still match.
+    if (filterState.quickRange && !rangeMatchesQuickRange(filterState.quickRange)) {
+        filterState.quickRange = null;
+        document.querySelectorAll('.quick-range-btn').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+        });
+    }
+    saveFilterState();
+    renderActiveFiltersBar();
+    filterEntries();
+}
+
+function applyQuickRange(range) {
+    const now = new Date();
+    const endYM = ymStr(now.getFullYear(), now.getMonth() + 1);
+    let startYM = '';
+    if (range === '3m') {
+        const d = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        startYM = ymStr(d.getFullYear(), d.getMonth() + 1);
+    } else if (range === '6m') {
+        const d = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        startYM = ymStr(d.getFullYear(), d.getMonth() + 1);
+    } else if (range === '12m') {
+        const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        startYM = ymStr(d.getFullYear(), d.getMonth() + 1);
+    } else if (range === 'ytd') {
+        startYM = ymStr(now.getFullYear(), 1);
+    } else if (range === 'all') {
+        startYM = '';
+        filterState.end = '';
+    }
+    filterState.start = startYM;
+    filterState.end = range === 'all' ? '' : endYM;
+    filterState.quickRange = range;
+    applyFilterStateToDOM();
+    saveFilterState();
+    renderActiveFiltersBar();
+    filterEntries();
+}
+
+function ymStr(y, m) { return `${y}-${String(m).padStart(2, '0')}`; }
+
+function rangeMatchesQuickRange(range) {
+    const now = new Date();
+    const endExpected = ymStr(now.getFullYear(), now.getMonth() + 1);
+    if (range === 'all') return !filterState.start && !filterState.end;
+    if (filterState.end !== endExpected) return false;
+    if (range === 'ytd') return filterState.start === ymStr(now.getFullYear(), 1);
+    const mMap = { '3m': 2, '6m': 5, '12m': 11 };
+    if (!(range in mMap)) return false;
+    const d = new Date(now.getFullYear(), now.getMonth() - mMap[range], 1);
+    return filterState.start === ymStr(d.getFullYear(), d.getMonth() + 1);
+}
+
+function renderActiveFiltersBar() {
+    const bar = document.getElementById('activeFiltersBar');
+    const list = document.getElementById('activeFiltersList');
+    const count = document.getElementById('filterResultsCount');
+    if (!bar || !list || !count) return;
+
+    list.innerHTML = '';
+    const chips = [];
+
+    if (filterState.start || filterState.end) {
+        const label = `${filterState.start || '…'} → ${filterState.end || '…'}`;
+        chips.push({ label, onRemove: () => {
+            filterState.start = ''; filterState.end = ''; filterState.quickRange = null;
+            applyFilterStateToDOM(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
+        }});
+    }
+    if (filterState.type && filterState.type !== 'all') {
+        chips.push({ label: t('type.' + filterState.type), onRemove: () => {
+            filterState.type = 'all'; applyFilterStateToDOM(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
+        }});
+    }
+    filterState.categories.forEach(cat => {
+        chips.push({ label: t('cat.' + cat), onRemove: () => {
+            filterState.categories = filterState.categories.filter(c => c !== cat);
+            renderCategoryChips(); syncHiddenCategorySelect(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
+        }});
+    });
+
+    chips.forEach(chip => {
+        const el = document.createElement('span');
+        el.className = 'active-filter-chip';
+        el.textContent = chip.label + ' ';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('aria-label', t('filter.removeFilter'));
+        btn.textContent = '✕';
+        btn.addEventListener('click', chip.onRemove);
+        el.appendChild(btn);
+        list.appendChild(el);
+    });
+
+    // Count + total are updated after filterEntries runs (see filterEntries)
+    bar.hidden = chips.length === 0 && !filterState.start && !filterState.end && filterState.type === 'all' && filterState.categories.length === 0;
+    // Keep visible when chips non-empty; show zero-chip state only if we later add result count-always mode
+}
+
+function updateFilterResultsCount(filtered) {
+    const count = document.getElementById('filterResultsCount');
+    if (!count) return;
+    const bar = document.getElementById('activeFiltersBar');
+    const hasAnyFilter = filterState.start || filterState.end || (filterState.type && filterState.type !== 'all') || filterState.categories.length > 0;
+    if (!hasAnyFilter) {
+        if (bar) bar.hidden = true;
+        return;
+    }
+    if (bar) bar.hidden = false;
+    const total = filtered.reduce((s, e) => s + parseFloat(e.amount), 0);
+    count.textContent = t('filter.resultsCount', { count: filtered.length, total: '$' + total.toFixed(2) });
 }
 
 // Filter entries based on selected criteria
 function filterEntries() {
-    const monthFilterStart = document.getElementById('monthFilterStart').value;
-    const monthFilterEnd = document.getElementById('monthFilterEnd').value;
-    const typeFilter = document.getElementById('typeFilter').value;
-    const categoryFilterSelect = document.getElementById('categoryFilter');
-    const selectedCategories = Array.from(categoryFilterSelect.selectedOptions).map(opt => opt.value);
+    const monthFilterStart = filterState.start;
+    const monthFilterEnd = filterState.end;
+    const typeFilter = filterState.type;
+    const selectedCategories = filterState.categories;
 
     let filteredEntries = entries;
 
@@ -631,6 +1030,10 @@ function filterEntries() {
         filteredEntries = filteredEntries.filter(entry => {
             return entry.month >= monthFilterStart && entry.month <= monthFilterEnd;
         });
+    } else if (monthFilterStart) {
+        filteredEntries = filteredEntries.filter(entry => entry.month >= monthFilterStart);
+    } else if (monthFilterEnd) {
+        filteredEntries = filteredEntries.filter(entry => entry.month <= monthFilterEnd);
     }
 
     if (typeFilter !== 'all') {
@@ -650,6 +1053,7 @@ function filterEntries() {
     updateSummary(filteredEntries);
     updateCharts(filteredEntries, false, monthFilterStart, monthFilterEnd);
     updateCoupleShare(filteredEntries);
+    updateFilterResultsCount(filteredEntries);
 }
 
 // Sort entries function
@@ -721,19 +1125,32 @@ function displayEntries(entriesToShow) {
             `<span class="tag tag-${escapeHtml(tag)}">${escapeHtml(t('cat.' + tag))}</span>`
         ).join(' ');
         const coupleBadge = entry.isCoupleExpense ? `<span class="couple-badge">${t('dash.couple')}</span>` : '';
+        const inMyShare = currentViewMode === 'myshare';
+        const halfBadge = (inMyShare && entry.isCoupleExpense)
+            ? `<span class="share-half-badge" title="${escapeHtml(t('dash.halfSharedTooltip'))}">${escapeHtml(t('dash.halfSharedBadge'))}</span>`
+            : '';
 
-        // In combined view, only show Edit/Delete for user's own entries
-        const isOwnEntry = !currentUser || entry.userId === currentUser.id;
-        const actionButtons = isOwnEntry
+        // In combined view, only show Edit/Delete for user's own entries.
+        // In "My Share" view, halved couple rows are display-only (amount shown is half the stored value).
+        // Require currentUser to be loaded — otherwise partner rows briefly
+        // render with edit/delete buttons during the initial load window
+        // (entries are fetched before fetchCurrentUser resolves).
+        const isOwnEntry = !!currentUser && entry.userId === currentUser.id;
+        const editable = isOwnEntry && !(inMyShare && entry.isCoupleExpense);
+        const actionButtons = editable
             ? `<button class="edit-btn" data-id="${entry.id}">${t('common.edit')}</button>
                <button class="delete-btn" data-id="${entry.id}">${t('common.delete')}</button>`
-            : `<span style="color: var(--text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`;
+            : (inMyShare && entry.isCoupleExpense)
+                ? `<span style="color: var(--color-text-muted); font-size: 0.75rem;" title="${escapeHtml(t('dash.halfSharedTooltip'))}">${escapeHtml(t('dash.halfSharedBadge'))}</span>`
+                : currentUser
+                    ? `<span style="color: var(--color-text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`
+                    : '';
 
         row.innerHTML = `
             <td>${escapeHtml(entry.month)}</td>
             <td><span class="entry-type entry-type-${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
-            <td>${coupleBadge}${escapedDescription}</td>
+            <td>${halfBadge}${coupleBadge}${escapedDescription}</td>
             <td>${tags || '<span class="tag tag-other">-</span>'}</td>
             <td>${actionButtons}</td>
         `;
@@ -1282,19 +1699,26 @@ function openModal() {
 document.addEventListener('DOMContentLoaded', () => {
     initializeCharts();
 
+    // Restore any persisted filter state before loading data (uses 'anon' key
+    // until fetchCurrentUser populates currentUser, at which point setViewMode
+    // will re-apply with the user-scoped key).
+    const persisted = loadFilterState();
+    if (persisted) filterState = persisted;
+    applyFilterStateToDOM();
+
     // Load entries from server
+    setViewLoading(true);
     fetch('/api/entries')
         .then(response => response.json())
         .then(data => {
             entries = data;
-            // Initialize currentFilteredEntries to all entries
-            currentFilteredEntries = entries;
-            displayEntries(entries);
-            updateSummary(entries);
-            updateCharts(entries, true);
-            updateCoupleShare(entries);
+            // Initialize currentFilteredEntries via filterEntries so the
+            // persisted filter state is honoured on first paint.
+            filterEntries();
+            renderActiveFiltersBar();
         })
-        .catch(error => console.error('Error loading entries:', error));
+        .catch(error => console.error('Error loading entries:', error))
+        .finally(() => setViewLoading(false));
 
     // Remove any previous event listeners to avoid duplicates
     const oldForm = document.getElementById('entryForm');
@@ -1473,12 +1897,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Filter controls - only clear button now, apply is handled by dynamic listeners
     document.getElementById('clearFilters').addEventListener('click', () => {
-        document.getElementById('monthFilterStart').value = '';
-        document.getElementById('monthFilterEnd').value = '';
-        document.getElementById('typeFilter').value = 'all';
-        // Deselect all options in multi-select
-        const categoryFilter = document.getElementById('categoryFilter');
-        Array.from(categoryFilter.options).forEach(opt => opt.selected = false);
+        filterState = freshFilterState();
+        applyFilterStateToDOM();
+        saveFilterState();
+        renderActiveFiltersBar();
         // Reset currentFilteredEntries to all entries
         currentFilteredEntries = entries;
         // Reset filters should show ALL entries again
@@ -1486,6 +1908,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSummary(entries);
         updateCharts(entries, true);
         updateCoupleShare(entries);
+        updateFilterResultsCount(entries);
     });
 
     // Sorting functionality
@@ -1545,10 +1968,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('monthFilterStart').addEventListener('input', filterEntries);
-    document.getElementById('monthFilterEnd').addEventListener('input', filterEntries);
-    document.getElementById('typeFilter').addEventListener('change', filterEntries);
-    document.getElementById('categoryFilter').addEventListener('change', filterEntries);
+    document.getElementById('monthFilterStart').addEventListener('input', onFilterChanged);
+    document.getElementById('monthFilterEnd').addEventListener('input', onFilterChanged);
+    document.getElementById('typeFilter').addEventListener('change', onFilterChanged);
+    // Category chips manage their own change events; keep native select in sync only
+
+    // Render category chips now that DOM is ready (before any entries load)
+    renderCategoryChips();
+
+    // Quick-range preset buttons
+    document.querySelectorAll('.quick-range-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyQuickRange(btn.dataset.range));
+    });
+
+    // Collapsible filter panel toggle (visible on mobile)
+    const filtersCollapseBtn = document.getElementById('filtersCollapseToggle');
+    const filtersBody = document.getElementById('filtersBody');
+    if (filtersCollapseBtn && filtersBody) {
+        filtersCollapseBtn.addEventListener('click', () => {
+            const expanded = filtersCollapseBtn.getAttribute('aria-expanded') === 'true';
+            const next = !expanded;
+            filtersCollapseBtn.setAttribute('aria-expanded', String(next));
+            filtersBody.hidden = !next;
+            const label = t(next ? 'filter.collapse' : 'filter.expand');
+            filtersCollapseBtn.title = label;
+            filtersCollapseBtn.setAttribute('aria-label', label);
+        });
+
+        // Ensure the filters panel never stays hidden above the mobile
+        // breakpoint where the collapse button isn't rendered. Without this,
+        // collapsing on mobile and resizing to desktop would leave the panel
+        // permanently hidden with no way to re-expand it.
+        const mq = window.matchMedia('(min-width: 769px)');
+        const handleBreakpoint = (e) => {
+            if (e.matches) {
+                filtersBody.hidden = false;
+                filtersCollapseBtn.setAttribute('aria-expanded', 'true');
+            }
+        };
+        handleBreakpoint(mq);
+        if (mq.addEventListener) mq.addEventListener('change', handleBreakpoint);
+        else if (mq.addListener) mq.addListener(handleBreakpoint);
+    }
+
+    // Category chart type toggle (bar ↔ doughnut)
+    document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(btn => {
+        // Sync initial aria-pressed from the pre-set .active class in HTML.
+        btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.type;
+            setCategoryChartType(type);
+            document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(b => {
+                const isActive = b === btn;
+                b.classList.toggle('active', isActive);
+                b.setAttribute('aria-pressed', String(isActive));
+            });
+            try { localStorage.setItem('assetmgmt.categoryChartType', type); } catch {}
+        });
+    });
 
     // ============ SETTINGS MODAL ============
 
@@ -2474,6 +2951,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
                 updateUIForPartner();
+                // Now that we know the user id, reload filters under their
+                // key (they were loaded under 'anon' at DOMContentLoaded).
+                // Always reset — falling back to defaults when the user has
+                // no saved state — so stale anon filters don't leak through.
+                const persisted = loadFilterState();
+                filterState = persisted || freshFilterState();
+                applyFilterStateToDOM();
+                renderActiveFiltersBar();
+                if (entries) filterEntries();
             } else {
                 window.location.href = '/login.html';
             }
@@ -2499,11 +2985,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const coupleExpenseToggle = document.getElementById('coupleExpenseToggle');
         const editCoupleExpenseToggle = document.getElementById('editCoupleExpenseToggle');
         const partnerInfo = document.getElementById('partnerInfo');
+        const myShareBtn = document.getElementById('myShareViewBtn');
 
         if (hasPartner) {
             viewModeContainer.style.display = 'flex';
             if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'block';
             if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'block';
+            if (myShareBtn) myShareBtn.style.display = '';
             if (partnerInfo && currentUser.partnerUsername) {
                 partnerInfo.textContent = t('common.partner') + ': ' + currentUser.partnerUsername;
             }
@@ -2511,32 +2999,72 @@ document.addEventListener('DOMContentLoaded', () => {
             viewModeContainer.style.display = 'none';
             if (coupleExpenseToggle) coupleExpenseToggle.style.display = 'none';
             if (editCoupleExpenseToggle) editCoupleExpenseToggle.style.display = 'none';
+            if (myShareBtn) myShareBtn.style.display = 'none';
+            // If user was on myshare/combined but lost partner, reset
+            if (currentViewMode !== 'individual') currentViewMode = 'individual';
         }
     }
 
     // Set view mode and reload entries
     function setViewMode(mode) {
+        if (!['individual', 'combined', 'myshare'].includes(mode)) mode = 'individual';
         currentViewMode = mode;
 
-        // Update button states
-        document.getElementById('individualViewBtn').classList.toggle('active', mode === 'individual');
-        document.getElementById('combinedViewBtn').classList.toggle('active', mode === 'combined');
+        // Update button states + expose pressed semantics for a11y
+        const setActive = (el, isActive) => {
+            if (!el) return;
+            el.classList.toggle('active', isActive);
+            el.setAttribute('aria-pressed', String(isActive));
+        };
+        setActive(document.getElementById('individualViewBtn'), mode === 'individual');
+        setActive(document.getElementById('combinedViewBtn'), mode === 'combined');
+        setActive(document.getElementById('myShareViewBtn'), mode === 'myshare');
+
+        // Restore persisted filters for this view (or reset to defaults)
+        const persisted = loadFilterState();
+        filterState = persisted || freshFilterState();
+        applyFilterStateToDOM();
+        renderActiveFiltersBar();
+
+        // Wipe stale data from the previous view immediately so the user
+        // never sees the wrong rows/totals during the fetch round-trip.
+        // setViewLoading then dims the (now empty) summary and overlays the
+        // table + charts until loadEntries() resolves with the new data.
+        entries = [];
+        currentFilteredEntries = [];
+        const tbody = document.getElementById('entriesBody');
+        if (tbody) tbody.innerHTML = '';
+        updateSummary([]);
+        setViewLoading(true);
 
         // Reload entries with new view mode
         loadEntries();
     }
 
+    // Monotonic counter so out-of-order responses (e.g. Individual fetched
+    // before the user clicks Combined) can never overwrite the latest view.
+    let loadEntriesSeq = 0;
+
     // Load entries from server with viewMode
     async function loadEntries() {
+        const seq = ++loadEntriesSeq;
         try {
+            setViewLoading(true);
             const response = await csrfFetch(`/api/entries?viewMode=${currentViewMode}`);
+            // A newer request started while this one was in flight — discard.
+            if (seq !== loadEntriesSeq) return;
             if (response.ok) {
                 entries = await response.json();
+                if (seq !== loadEntriesSeq) return;
                 // Re-apply any active filters so the UI stays consistent
                 filterEntries();
             }
         } catch (error) {
             console.error('Error loading entries:', error);
+        } finally {
+            // Only the latest in-flight request is allowed to clear the
+            // loading state; older ones bail out without flicker.
+            if (seq === loadEntriesSeq) setViewLoading(false);
         }
     }
     window.loadEntries = loadEntries;
@@ -2984,6 +3512,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('combinedViewBtn').addEventListener('click', () => {
         setViewMode('combined');
     });
+
+    const myShareBtn = document.getElementById('myShareViewBtn');
+    if (myShareBtn) {
+        myShareBtn.addEventListener('click', () => setViewMode('myshare'));
+    }
+
+    // Restore saved category chart type
+    try {
+        const savedType = localStorage.getItem('assetmgmt.categoryChartType');
+        if (savedType === 'doughnut') {
+            const doughBtn = document.querySelector('.chart-type-toggle .chart-type-btn[data-type="doughnut"]');
+            if (doughBtn) doughBtn.click();
+        }
+    } catch {}
 
     // Fetch current user on load
     fetchCurrentUser();

@@ -1,6 +1,6 @@
 {
   "name": "asset-management",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "description": "Secure Asset Management System",
   "main": "server.js",
   "scripts": {
@@ -22,7 +22,6 @@
     "express-session": "^1.17.3",
     "helmet": "^7.1.0",
     "multer": "^2.0.2",
-
     "nodemailer": "^8.0.1",
     "openai": "^6.25.0",
     "otplib": "^13.3.0",

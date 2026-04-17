@@ -341,6 +341,49 @@ async function getIndividualEntries(userId, month) {
     return rows.map(dbRowToEntry);
 }
 
+/**
+ * "My Share" view: user's own individual (non-couple) entries + all couple
+ * entries from either partner, with couple amounts divided by 2 so the total
+ * reflects the user's fair share of household finances.
+ *
+ * The halving happens here (server-side) so callers/frontend can treat the
+ * returned rows like any other entry list. Rows still carry their real `id`
+ * and `userId`, and `isCoupleExpense` is preserved so the UI can decorate
+ * halved rows and disable edit/delete on them.
+ */
+async function getMyShareEntries(userId, partnerId, month) {
+    const params = month ? [userId, partnerId, month] : [userId, partnerId];
+    const sql = month
+        ? `SELECT * FROM entries
+           WHERE month = $3
+             AND (
+               (user_id = $1 AND is_couple_expense = FALSE)
+               OR (user_id = ANY(ARRAY[$1, $2]::bigint[]) AND is_couple_expense = TRUE)
+             )
+           ORDER BY id`
+        : `SELECT * FROM entries
+           WHERE
+             (user_id = $1 AND is_couple_expense = FALSE)
+             OR (user_id = ANY(ARRAY[$1, $2]::bigint[]) AND is_couple_expense = TRUE)
+           ORDER BY id`;
+    const { rows } = await pool.query(sql, params);
+    return rows.map(row => {
+        const entry = dbRowToEntry(row);
+        if (entry.isCoupleExpense) {
+            // Round halved amounts to cents so per-row display (rendered via
+            // .toFixed(2)) and aggregate totals are always consistent. The
+            // trade-off is that summing many odd-cent couple entries can
+            // drift by up to 1 cent per entry vs. the mathematical half,
+            // which we accept as preferable to sub-cent floats that
+            // misrender in the UI (e.g. 10.01/2 = 5.005 -> "5.00" with
+            // IEEE-754 rounding). Use standard half-away-from-zero.
+            const halved = entry.amount / 2;
+            entry.amount = Math.round((halved + Number.EPSILON) * 100) / 100;
+        }
+        return entry;
+    });
+}
+
 async function getEntryByIdAndUser(entryId, userId) {
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE id = $1 AND user_id = $2',
@@ -594,6 +637,7 @@ module.exports = {
     getEntriesByUser,
     getCoupleEntries,
     getIndividualEntries,
+    getMyShareEntries,
     getEntryByIdAndUser,
     createEntry,
     updateEntry,
