@@ -71,9 +71,9 @@ const translations = {
     'dash.individual': 'Individual',
     'dash.combined': 'Combined (Couple)',
     'dash.myShare': 'My Share',
-    'dash.myShareDescription': 'Your individual entries + half of all couple expenses',
+    'dash.myShareDescription': 'Your individual entries + half of all shared couple entries',
     'dash.halfSharedBadge': '½ shared',
-    'dash.halfSharedTooltip': 'Shared couple expense — showing your half. In Combined (Couple) view, only the original entry owner can edit this.',
+    'dash.halfSharedTooltip': 'Shared couple entry — showing your half. In Combined (Couple) view, only the original entry owner can edit this.',
     'dash.loadingEntries': 'Loading entries…',
 
     // ── Quick date ranges ──
@@ -529,9 +529,9 @@ const translations = {
     'dash.individual': 'Individual',
     'dash.combined': 'Combinado (Casal)',
     'dash.myShare': 'Minha Parte',
-    'dash.myShareDescription': 'Suas entradas individuais + metade das despesas do casal',
+    'dash.myShareDescription': 'Suas entradas individuais + metade dos lan\u00e7amentos compartilhados do casal',
     'dash.halfSharedBadge': '½ casal',
-    'dash.halfSharedTooltip': 'Despesa compartilhada do casal \u2014 mostrando sua metade. Na visualiza\u00e7\u00e3o Combinado (Casal), apenas quem criou a entrada original pode edit\u00e1-la.',
+    'dash.halfSharedTooltip': 'Lan\u00e7amento compartilhado do casal \u2014 mostrando sua metade. Na visualiza\u00e7\u00e3o Combinado (Casal), apenas quem criou a entrada original pode edit\u00e1-la.',
     'dash.loadingEntries': 'Carregando lan\u00e7amentos\u2026',
 
     // ── Quick date ranges ──

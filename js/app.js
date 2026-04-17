@@ -1146,7 +1146,9 @@ function displayEntries(entriesToShow) {
                <button class="delete-btn" data-id="${entry.id}">${t('common.delete')}</button>`
             : (inMyShare && entry.isCoupleExpense)
                 ? `<span style="color: var(--color-text-muted); font-size: 0.75rem;" title="${escapeHtml(t('dash.halfSharedTooltip'))}">${escapeHtml(t('dash.halfSharedBadge'))}</span>`
-                : `<span style="color: var(--color-text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`;
+                : currentUser
+                    ? `<span style="color: var(--color-text-secondary); font-size: 0.75rem;">${t('dash.partnersEntry')}</span>`
+                    : '';
 
         row.innerHTML = `
             <td>${escapeHtml(entry.month)}</td>
@@ -1709,7 +1711,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyFilterStateToDOM();
 
     // Load entries from server
-    setChartsLoading(true);
+    setViewLoading(true);
     fetch('/api/entries')
         .then(response => response.json())
         .then(data => {
@@ -1720,7 +1722,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderActiveFiltersBar();
         })
         .catch(error => console.error('Error loading entries:', error))
-        .finally(() => setChartsLoading(false));
+        .finally(() => setViewLoading(false));
 
     // Remove any previous event listeners to avoid duplicates
     const oldForm = document.getElementById('entryForm');
