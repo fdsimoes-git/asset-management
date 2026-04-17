@@ -370,9 +370,15 @@ async function getMyShareEntries(userId, partnerId, month) {
     return rows.map(row => {
         const entry = dbRowToEntry(row);
         if (entry.isCoupleExpense) {
-            // Keep exact half (may include sub-cent precision) so aggregated
-            // totals remain accurate; per-row display is formatted client-side.
-            entry.amount = entry.amount / 2;
+            // Round halved amounts to cents so per-row display (rendered via
+            // .toFixed(2)) and aggregate totals are always consistent. The
+            // trade-off is that summing many odd-cent couple entries can
+            // drift by up to 1 cent per entry vs. the mathematical half,
+            // which we accept as preferable to sub-cent floats that
+            // misrender in the UI (e.g. 10.01/2 = 5.005 -> "5.00" with
+            // IEEE-754 rounding). Use standard half-away-from-zero.
+            const halved = entry.amount / 2;
+            entry.amount = Math.round((halved + Number.EPSILON) * 100) / 100;
         }
         return entry;
     });
