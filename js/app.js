@@ -825,7 +825,9 @@ function applyFilterStateToDOM() {
     renderCategoryChips();
     syncHiddenCategorySelect();
     document.querySelectorAll('.quick-range-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.range === filterState.quickRange);
+        const isActive = btn.dataset.range === filterState.quickRange;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
     });
 }
 
@@ -842,12 +844,16 @@ function renderCategoryChips() {
         const color = categoryColor(cat);
         chip.style.setProperty('--chip-color', color);
         chip.style.setProperty('--chip-color-bg', hexWithAlpha(color, 0.18));
-        if (filterState.categories.includes(cat)) chip.classList.add('active');
+        const isSelected = filterState.categories.includes(cat);
+        chip.classList.toggle('active', isSelected);
+        chip.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         chip.addEventListener('click', () => {
             const i = filterState.categories.indexOf(cat);
             if (i === -1) filterState.categories.push(cat);
             else filterState.categories.splice(i, 1);
-            chip.classList.toggle('active');
+            const pressed = filterState.categories.includes(cat);
+            chip.classList.toggle('active', pressed);
+            chip.setAttribute('aria-pressed', pressed ? 'true' : 'false');
             syncHiddenCategorySelect();
             onFilterChanged();
         });
@@ -884,7 +890,10 @@ function onFilterChanged() {
     // unless they still match.
     if (filterState.quickRange && !rangeMatchesQuickRange(filterState.quickRange)) {
         filterState.quickRange = null;
-        document.querySelectorAll('.quick-range-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.quick-range-btn').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+        });
     }
     saveFilterState();
     renderActiveFiltersBar();
@@ -1987,11 +1996,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Category chart type toggle (bar ↔ doughnut)
     document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(btn => {
+        // Sync initial aria-pressed from the pre-set .active class in HTML.
+        btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
         btn.addEventListener('click', () => {
             const type = btn.dataset.type;
             setCategoryChartType(type);
             document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(b => {
-                b.classList.toggle('active', b === btn);
+                const isActive = b === btn;
+                b.classList.toggle('active', isActive);
+                b.setAttribute('aria-pressed', String(isActive));
             });
             try { localStorage.setItem('assetmgmt.categoryChartType', type); } catch {}
         });
@@ -2980,11 +2993,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!['individual', 'combined', 'myshare'].includes(mode)) mode = 'individual';
         currentViewMode = mode;
 
-        // Update button states
-        document.getElementById('individualViewBtn').classList.toggle('active', mode === 'individual');
-        document.getElementById('combinedViewBtn').classList.toggle('active', mode === 'combined');
-        const myShareBtn = document.getElementById('myShareViewBtn');
-        if (myShareBtn) myShareBtn.classList.toggle('active', mode === 'myshare');
+        // Update button states + expose pressed semantics for a11y
+        const setActive = (el, isActive) => {
+            if (!el) return;
+            el.classList.toggle('active', isActive);
+            el.setAttribute('aria-pressed', String(isActive));
+        };
+        setActive(document.getElementById('individualViewBtn'), mode === 'individual');
+        setActive(document.getElementById('combinedViewBtn'), mode === 'combined');
+        setActive(document.getElementById('myShareViewBtn'), mode === 'myshare');
 
         // Restore persisted filters for this view (or reset to defaults)
         const persisted = loadFilterState();

@@ -73,7 +73,7 @@ const translations = {
     'dash.myShare': 'My Share',
     'dash.myShareDescription': 'Your individual entries + half of all couple expenses',
     'dash.halfSharedBadge': '½ shared',
-    'dash.halfSharedTooltip': 'Shared couple expense — showing your half. Switch to Combined (Couple) view to edit.',
+    'dash.halfSharedTooltip': 'Shared couple expense — showing your half. In Combined (Couple) view, only the original entry owner can edit this.',
 
     // ── Quick date ranges ──
     'filter.quickRange': 'Quick range',
@@ -530,7 +530,7 @@ const translations = {
     'dash.myShare': 'Minha Parte',
     'dash.myShareDescription': 'Suas entradas individuais + metade das despesas do casal',
     'dash.halfSharedBadge': '½ casal',
-    'dash.halfSharedTooltip': 'Despesa compartilhada do casal \u2014 mostrando sua metade. Use a visualiza\u00e7\u00e3o Combinado (Casal) para editar.',
+    'dash.halfSharedTooltip': 'Despesa compartilhada do casal \u2014 mostrando sua metade. Na visualiza\u00e7\u00e3o Combinado (Casal), apenas quem criou a entrada original pode edit\u00e1-la.',
 
     // ── Quick date ranges ──
     'filter.quickRange': 'Intervalo r\u00e1pido',

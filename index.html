@@ -2360,9 +2360,9 @@
             <div id="viewModeContainer" class="view-mode-toggle" style="display: none;">
                 <label data-i18n="dash.viewMode">View Mode</label>
                 <div class="toggle-buttons">
-                    <button type="button" id="individualViewBtn" class="view-btn active" data-i18n="dash.individual">Individual</button>
-                    <button type="button" id="combinedViewBtn" class="view-btn" data-i18n="dash.combined">Combined (Couple)</button>
-                    <button type="button" id="myShareViewBtn" class="view-btn" data-i18n="dash.myShare" data-i18n-title="dash.myShareDescription" title="Your individual entries + half of all couple expenses">My Share</button>
+                    <button type="button" id="individualViewBtn" class="view-btn active" aria-pressed="true" data-i18n="dash.individual">Individual</button>
+                    <button type="button" id="combinedViewBtn" class="view-btn" aria-pressed="false" data-i18n="dash.combined">Combined (Couple)</button>
+                    <button type="button" id="myShareViewBtn" class="view-btn" aria-pressed="false" data-i18n="dash.myShare" data-i18n-title="dash.myShareDescription" title="Your individual entries + half of all couple expenses">My Share</button>
                 </div>
                 <span id="partnerInfo" style="font-size: 0.8rem; color: var(--color-text-muted);"></span>
             </div>
@@ -2376,11 +2376,11 @@
                 <div class="filters-body" id="filtersBody">
                     <div class="filter-quick-ranges" role="group" data-i18n-aria-label="filter.quickRange" aria-label="Quick date ranges">
                         <span class="filter-quick-label" data-i18n="filter.quickRange">Quick range</span>
-                        <button type="button" class="quick-range-btn" data-range="3m" data-i18n="filter.last3m">Last 3 months</button>
-                        <button type="button" class="quick-range-btn" data-range="6m" data-i18n="filter.last6m">Last 6 months</button>
-                        <button type="button" class="quick-range-btn" data-range="12m" data-i18n="filter.last12m">Last 12 months</button>
-                        <button type="button" class="quick-range-btn" data-range="ytd" data-i18n="filter.ytd">Year to date</button>
-                        <button type="button" class="quick-range-btn" data-range="all" data-i18n="filter.allTime">All time</button>
+                        <button type="button" class="quick-range-btn" data-range="3m" aria-pressed="false" data-i18n="filter.last3m">Last 3 months</button>
+                        <button type="button" class="quick-range-btn" data-range="6m" aria-pressed="false" data-i18n="filter.last6m">Last 6 months</button>
+                        <button type="button" class="quick-range-btn" data-range="12m" aria-pressed="false" data-i18n="filter.last12m">Last 12 months</button>
+                        <button type="button" class="quick-range-btn" data-range="ytd" aria-pressed="false" data-i18n="filter.ytd">Year to date</button>
+                        <button type="button" class="quick-range-btn" data-range="all" aria-pressed="false" data-i18n="filter.allTime">All time</button>
                     </div>
                     <div class="filters">
                         <div class="form-group">
@@ -2474,8 +2474,8 @@
                     </div>
                     <div class="chart-wrapper" data-chart="category">
                         <div class="chart-type-toggle" role="group" data-i18n-aria-label="filter.chartType" aria-label="Chart type">
-                            <button type="button" class="chart-type-btn active" data-type="bar" data-i18n="filter.chartBar" data-i18n-title="filter.chartBar" title="Bar">Bar</button>
-                            <button type="button" class="chart-type-btn" data-type="doughnut" data-i18n="filter.chartDoughnut" data-i18n-title="filter.chartDoughnut" title="Doughnut">Doughnut</button>
+                            <button type="button" class="chart-type-btn active" data-type="bar" aria-pressed="true" data-i18n="filter.chartBar" data-i18n-title="filter.chartBar" title="Bar">Bar</button>
+                            <button type="button" class="chart-type-btn" data-type="doughnut" aria-pressed="false" data-i18n="filter.chartDoughnut" data-i18n-title="filter.chartDoughnut" title="Doughnut">Doughnut</button>
                         </div>
                         <canvas id="categoryChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
