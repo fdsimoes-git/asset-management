@@ -776,12 +776,31 @@ function filterStorageKey() {
     return `assetmgmt.filters.v1.${uid}.${currentViewMode}`;
 }
 
+const VALID_FILTER_TYPES = new Set(['all', 'income', 'expense']);
+const VALID_QUICK_RANGES = new Set(['3m', '6m', '12m', 'ytd', 'all']);
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function sanitizeFilterState(raw) {
+    const out = { ...DEFAULT_FILTER_STATE };
+    if (!raw || typeof raw !== 'object') return out;
+    if (typeof raw.start === 'string' && (raw.start === '' || MONTH_RE.test(raw.start))) out.start = raw.start;
+    if (typeof raw.end === 'string' && (raw.end === '' || MONTH_RE.test(raw.end))) out.end = raw.end;
+    if (typeof raw.type === 'string' && VALID_FILTER_TYPES.has(raw.type)) out.type = raw.type;
+    if (Array.isArray(raw.categories)) {
+        const known = new Set(EXPENSE_CATEGORIES);
+        out.categories = raw.categories.filter(c => typeof c === 'string' && known.has(c));
+    }
+    if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
+        out.quickRange = raw.quickRange || null;
+    }
+    return out;
+}
+
 function loadFilterState() {
     try {
         const raw = localStorage.getItem(filterStorageKey());
         if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        return { ...DEFAULT_FILTER_STATE, ...parsed };
+        return sanitizeFilterState(JSON.parse(raw));
     } catch { return null; }
 }
 
@@ -1941,6 +1960,21 @@ document.addEventListener('DOMContentLoaded', () => {
             filtersBody.hidden = !next;
             filtersCollapseBtn.title = t(next ? 'filter.collapse' : 'filter.expand');
         });
+
+        // Ensure the filters panel never stays hidden above the mobile
+        // breakpoint where the collapse button isn't rendered. Without this,
+        // collapsing on mobile and resizing to desktop would leave the panel
+        // permanently hidden with no way to re-expand it.
+        const mq = window.matchMedia('(min-width: 769px)');
+        const handleBreakpoint = (e) => {
+            if (e.matches) {
+                filtersBody.hidden = false;
+                filtersCollapseBtn.setAttribute('aria-expanded', 'true');
+            }
+        };
+        handleBreakpoint(mq);
+        if (mq.addEventListener) mq.addEventListener('change', handleBreakpoint);
+        else if (mq.addListener) mq.addListener(handleBreakpoint);
     }
 
     // Category chart type toggle (bar ↔ doughnut)
