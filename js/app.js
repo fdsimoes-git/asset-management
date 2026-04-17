@@ -421,10 +421,8 @@ function initializeCharts() {
     _chartThemeRef = colors;
     categoryChart = buildCategoryChart(categoryCtx, currentCategoryChartType, colors);
 
-    // Stacked bar chart for expense categories by month — uses unified palette
-    const expenseCategories = ENTRY_CATEGORIES;
-
-    const stackedDatasets = expenseCategories.map((category) => {
+    // Stacked bar chart for entry categories by month — uses unified palette
+    const stackedDatasets = ENTRY_CATEGORIES.map((category) => {
         const color = categoryColor(category);
         return {
             label: t('cat.' + category),
@@ -692,13 +690,11 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryChart.update();
 
     // Update stacked category chart - expenses by category per month
-    const expenseCategoryList = ENTRY_CATEGORIES;
-
     // Build a map: { month: { category: totalAmount } }
     const categoryMonthlyData = {};
     months.forEach(month => {
         categoryMonthlyData[month] = {};
-        expenseCategoryList.forEach(cat => {
+        ENTRY_CATEGORIES.forEach(cat => {
             categoryMonthlyData[month][cat] = 0;
         });
     });
@@ -714,7 +710,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
             const perTagAmount = parseFloat(entry.amount) / entryTags.length;
 
             entryTags.forEach(tag => {
-                const normalizedTag = expenseCategoryList.includes(tag) ? tag : 'other';
+                const normalizedTag = ENTRY_CATEGORIES.includes(tag) ? tag : 'other';
                 categoryMonthlyData[month][normalizedTag] += perTagAmount;
             });
         });
@@ -723,7 +719,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryStackedChart.data.labels = months;
 
     // Determine which categories have any data
-    const categoriesWithData = expenseCategoryList.filter(category => {
+    const categoriesWithData = ENTRY_CATEGORIES.filter(category => {
         return months.some(month => categoryMonthlyData[month][category] > 0);
     });
 
