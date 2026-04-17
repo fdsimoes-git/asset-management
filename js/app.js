@@ -15,10 +15,12 @@ function setButtonLoading(btn, isLoading) {
     }
 }
 
-// Canonical list of expense/income categories + unified colors shared across
+// Canonical list of entry categories + unified colors shared across
 // the bar chart, stacked bar chart, and filter chips so a given category is
-// always visually consistent.
-const EXPENSE_CATEGORIES = ['food', 'groceries', 'transport', 'travel', 'entertainment',
+// always visually consistent. Intentionally neutral-named because the list
+// includes both expense-style tags (food, housing, ...) and income-style
+// tags (salary, freelance, investment, transfer).
+const ENTRY_CATEGORIES = ['food', 'groceries', 'transport', 'travel', 'entertainment',
     'utilities', 'healthcare', 'education', 'shopping', 'subscription',
     'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
 
@@ -420,7 +422,7 @@ function initializeCharts() {
     categoryChart = buildCategoryChart(categoryCtx, currentCategoryChartType, colors);
 
     // Stacked bar chart for expense categories by month — uses unified palette
-    const expenseCategories = EXPENSE_CATEGORIES;
+    const expenseCategories = ENTRY_CATEGORIES;
 
     const stackedDatasets = expenseCategories.map((category) => {
         const color = categoryColor(category);
@@ -690,7 +692,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryChart.update();
 
     // Update stacked category chart - expenses by category per month
-    const expenseCategoryList = EXPENSE_CATEGORIES;
+    const expenseCategoryList = ENTRY_CATEGORIES;
 
     // Build a map: { month: { category: totalAmount } }
     const categoryMonthlyData = {};
@@ -725,9 +727,10 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
         return months.some(month => categoryMonthlyData[month][category] > 0);
     });
 
-    // Update each dataset with monthly values for its category
-    categoryStackedChart.data.datasets.forEach((dataset, index) => {
-        const category = expenseCategoryList[index];
+    // Update each dataset using its own `_category` tag (set at init) so we
+    // don't depend on dataset order matching ENTRY_CATEGORIES.
+    categoryStackedChart.data.datasets.forEach((dataset) => {
+        const category = dataset._category;
         dataset.data = months.map(month => {
             const value = categoryMonthlyData[month]?.[category] || 0;
             return Math.round(value * 100) / 100;
@@ -787,7 +790,7 @@ function sanitizeFilterState(raw) {
     if (typeof raw.end === 'string' && (raw.end === '' || MONTH_RE.test(raw.end))) out.end = raw.end;
     if (typeof raw.type === 'string' && VALID_FILTER_TYPES.has(raw.type)) out.type = raw.type;
     if (Array.isArray(raw.categories)) {
-        const known = new Set(EXPENSE_CATEGORIES);
+        const known = new Set(ENTRY_CATEGORIES);
         out.categories = raw.categories.filter(c => typeof c === 'string' && known.has(c));
     }
     if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
@@ -830,7 +833,7 @@ function renderCategoryChips() {
     const container = document.getElementById('categoryChips');
     if (!container) return;
     container.innerHTML = '';
-    EXPENSE_CATEGORIES.forEach(cat => {
+    ENTRY_CATEGORIES.forEach(cat => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'cat-chip';
@@ -1105,7 +1108,10 @@ function displayEntries(entriesToShow) {
 
         // In combined view, only show Edit/Delete for user's own entries.
         // In "My Share" view, halved couple rows are display-only (amount shown is half the stored value).
-        const isOwnEntry = !currentUser || entry.userId === currentUser.id;
+        // Require currentUser to be loaded — otherwise partner rows briefly
+        // render with edit/delete buttons during the initial load window
+        // (entries are fetched before fetchCurrentUser resolves).
+        const isOwnEntry = !!currentUser && entry.userId === currentUser.id;
         const editable = isOwnEntry && !(inMyShare && entry.isCoupleExpense);
         const actionButtons = editable
             ? `<button class="edit-btn" data-id="${entry.id}">${t('common.edit')}</button>
