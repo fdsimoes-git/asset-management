@@ -1455,8 +1455,13 @@ app.post('/api/logout', logoutLimiter, (req, res) => {
 });
 
 // Get all entries for current user
+const VALID_VIEW_MODES = new Set(['individual', 'combined', 'myshare']);
 app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
-    const viewMode = req.query.viewMode || 'individual';
+    const requestedViewMode = req.query.viewMode || 'individual';
+    if (!VALID_VIEW_MODES.has(requestedViewMode)) {
+        return res.status(400).json({ message: 'Invalid viewMode. Must be one of: individual, combined, myshare.' });
+    }
+    const viewMode = requestedViewMode;
     const month = req.query.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
     let userEntries;
 
@@ -1481,6 +1486,8 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     } else if (viewMode === 'individual' && validPartner) {
         userEntries = await db.getIndividualEntries(req.user.id, month);
     } else {
+        // viewMode === 'individual' without a partner: all entries belong to
+        // this user only, so the legacy per-user query is the right answer.
         userEntries = await db.getEntriesByUser(req.user.id, month);
     }
 
