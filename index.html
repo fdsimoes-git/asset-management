@@ -761,6 +761,39 @@
             overflow-x: auto;
             border-radius: var(--radius-lg);
             border: 1px solid var(--color-border);
+            position: relative;
+        }
+        .table-loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.55);
+            border-radius: var(--radius-lg);
+            backdrop-filter: blur(2px);
+            z-index: 2;
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+            letter-spacing: 0.02em;
+        }
+        .table-loading-overlay[hidden] { display: none; }
+        .table-loading-overlay .spinner-dot {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 50%;
+            background: var(--color-accent, #f59e0b);
+            margin-right: 0.4rem;
+            animation: tableLoadingPulse 1s ease-in-out infinite;
+        }
+        @keyframes tableLoadingPulse {
+            0%, 100% { opacity: 0.3; transform: scale(0.85); }
+            50%      { opacity: 1;   transform: scale(1.15); }
+        }
+        .summary.is-loading .summary-item span:last-child {
+            opacity: 0.35;
+            filter: blur(2px);
+            transition: opacity 0.15s, filter 0.15s;
         }
 
         table {
@@ -2505,6 +2538,10 @@
                     </div>
                 </div>
                 <div class="entries-table">
+                    <div id="entriesTableLoadingOverlay" class="table-loading-overlay" hidden role="status" aria-live="polite">
+                        <span class="spinner-dot" aria-hidden="true"></span>
+                        <span data-i18n="dash.loadingEntries">Loading entries...</span>
+                    </div>
                     <table id="entriesTable">
                         <thead>
                             <tr>

@@ -769,6 +769,18 @@ function setChartsLoading(isLoading) {
     });
 }
 
+function setEntriesLoading(isLoading) {
+    const overlay = document.getElementById('entriesTableLoadingOverlay');
+    if (overlay) overlay.hidden = !isLoading;
+    const summary = document.querySelector('.entries-section .summary');
+    if (summary) summary.classList.toggle('is-loading', isLoading);
+}
+
+function setViewLoading(isLoading) {
+    setChartsLoading(isLoading);
+    setEntriesLoading(isLoading);
+}
+
 // ============ FILTER STATE ============
 
 const DEFAULT_FILTER_STATE = Object.freeze({ start: '', end: '', type: 'all', categories: [], quickRange: null });
@@ -3016,24 +3028,45 @@ document.addEventListener('DOMContentLoaded', () => {
         applyFilterStateToDOM();
         renderActiveFiltersBar();
 
+        // Wipe stale data from the previous view immediately so the user
+        // never sees the wrong rows/totals during the fetch round-trip.
+        // setViewLoading then dims the (now empty) summary and overlays the
+        // table + charts until loadEntries() resolves with the new data.
+        entries = [];
+        currentFilteredEntries = [];
+        const tbody = document.getElementById('entriesBody');
+        if (tbody) tbody.innerHTML = '';
+        updateSummary([]);
+        setViewLoading(true);
+
         // Reload entries with new view mode
         loadEntries();
     }
 
+    // Monotonic counter so out-of-order responses (e.g. Individual fetched
+    // before the user clicks Combined) can never overwrite the latest view.
+    let loadEntriesSeq = 0;
+
     // Load entries from server with viewMode
     async function loadEntries() {
+        const seq = ++loadEntriesSeq;
         try {
-            setChartsLoading(true);
+            setViewLoading(true);
             const response = await csrfFetch(`/api/entries?viewMode=${currentViewMode}`);
+            // A newer request started while this one was in flight — discard.
+            if (seq !== loadEntriesSeq) return;
             if (response.ok) {
                 entries = await response.json();
+                if (seq !== loadEntriesSeq) return;
                 // Re-apply any active filters so the UI stays consistent
                 filterEntries();
             }
         } catch (error) {
             console.error('Error loading entries:', error);
         } finally {
-            setChartsLoading(false);
+            // Only the latest in-flight request is allowed to clear the
+            // loading state; older ones bail out without flicker.
+            if (seq === loadEntriesSeq) setViewLoading(false);
         }
     }
     window.loadEntries = loadEntries;
