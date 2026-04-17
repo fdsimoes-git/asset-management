@@ -771,8 +771,15 @@ function setChartsLoading(isLoading) {
 
 // ============ FILTER STATE ============
 
-const DEFAULT_FILTER_STATE = { start: '', end: '', type: 'all', categories: [], quickRange: null };
-let filterState = { ...DEFAULT_FILTER_STATE };
+const DEFAULT_FILTER_STATE = Object.freeze({ start: '', end: '', type: 'all', categories: [], quickRange: null });
+// Shallow-spreading DEFAULT_FILTER_STATE leaks the `categories` array by
+// reference, which meant chip clicks mutated the "default" and reset no
+// longer released selected categories. Always build a fresh state through
+// this factory so each consumer gets an independent categories array.
+function freshFilterState() {
+    return { start: '', end: '', type: 'all', categories: [], quickRange: null };
+}
+let filterState = freshFilterState();
 
 function filterStorageKey() {
     const uid = (currentUser && currentUser.id) || 'anon';
@@ -784,7 +791,7 @@ const VALID_QUICK_RANGES = new Set(['3m', '6m', '12m', 'ytd', 'all']);
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function sanitizeFilterState(raw) {
-    const out = { ...DEFAULT_FILTER_STATE };
+    const out = freshFilterState();
     if (!raw || typeof raw !== 'object') return out;
     if (typeof raw.start === 'string' && (raw.start === '' || MONTH_RE.test(raw.start))) out.start = raw.start;
     if (typeof raw.end === 'string' && (raw.end === '' || MONTH_RE.test(raw.end))) out.end = raw.end;
@@ -1880,7 +1887,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Filter controls - only clear button now, apply is handled by dynamic listeners
     document.getElementById('clearFilters').addEventListener('click', () => {
-        filterState = { ...DEFAULT_FILTER_STATE };
+        filterState = freshFilterState();
         applyFilterStateToDOM();
         saveFilterState();
         renderActiveFiltersBar();
@@ -2939,7 +2946,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Always reset — falling back to defaults when the user has
                 // no saved state — so stale anon filters don't leak through.
                 const persisted = loadFilterState();
-                filterState = persisted || { ...DEFAULT_FILTER_STATE };
+                filterState = persisted || freshFilterState();
                 applyFilterStateToDOM();
                 renderActiveFiltersBar();
                 if (entries) filterEntries();
@@ -3005,7 +3012,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Restore persisted filters for this view (or reset to defaults)
         const persisted = loadFilterState();
-        filterState = persisted || { ...DEFAULT_FILTER_STATE };
+        filterState = persisted || freshFilterState();
         applyFilterStateToDOM();
         renderActiveFiltersBar();
 
