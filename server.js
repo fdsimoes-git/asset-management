@@ -436,8 +436,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// Serve HTML pages with Umami analytics injection (if configured)
+// Serve HTML pages with Umami analytics injection (if configured) and
+// cache-busting query strings on local JS/CSS references. The build ID
+// changes on every server start, so redeploys automatically invalidate
+// any browser/CDN cache for static assets even though they're served
+// with a non-trivial maxAge.
 const UMAMI_WEBSITE_ID = config.umamiWebsiteId;
+const BUILD_ID = Date.now().toString(36);
 const htmlPages = {
     '/': 'index.html',
     '/index.html': 'index.html',
@@ -446,18 +451,26 @@ const htmlPages = {
     '/forgot-password.html': 'forgot-password.html'
 };
 
-if (UMAMI_WEBSITE_ID) {
-    Object.entries(htmlPages).forEach(([route, file]) => {
-        app.get(route, (req, res) => {
-            const filePath = path.join(__dirname, file);
-            let html = fs.readFileSync(filePath, 'utf8');
+function injectCacheBust(html) {
+    // Only rewrite local asset references; leave absolute URLs alone.
+    return html
+        .replace(/(<script\b[^>]*\bsrc=")(\/[^"?]+\.js)(")/g, `$1$2?v=${BUILD_ID}$3`)
+        .replace(/(<link\b[^>]*\bhref=")(\/[^"?]+\.css)(")/g, `$1$2?v=${BUILD_ID}$3`);
+}
+
+Object.entries(htmlPages).forEach(([route, file]) => {
+    app.get(route, (req, res) => {
+        const filePath = path.join(__dirname, file);
+        let html = fs.readFileSync(filePath, 'utf8');
+        if (UMAMI_WEBSITE_ID) {
             const script = `<script defer src="https://cloud.umami.is/script.js" data-website-id="${UMAMI_WEBSITE_ID}"></script>`;
             html = html.replace('</head>', `    ${script}\n</head>`);
-            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.type('html').send(html);
-        });
+        }
+        html = injectCacheBust(html);
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.type('html').send(html);
     });
-}
+});
 
 app.use(express.static(__dirname, {
     maxAge: '1h',
