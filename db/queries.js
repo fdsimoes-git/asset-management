@@ -17,6 +17,7 @@ function dbRowToUser(row) {
         geminiApiKey:    parseJsonField(row.gemini_api_key),
         openaiApiKey:    parseJsonField(row.openai_api_key),
         anthropicApiKey: parseJsonField(row.anthropic_api_key),
+        claudeOauthToken: parseJsonField(row.claude_oauth_token),
         totpSecret:      parseJsonField(row.totp_secret),
         totpEnabled:     row.totp_enabled,
         backupCodes:     row.backup_codes || [],
@@ -101,9 +102,9 @@ async function getEntriesCountByUser() {
 async function createUser(fields) {
     const { rows } = await pool.query(
         `INSERT INTO users (username, password_hash, role, email, gemini_api_key, openai_api_key,
-         anthropic_api_key, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model,
+         anthropic_api_key, claude_oauth_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model,
          partner_id, partner_linked_at, is_active, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [
             fields.username,
             fields.passwordHash,
@@ -112,6 +113,7 @@ async function createUser(fields) {
             stringifyJsonField(fields.geminiApiKey),
             stringifyJsonField(fields.openaiApiKey),
             stringifyJsonField(fields.anthropicApiKey),
+            stringifyJsonField(fields.claudeOauthToken),
             stringifyJsonField(fields.totpSecret),
             fields.totpEnabled || false,
             fields.backupCodes || [],
@@ -181,6 +183,7 @@ const USER_COLUMN_MAP = {
     geminiApiKey:    { col: 'gemini_api_key',    json: true },
     openaiApiKey:    { col: 'openai_api_key',    json: true },
     anthropicApiKey: { col: 'anthropic_api_key', json: true },
+    claudeOauthToken:{ col: 'claude_oauth_token', json: true },
     totpSecret:      { col: 'totp_secret',       json: true },
     totpEnabled:     'totp_enabled',
     backupCodes:     'backup_codes',
@@ -389,6 +392,58 @@ async function getEntryByIdAndUser(entryId, userId) {
         'SELECT * FROM entries WHERE id = $1 AND user_id = $2',
         [entryId, userId]
     );
+    return dbRowToEntry(rows[0]);
+}
+
+/**
+ * Find an existing entry that exactly matches the given candidate for
+ * duplicate detection during bulk upload.
+ *
+ * Match criteria (per issue #50):
+ *   - same month (YYYY-MM)
+ *   - same type (income/expense)
+ *   - same amount (compared rounded to 2 decimals)
+ *   - same description (case-insensitive, whitespace-trimmed)
+ *
+ * Tags/category are intentionally ignored.
+ *
+ * Scope: searches the candidate user's own entries. If `partnerId` is
+ * provided, also searches the partner's couple-expense entries (since a
+ * couple expense recorded by either partner shows up in shared views, so
+ * re-adding the same line by the other partner would still be a duplicate).
+ *
+ * Returns the first matching entry as a JS object, or `null` if none.
+ */
+async function findDuplicateEntry(userId, { month, type, amount, description }, partnerId = null) {
+    if (!userId || !month || !type || amount == null || description == null) {
+        return null;
+    }
+    const normalizedDescription = String(description).trim().toLowerCase();
+    if (!normalizedDescription) return null;
+    const roundedAmount = Math.round(parseFloat(amount) * 100) / 100;
+    if (!Number.isFinite(roundedAmount)) return null;
+
+    // Build user_id filter: either just the user, or the user + partner's couple expenses.
+    // We always allow the candidate user's own entries (any couple flag).
+    // If partnerId given, additionally allow partner's entries flagged is_couple_expense.
+    const params = [userId, month, type, roundedAmount, normalizedDescription];
+    let userFilter = 'user_id = $1';
+    if (partnerId) {
+        params.push(partnerId);
+        userFilter = '(user_id = $1 OR (user_id = $6 AND is_couple_expense = TRUE))';
+    }
+
+    const sql = `
+        SELECT * FROM entries
+        WHERE ${userFilter}
+          AND month = $2
+          AND type = $3
+          AND ROUND(amount::numeric, 2) = $4
+          AND LOWER(BTRIM(description)) = $5
+        ORDER BY id
+        LIMIT 1
+    `;
+    const { rows } = await pool.query(sql, params);
     return dbRowToEntry(rows[0]);
 }
 
@@ -639,6 +694,7 @@ module.exports = {
     getIndividualEntries,
     getMyShareEntries,
     getEntryByIdAndUser,
+    findDuplicateEntry,
     createEntry,
     updateEntry,
     deleteEntry,

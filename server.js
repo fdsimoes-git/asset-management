@@ -1554,6 +1554,58 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     res.status(201).json(newEntry);
 }));
 
+// Bulk duplicate-detection check used before confirming a bulk upload.
+// Accepts { entries: [...] } and returns { results: [{ index, duplicate: <existing entry or null> }] }.
+// Performs no writes. Match criteria: same month, same type, same amount (2dp), same
+// case-insensitive trimmed description. Tags/category are ignored. Searches the
+// caller's own entries; for couple-flagged candidates it also considers the partner's
+// couple entries.
+app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, res) => {
+    const { entries } = req.body || {};
+    if (!Array.isArray(entries)) {
+        return res.status(400).json({ message: 'entries must be an array' });
+    }
+    if (entries.length > 500) {
+        return res.status(400).json({ message: 'Too many entries (max 500 per request).' });
+    }
+
+    // Resolve a valid partner once (mirrors GET /api/entries logic).
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+
+    const results = [];
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i] || {};
+        const month = typeof e.month === 'string' ? e.month : null;
+        const type = typeof e.type === 'string' ? e.type : null;
+        const description = typeof e.description === 'string' ? e.description : null;
+        const amount = parseFloat(e.amount);
+
+        if (!month || !MONTH_FORMAT.test(month)
+            || !type || !VALID_ENTRY_TYPES.includes(type)
+            || !description || !description.trim()
+            || !Number.isFinite(amount) || amount <= 0) {
+            results.push({ index: i, duplicate: null });
+            continue;
+        }
+
+        const partnerIdForLookup = (e.isCoupleExpense && validPartner) ? validPartner.id : null;
+        const dup = await db.findDuplicateEntry(
+            req.user.id,
+            { month, type, amount, description },
+            partnerIdForLookup
+        );
+        results.push({ index: i, duplicate: dup });
+    }
+
+    res.json({ results });
+}));
+
 // Update entry - ensure user owns the entry
 app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
