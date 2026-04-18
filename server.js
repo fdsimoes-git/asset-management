@@ -93,11 +93,19 @@ const OPENAI_CHAT_MODEL = 'gpt-3.5-turbo';  // AI chat advisor (can be changed i
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';       // PDF processing & structured extraction
 const ANTHROPIC_CHAT_MODEL = 'claude-sonnet-4-6';  // AI chat advisor (can be changed independently)
 
+// GitHub Copilot model names — Copilot exposes models from multiple labs
+// (OpenAI / Anthropic / Google) under one OpenAI-compatible endpoint billed
+// against the user's Copilot subscription.  `gpt-4.1` is Copilot's current
+// default chat model (May 2025+); see
+// https://github.blog/changelog/2025-05-08-openai-gpt-4-1-is-now-generally-available-in-github-copilot-as-the-new-default-model/
+const COPILOT_MODEL = 'gpt-4.1';        // PDF processing & structured extraction
+const COPILOT_CHAT_MODEL = 'gpt-4.1';   // AI chat advisor (can be changed independently)
+
 // Model list cache for /api/ai/models endpoint
 const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
 const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
-const ALLOWED_AI_PROVIDERS = ['gemini', 'openai', 'anthropic'];
+const ALLOWED_AI_PROVIDERS = ['gemini', 'openai', 'anthropic', 'copilot'];
 
 /** Normalize stored provider to an allowed value, defaulting to gemini. */
 function resolveProvider(user) {
@@ -114,7 +122,11 @@ function modelMatchesProvider(model, provider) {
     return (
         (provider === 'openai' && /^(gpt-|o[0-9]|chatgpt-)/i.test(model)) ||
         (provider === 'anthropic' && /^claude/i.test(model)) ||
-        (provider === 'gemini' && /^(gemini|models\/)/i.test(model))
+        (provider === 'gemini' && /^(gemini|models\/)/i.test(model)) ||
+        // Copilot exposes models from many labs (gpt-*, claude-*, gemini-*,
+        // grok-*, o*, etc.) under one OpenAI-compatible endpoint, so we
+        // accept any non-empty model id.
+        (provider === 'copilot' && typeof model === 'string' && model.length > 0)
     );
 }
 
@@ -128,6 +140,9 @@ function resolveModel(user, provider, usage) {
     }
     if (provider === 'anthropic') {
         return usage === 'chat' ? ANTHROPIC_CHAT_MODEL : ANTHROPIC_MODEL;
+    }
+    if (provider === 'copilot') {
+        return usage === 'chat' ? COPILOT_CHAT_MODEL : COPILOT_MODEL;
     }
     return usage === 'chat' ? GEMINI_CHAT_MODEL : GEMINI_MODEL;
 }
@@ -215,6 +230,193 @@ function hasAnthropicCredentials(user) {
     const { authToken, apiKey } = resolveAnthropicAuth(user);
     return !!(authToken || apiKey);
 }
+
+// ── GitHub Copilot client ───────────────────────────────────────────
+//
+// GitHub Copilot exposes an OpenAI-compatible chat completions API at
+// `https://api.githubcopilot.com`, but it requires:
+//   1. A short-lived (~30 min) Copilot session token, obtained by exchanging
+//      the user's long-lived GitHub OAuth token (gho_/ghu_/ghp_...) at
+//      `GET https://api.github.com/copilot_internal/v2/token`.
+//   2. A specific set of headers identifying the integration (Editor-Version,
+//      Editor-Plugin-Version, Copilot-Integration-Id, etc.).
+// All Copilot API usage is billed against the user's GitHub Copilot
+// subscription. References (reverse-engineered, no public docs):
+//   - github.com/ericc-ch/copilot-api/src/lib/api-config.ts
+//   - github.com/farion1231/cc-switch/src-tauri/src/proxy/providers/copilot_auth.rs
+const COPILOT_TOKEN_EXCHANGE_URL = 'https://api.github.com/copilot_internal/v2/token';
+const COPILOT_API_BASE_URL       = 'https://api.githubcopilot.com';
+const COPILOT_EDITOR_VERSION     = 'AssetManager/2.4.0';
+const COPILOT_PLUGIN_VERSION     = 'asset-management/0.1.0';
+const COPILOT_USER_AGENT         = 'AssetManager/2.4.0';
+const COPILOT_INTEGRATION_ID     = 'vscode-chat';
+// Refresh the cached session token this many seconds before its real expiry
+// to avoid races where the request fires just as it expires.
+const COPILOT_TOKEN_SKEW_SECONDS = 60;
+
+// In-memory cache of exchanged Copilot session tokens, keyed by a hash of the
+// long-lived OAuth token (so env-token and per-user tokens never collide and
+// nothing about the OAuth token itself is logged).
+//   key:   sha256(oauthToken).slice(0,32)
+//   value: { sessionToken: string, expiresAt: number /* unix seconds */ }
+const copilotSessionCache = new Map();
+
+function copilotCacheKey(oauthToken) {
+    return crypto.createHash('sha256').update(oauthToken).digest('hex').slice(0, 32);
+}
+
+function copilotExchangeHeaders(oauthToken) {
+    return {
+        'Authorization':         `token ${oauthToken}`,
+        'Accept':                'application/json',
+        'User-Agent':            COPILOT_USER_AGENT,
+        'Editor-Version':        COPILOT_EDITOR_VERSION,
+        'Editor-Plugin-Version': COPILOT_PLUGIN_VERSION,
+    };
+}
+
+function copilotApiHeaders(sessionToken) {
+    return {
+        'Editor-Version':        COPILOT_EDITOR_VERSION,
+        'Editor-Plugin-Version': COPILOT_PLUGIN_VERSION,
+        'User-Agent':            COPILOT_USER_AGENT,
+        'Copilot-Integration-Id': COPILOT_INTEGRATION_ID,
+        'OpenAI-Intent':         'conversation-panel',
+    };
+}
+
+/** Resolve the long-lived Copilot OAuth token for this user (per-user > env). */
+function resolveCopilotOauthToken(user) {
+    if (user && user.githubCopilotToken) {
+        try {
+            const tok = decryptString(user.githubCopilotToken.encryptedData, user.githubCopilotToken.iv);
+            if (tok) return tok;
+        } catch (e) {
+            console.error('Failed to decrypt stored GitHub Copilot OAuth token:', e.message);
+        }
+    }
+    if (config.githubCopilotToken) return config.githubCopilotToken;
+    return null;
+}
+
+function hasCopilotCredentials(user) {
+    return !!resolveCopilotOauthToken(user);
+}
+
+/**
+ * Exchange a GitHub OAuth token for a short-lived Copilot session token,
+ * caching the result until it (almost) expires.  Set forceRefresh=true to
+ * evict any cached entry first (e.g. on a 401 from the chat endpoint).
+ */
+async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {}) {
+    const cacheKey = copilotCacheKey(oauthToken);
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    if (!forceRefresh) {
+        const cached = copilotSessionCache.get(cacheKey);
+        if (cached && cached.expiresAt - COPILOT_TOKEN_SKEW_SECONDS > nowSec) {
+            return cached.sessionToken;
+        }
+    } else {
+        copilotSessionCache.delete(cacheKey);
+    }
+
+    const response = await fetch(COPILOT_TOKEN_EXCHANGE_URL, {
+        method: 'GET',
+        headers: copilotExchangeHeaders(oauthToken)
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const err = new Error(`Copilot token exchange failed (${response.status}): ${body.slice(0, 200)}`);
+        err.status = response.status;
+        throw err;
+    }
+    const payload = await response.json();
+    const sessionToken = payload.token;
+    if (!sessionToken) {
+        throw new Error('Copilot token exchange returned no token');
+    }
+    // The /copilot_internal/v2/token response includes `expires_at` (unix
+    // seconds) and usually `refresh_in` (seconds until refresh is desirable).
+    let expiresAt;
+    if (typeof payload.expires_at === 'number') {
+        expiresAt = payload.expires_at;
+    } else if (typeof payload.refresh_in === 'number') {
+        expiresAt = nowSec + payload.refresh_in;
+    } else {
+        expiresAt = nowSec + 25 * 60; // conservative 25 min fallback
+    }
+
+    // Cap cache size at 200 entries to avoid unbounded growth.
+    if (copilotSessionCache.size >= 200) {
+        const oldestKey = copilotSessionCache.keys().next().value;
+        copilotSessionCache.delete(oldestKey);
+    }
+    copilotSessionCache.set(cacheKey, { sessionToken, expiresAt });
+    return sessionToken;
+}
+
+/**
+ * Build an OpenAI SDK client pointed at the GitHub Copilot endpoint, using a
+ * freshly-resolved (and cached) session token as the bearer credential.
+ *
+ * Returns { client, oauthToken, sessionToken } so callers can re-build the
+ * client after a forced refresh on 401.  Throws if no OAuth token is
+ * configured, or if the token exchange fails.
+ */
+async function createCopilotClient(user, { forceRefresh = false } = {}) {
+    const oauthToken = resolveCopilotOauthToken(user);
+    if (!oauthToken) {
+        const e = new Error('No GitHub Copilot OAuth token configured');
+        e.code = 'no_copilot_token';
+        throw e;
+    }
+    const sessionToken = await getCopilotSessionToken(oauthToken, { forceRefresh });
+    const client = new OpenAI({
+        apiKey:   sessionToken,
+        baseURL:  COPILOT_API_BASE_URL,
+        defaultHeaders: copilotApiHeaders(sessionToken)
+    });
+    return { client, oauthToken, sessionToken };
+}
+
+/**
+ * Wrap a Copilot API call with one automatic retry after a forced session
+ * token refresh on 401 (the cached short-lived token may have expired or
+ * been revoked).  `fn` receives the OpenAI client.
+ */
+async function copilotCallWithRetry(user, fn) {
+    let { client } = await createCopilotClient(user);
+    try {
+        return await fn(client);
+    } catch (err) {
+        const status = err.status || err.statusCode || (err.response && err.response.status);
+        if (status === 401) {
+            ({ client } = await createCopilotClient(user, { forceRefresh: true }));
+            return await fn(client);
+        }
+        throw err;
+    }
+}
+
+/** Fetch the Copilot-served model list (OpenAI-compatible /models response). */
+async function listCopilotModels(user) {
+    return copilotCallWithRetry(user, async (client) => {
+        const list = await client.models.list();
+        const models = [];
+        for (const model of list.data || []) {
+            // The Copilot /models endpoint returns objects with shape
+            // { id, name, vendor, capabilities: { type: 'chat'|... }, ... }.
+            if (model.capabilities && model.capabilities.type && model.capabilities.type !== 'chat') continue;
+            const id = model.id || model.name;
+            if (!id) continue;
+            const displayName = model.name || id;
+            models.push({ id, name: displayName });
+        }
+        return models;
+    });
+}
+
 
 // ============ USER STORAGE SYSTEM (PostgreSQL) ============
 
@@ -1003,9 +1205,11 @@ app.get('/api/user', requireAuth, asyncHandler(async (req, res) => {
         hasOpenaiApiKey: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData),
         hasAnthropicApiKey: !!(req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData),
         hasClaudeOauthToken: !!(req.user.claudeOauthToken && req.user.claudeOauthToken.iv && req.user.claudeOauthToken.encryptedData),
+        hasGithubCopilotToken: !!(req.user.githubCopilotToken && req.user.githubCopilotToken.iv && req.user.githubCopilotToken.encryptedData),
         hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
         hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
         hasAnthropicKeyAvailable: hasAnthropicCredentials(req.user),
+        hasCopilotKeyAvailable: hasCopilotCredentials(req.user),
         aiProvider: resolveProvider(req.user),
         aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled
@@ -1157,12 +1361,74 @@ app.delete('/api/user/claude-oauth-token', requireAuth, asyncHandler(async (req,
     });
 }));
 
+// ── GitHub Copilot OAuth token (gho_/ghu_/ghp_...) ──
+// Long-lived GitHub OAuth token belonging to a Copilot-subscribed account.
+// Exchanged at request time for a short-lived Copilot session token (cached
+// per token in copilotSessionCache).  All Copilot API usage is billed against
+// the user's Copilot subscription rather than any pay-as-you-go AI key.
+
+// Get whether a Copilot token is configured (boolean only — never echo the token)
+app.get('/api/user/github-copilot-token', requireAuth, asyncHandler(async (req, res) => {
+    res.json({
+        hasToken: !!(req.user.githubCopilotToken && req.user.githubCopilotToken.iv && req.user.githubCopilotToken.encryptedData),
+        hasEnvToken: !!config.githubCopilotToken
+    });
+}));
+
+// Save GitHub Copilot OAuth token (encrypted)
+app.post('/api/user/github-copilot-token', requireAuth, asyncHandler(async (req, res) => {
+    const { githubCopilotToken } = req.body;
+
+    if (!githubCopilotToken || typeof githubCopilotToken !== 'string') {
+        return res.status(400).json({ message: 'OAuth token is required.' });
+    }
+
+    const trimmed = githubCopilotToken.trim();
+    if (trimmed.length < 20 || trimmed.length > 400) {
+        return res.status(400).json({ message: 'OAuth token must be between 20 and 400 characters.' });
+    }
+    if (!/^(gho_|ghu_|ghp_)/.test(trimmed)) {
+        return res.status(400).json({
+            message: 'This does not look like a GitHub OAuth token. Tokens issued by GitHub start with "gho_", "ghu_", or "ghp_". Get one by signing in to a GitHub account that has an active Copilot subscription.'
+        });
+    }
+
+    await db.updateUser(req.user.id, { githubCopilotToken: encryptString(trimmed), updatedAt: new Date().toISOString() });
+
+    res.json({
+        message: 'GitHub Copilot OAuth token saved successfully.',
+        hasGithubCopilotToken: true,
+        hasCopilotKeyAvailable: true
+    });
+}));
+
+// Remove saved GitHub Copilot OAuth token
+app.delete('/api/user/github-copilot-token', requireAuth, asyncHandler(async (req, res) => {
+    // Evict any cached session token derived from the user's stored OAuth token.
+    if (req.user.githubCopilotToken) {
+        try {
+            const oauth = decryptString(req.user.githubCopilotToken.encryptedData, req.user.githubCopilotToken.iv);
+            if (oauth) copilotSessionCache.delete(copilotCacheKey(oauth));
+        } catch (e) { /* ignore */ }
+    }
+
+    await db.updateUser(req.user.id, { githubCopilotToken: null, updatedAt: new Date().toISOString() });
+
+    const updatedUser = await db.findUserById(req.user.id);
+    res.json({
+        message: 'GitHub Copilot OAuth token removed.',
+        hasGithubCopilotToken: false,
+        hasCopilotKeyAvailable: hasCopilotCredentials(updatedUser)
+    });
+}));
+
+
 // Save AI provider preference
 app.put('/api/user/ai-provider', requireAuth, asyncHandler(async (req, res) => {
     const { aiProvider } = req.body;
 
     if (!aiProvider || !ALLOWED_AI_PROVIDERS.includes(aiProvider)) {
-        return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", or "anthropic".' });
+        return res.status(400).json({ message: 'aiProvider must be "gemini", "openai", "anthropic", or "copilot".' });
     }
 
     await db.updateUser(req.user.id, { aiProvider, aiModel: null, updatedAt: new Date().toISOString() });
@@ -1204,6 +1470,41 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
         } catch (err) {
             console.error('Anthropic models.list failed:', err.message);
             return res.json({ provider, models: [], selectedModel: null, error: 'fetch_failed' });
+        }
+    }
+
+    // ── Copilot: OpenAI-compatible endpoint, but credentials are a GitHub
+    //    OAuth token exchanged at request time for a Copilot session token.
+    if (provider === 'copilot') {
+        const oauthToken = resolveCopilotOauthToken(req.user);
+        if (!oauthToken) {
+            return res.json({ provider, models: [], selectedModel: null });
+        }
+        const keyHash = crypto.createHash('sha256').update('copilot:' + oauthToken).digest('hex').slice(0, 16);
+        const cacheKey = provider + ':' + keyHash;
+        const cached = modelListCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp) < MODEL_CACHE_TTL) {
+            const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+            return res.json({ provider, models: cached.models, selectedModel });
+        }
+        try {
+            const models = await listCopilotModels(req.user);
+            models.sort((a, b) => a.name.localeCompare(b.name));
+            modelListCache.set(cacheKey, { models, timestamp: Date.now() });
+            const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+            return res.json({ provider, models, selectedModel });
+        } catch (err) {
+            console.error('Copilot models.list failed:', err.message);
+            // Fall back to a small hardcoded list of known good model IDs so
+            // the UI still has something to pick from when /models is down.
+            const fallback = [
+                { id: 'gpt-4.1',         name: 'GPT-4.1' },
+                { id: 'gpt-4o',          name: 'GPT-4o' },
+                { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
+                { id: 'gemini-2.5-pro',  name: 'Gemini 2.5 Pro' }
+            ];
+            const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
+            return res.json({ provider, models: fallback, selectedModel, error: 'fetch_failed' });
         }
     }
 
@@ -2861,7 +3162,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
     const provider = resolveProvider(req.user);
 
     // Resolve API key: stored user key → server .env key
-    // (Anthropic uses resolveAnthropicAuth instead — see below.)
+    // (Anthropic uses resolveAnthropicAuth instead — see below.
+    //  Copilot uses createCopilotClient which exchanges an OAuth token for
+    //  a session token at request time.)
     let apiKey = null;
     let anthropicAuth = null;
     if (provider === 'openai') {
@@ -2878,6 +3181,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         if (!anthropicAuth.authToken && !anthropicAuth.apiKey) {
             return res.status(400).json({ error: 'no_api_key' });
         }
+    } else if (provider === 'copilot') {
+        if (!hasCopilotCredentials(req.user)) {
+            return res.status(400).json({ error: 'no_api_key' });
+        }
     } else {
         if (req.user.geminiApiKey) {
             try {
@@ -2888,7 +3195,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         }
         if (!apiKey) apiKey = config.geminiApiKey;
     }
-    if (provider !== 'anthropic' && !apiKey) {
+    if (provider !== 'anthropic' && provider !== 'copilot' && !apiKey) {
         return res.status(400).json({ error: 'no_api_key' });
     }
 
@@ -2966,6 +3273,64 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     let toolArgs = {};
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
                         console.error(`Failed to parse OpenAI tool args for ${toolName}:`, parseErr.message);
+                    }
+                    let result;
+                    if (toolName === 'editEntry') {
+                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
+                    } else {
+                        result = await executeTool(toolName, req.user.id, toolArgs);
+                    }
+                    toolResultMessages.push({
+                        role: 'tool',
+                        tool_call_id: toolCall.id,
+                        content: JSON.stringify(result)
+                    });
+                }
+                currentMessages = [...currentMessages, ...toolResultMessages];
+            }
+        } else if (provider === 'copilot') {
+            // ── GitHub Copilot branch (OpenAI-compatible API) ──────────
+            // Mirrors the OpenAI branch: same chat completions schema, same
+            // tool-calling protocol. The Copilot client wraps a fresh session
+            // token with one automatic 401-retry.
+            const MAX_HISTORY_TEXT_LENGTH = 8000;
+            const copilotMessages = [{ role: 'system', content: chatSystemPrompt }];
+            for (const msg of messages.slice(-20)) {
+                const text = msg.content.trim().slice(0, MAX_HISTORY_TEXT_LENGTH);
+                if (!text) continue;
+                copilotMessages.push({ role: msg.role, content: text });
+            }
+            copilotMessages.push({ role: 'user', content: message });
+
+            let currentMessages = copilotMessages;
+            for (let i = 0; i < maxIterations; i++) {
+                const response = await copilotCallWithRetry(req.user, (client) =>
+                    client.chat.completions.create({
+                        model: resolveModel(req.user, 'copilot', 'chat'),
+                        messages: currentMessages,
+                        tools: openaiToolDeclarations,
+                        tool_choice: 'auto',
+                        temperature: 0.7
+                    })
+                );
+
+                const choice = response.choices[0];
+                if (!choice) { finalText = 'Sorry, I could not generate a response.'; break; }
+
+                const assistantMsg = choice.message;
+                currentMessages = [...currentMessages, assistantMsg];
+
+                if (choice.finish_reason !== 'tool_calls' || !assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+                    finalText = assistantMsg.content || 'Sorry, I could not generate a response.';
+                    break;
+                }
+
+                const toolResultMessages = [];
+                for (const toolCall of assistantMsg.tool_calls) {
+                    const toolName = toolCall.function.name;
+                    let toolArgs = {};
+                    try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
+                        console.error(`Failed to parse Copilot tool args for ${toolName}:`, parseErr.message);
                     }
                     let result;
                     if (toolName === 'editEntry') {
@@ -3285,6 +3650,10 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         if (!anthropicAuth.authToken && !anthropicAuth.apiKey) {
             return res.status(400).json({ message: 'No Anthropic credentials available. Please add an API key or Claude Code OAuth token in Settings.' });
         }
+    } else if (provider === 'copilot') {
+        if (!hasCopilotCredentials(req.user)) {
+            return res.status(400).json({ message: 'No GitHub Copilot OAuth token available. Please add one in Settings.' });
+        }
     } else {
         if (req.user.geminiApiKey) {
             try {
@@ -3365,6 +3734,30 @@ ${text}`;
                 throw anthropicError;
             }
             console.log('Anthropic response received, length:', aiResponse.length);
+        } else if (provider === 'copilot') {
+            console.log('Starting GitHub Copilot API call...');
+            // System prompt nudges JSON-only output; not all Copilot-served
+            // models honour `response_format: json_object`, so we also strip
+            // markdown fences below (see cleanedResponse).
+            const copilotMessages = [
+                { role: 'system', content: 'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.' },
+                { role: 'user', content: prompt }
+            ];
+            try {
+                const response = await copilotCallWithRetry(req.user, (client) =>
+                    client.chat.completions.create({
+                        model: resolveModel(req.user, 'copilot', 'pdf'),
+                        messages: copilotMessages,
+                        response_format: { type: 'json_object' },
+                        temperature: 0.2
+                    })
+                );
+                aiResponse = response.choices[0]?.message?.content || '{}';
+            } catch (copilotError) {
+                console.error('Copilot API error details:', copilotError.message);
+                throw copilotError;
+            }
+            console.log('Copilot response received, length:', aiResponse.length);
         } else {
             // Define the response schema for Gemini structured output
             const responseSchema = {
@@ -3497,7 +3890,10 @@ ${text}`;
         // Provide more specific error messages with appropriate status codes
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
         let statusCode = 500;
-        const providerName = provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Gemini';
+        const providerName = provider === 'openai' ? 'OpenAI'
+            : provider === 'anthropic' ? 'Anthropic'
+            : provider === 'copilot' ? 'GitHub Copilot'
+            : 'Gemini';
         if (error.message?.includes('API key') || error.status === 401) {
             errorMessage = `Invalid ${providerName} API key. Please check your API key and try again.`;
             statusCode = 400;
@@ -3605,6 +4001,18 @@ const PORT = config.port;
             });
         } else {
             console.log('No global CLAUDE_CODE_OAUTH_TOKEN configured. Per-user OAuth tokens (if any) will still work.');
+        }
+
+        // Verify GitHub Copilot OAuth token (env)
+        if (config.githubCopilotToken) {
+            console.log(`GitHub Copilot OAuth token configured (env GITHUB_COPILOT_TOKEN). Default model: ${COPILOT_MODEL}`);
+            getCopilotSessionToken(config.githubCopilotToken).then(() => {
+                console.log('GitHub Copilot OAuth token verified successfully (session token exchanged).');
+            }).catch((error) => {
+                console.warn('Warning: GitHub Copilot OAuth token may be invalid:', error.message);
+            });
+        } else {
+            console.log('No global GITHUB_COPILOT_TOKEN configured. Per-user Copilot OAuth tokens (if any) will still work.');
         }
     });
 })();

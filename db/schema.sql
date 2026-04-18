@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     openai_api_key    TEXT,              -- JSON: encrypted
     anthropic_api_key TEXT,              -- JSON: encrypted
     claude_oauth_token TEXT,             -- JSON: encrypted (Claude Code CLI OAuth token, sk-ant-oat01-...)
+    github_copilot_token TEXT,           -- JSON: encrypted (GitHub OAuth token, gho_/ghu_/ghp_...)
     totp_secret       TEXT,              -- JSON: encrypted
     totp_enabled      BOOLEAN NOT NULL DEFAULT FALSE,
     backup_codes      TEXT[] NOT NULL DEFAULT '{}',

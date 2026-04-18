@@ -281,12 +281,27 @@ const translations = {
     'claude.oauth.confirmRemove': 'Remove your saved Claude Code OAuth token?',
     'claude.oauth.removeFailed': 'Failed to remove OAuth token.',
 
+    // ── GitHub Copilot OAuth token ──
+    'settings.copilotOauthSection': 'GitHub Copilot OAuth Token',
+    'settings.copilotOauthSaved': 'Token saved (Copilot subscription)',
+    'settings.copilotOauthChange': 'Change',
+    'settings.copilotOauthRemove': 'Remove',
+    'settings.copilotOauthNone': 'No GitHub Copilot OAuth token configured',
+    'settings.copilotOauthPlaceholder': 'Paste your GitHub OAuth token (gho_..., ghu_..., or ghp_...)',
+    'settings.copilotOauthHelp': 'Long-lived GitHub OAuth token from a GitHub account with an active Copilot subscription. The server exchanges it at request time for a short-lived Copilot session token; all Copilot API usage (GPT, Claude, Gemini models served via Copilot) is billed against the Copilot subscription. See: https://docs.github.com/en/copilot/configuring-github-copilot/installing-the-github-copilot-extension-in-your-environment',
+    'settings.copilotOauthSaveSuccess': 'GitHub Copilot OAuth token saved',
+    'settings.copilotOauthRemoveSuccess': 'GitHub Copilot OAuth token removed',
+    'settings.copilotOauthInvalid': 'This does not look like a GitHub OAuth token. Tokens issued by GitHub start with "gho_", "ghu_", or "ghp_".',
+    'copilot.oauth.confirmRemove': 'Remove your saved GitHub Copilot OAuth token?',
+    'copilot.oauth.removeFailed': 'Failed to remove OAuth token.',
+
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'AI Provider',
     'settings.aiProviderLabel': 'Select which AI provider to use for PDF processing and chat',
     'settings.aiProviderGemini': 'Google Gemini',
     'settings.aiProviderOpenai': 'OpenAI',
     'settings.aiProviderAnthropic': 'Anthropic Claude',
+    'settings.aiProviderCopilot': 'GitHub Copilot',
     'settings.aiProviderSaveSuccess': 'AI provider preference saved',
     'settings.aiProviderSaveError': 'Failed to save AI provider preference',
 
@@ -760,12 +775,27 @@ const translations = {
     'claude.oauth.confirmRemove': 'Remover seu token OAuth do Claude Code salvo?',
     'claude.oauth.removeFailed': 'Falha ao remover o token OAuth.',
 
+    // ── Token OAuth do GitHub Copilot ──
+    'settings.copilotOauthSection': 'Token OAuth do GitHub Copilot',
+    'settings.copilotOauthSaved': 'Token salvo (assinatura Copilot)',
+    'settings.copilotOauthChange': 'Alterar',
+    'settings.copilotOauthRemove': 'Remover',
+    'settings.copilotOauthNone': 'Nenhum token OAuth do GitHub Copilot configurado',
+    'settings.copilotOauthPlaceholder': 'Cole seu token OAuth do GitHub (gho_..., ghu_... ou ghp_...)',
+    'settings.copilotOauthHelp': 'Token OAuth de longa dura\u00e7\u00e3o de uma conta GitHub com assinatura ativa do Copilot. O servidor o troca em tempo de requisi\u00e7\u00e3o por um token de sess\u00e3o curto do Copilot; todo uso da API Copilot (modelos GPT, Claude e Gemini servidos via Copilot) \u00e9 cobrado da assinatura Copilot. Veja: https://docs.github.com/en/copilot/configuring-github-copilot/installing-the-github-copilot-extension-in-your-environment',
+    'settings.copilotOauthSaveSuccess': 'Token OAuth do GitHub Copilot salvo',
+    'settings.copilotOauthRemoveSuccess': 'Token OAuth do GitHub Copilot removido',
+    'settings.copilotOauthInvalid': 'Isto n\u00e3o parece um token OAuth do GitHub. Tokens emitidos pelo GitHub come\u00e7am com "gho_", "ghu_" ou "ghp_".',
+    'copilot.oauth.confirmRemove': 'Remover seu token OAuth do GitHub Copilot salvo?',
+    'copilot.oauth.removeFailed': 'Falha ao remover o token OAuth.',
+
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'Provedor de IA',
     'settings.aiProviderLabel': 'Selecione o provedor de IA para processamento de PDF e chat',
     'settings.aiProviderGemini': 'Google Gemini',
     'settings.aiProviderOpenai': 'OpenAI',
     'settings.aiProviderAnthropic': 'Anthropic Claude',
+    'settings.aiProviderCopilot': 'GitHub Copilot',
     'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
     'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
 
