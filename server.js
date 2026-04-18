@@ -1587,25 +1587,31 @@ app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, 
         const month = typeof e.month === 'string' ? e.month : null;
         const type = typeof e.type === 'string' ? e.type : null;
         const description = typeof e.description === 'string' ? e.description : null;
-        const amount = parseFloat(e.amount);
+        // Use parseFloat ONLY for the >0 / finite check; pass the original
+        // (possibly-string) e.amount through to the DB helper unchanged so
+        // toAmountParam can hand the exact decimal text to Postgres without
+        // round-tripping through a JS float (which would lose precision for
+        // values like 1.005 — IEEE-754).
+        const amountForCheck = parseFloat(e.amount);
 
         if (!month || !MONTH_FORMAT.test(month)
             || !type || !VALID_ENTRY_TYPES.includes(type)
             || !description || !description.trim()
-            || !Number.isFinite(amount) || amount <= 0) {
+            || !Number.isFinite(amountForCheck) || amountForCheck <= 0) {
             continue;
         }
-        // Mirror the 500-char limit enforced by POST /api/entries so a candidate
-        // that would later be rejected on save is also rejected here. Reject the
-        // whole batch (vs silently dropping) so the client can surface the bad row.
+        // Mirror the 500-char limit enforced by POST /api/entries so a
+        // candidate that would later be rejected on save is also flagged
+        // here. Treat as "invalid candidate" (duplicate=null) so one bad
+        // row never blocks the rest of the batch.
         if (description.trim().length > 500) {
-            return res.status(400).json({ message: 'Description must be 500 characters or less' });
+            continue;
         }
         validity[i] = true;
         lookupCandidates[i] = {
             month,
             type,
-            amount,
+            amount: e.amount,
             description,
             partnerId: (e.isCoupleExpense && validPartner) ? validPartner.id : null
         };

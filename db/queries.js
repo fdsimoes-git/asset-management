@@ -415,27 +415,29 @@ function normalizeDescriptionForDuplicateMatch(description) {
     return String(description).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// Convert an incoming amount (string or number) to a string suitable for
-// a Postgres NUMERIC parameter. Avoids JS-side rounding entirely so we don't
-// hit IEEE-754 edge cases like 1.005 -> 1.00 (the canonical Math.round trap).
-// Strings that already look like decimal money (up to 2 fractional digits)
-// are passed through verbatim and Postgres performs exact decimal arithmetic.
-// Numbers are serialized via toFixed(2) as a best-effort fallback for callers
-// that already lost precision before reaching this layer.
+// Convert an incoming amount (string or number) to a string suitable for a
+// Postgres NUMERIC parameter — WITHOUT any JS-side rounding. Strings that
+// look like decimals are passed through verbatim; numbers are serialized
+// directly via String() (which preserves their exact IEEE-754 decimal form,
+// e.g. 0.1+0.2 → "0.30000000000000004"). Postgres parses the result into
+// NUMERIC and the caller is responsible for any rounding semantics in SQL
+// (e.g. `ROUND($::numeric, 2)`), avoiding all JS rounding pitfalls.
 function toAmountParam(amount) {
     if (amount == null) return null;
     if (typeof amount === 'string') {
         const trimmed = amount.trim();
-        if (/^-?\d+(\.\d{1,2})?$/.test(trimmed)) return trimmed;
+        if (trimmed === '') return null;
+        // Accept either a plain decimal or the textual form of a JS number;
+        // pass through verbatim so Postgres does the parsing exactly.
         const n = Number(trimmed);
         if (!Number.isFinite(n)) return null;
-        return n.toFixed(2);
+        return trimmed;
     }
     if (typeof amount === 'number' && Number.isFinite(amount)) {
-        return amount.toFixed(2);
+        return String(amount);
     }
     const n = Number(amount);
-    return Number.isFinite(n) ? n.toFixed(2) : null;
+    return Number.isFinite(n) ? String(n) : null;
 }
 
 async function findDuplicateEntry(userId, { month, type, amount, description }, partnerId = null) {
@@ -457,15 +459,16 @@ async function findDuplicateEntry(userId, { month, type, amount, description }, 
         userFilter = '(user_id = $1 OR (user_id = $6 AND is_couple_expense = TRUE))';
     }
 
-    // entries.amount is NUMERIC(15,2) so it is already stored at exact-cent
-    // precision; comparing against $4::numeric gives us exact-cents semantics
-    // without any JS-side rounding.
+    // entries.amount is stored as NUMERIC(15,2). We round the *candidate*
+    // amount to 2dp in SQL (round-half-away-from-zero, same semantics
+    // Postgres uses when storing into NUMERIC(15,2)), guaranteeing the
+    // comparison matches what `INSERT ... amount $...` would have stored.
     const sql = `
         SELECT * FROM entries
         WHERE ${userFilter}
           AND month = $2
           AND type = $3
-          AND amount = $4::numeric
+          AND amount = ROUND($4::numeric, 2)
           AND regexp_replace(LOWER(BTRIM(description)), '\\s+', ' ', 'g') = $5
         ORDER BY id
         LIMIT 1
@@ -521,7 +524,8 @@ async function findBulkDuplicateEntries(userId, candidates) {
 
     // Notes on parameter casts:
     // - $2::int[]    candidate row index (0..N-1, safely fits int)
-    // - $5::numeric[] amount strings parsed by Postgres for exact-cent compare
+    // - $5::numeric[] amount strings — rounded to 2dp in the JOIN below so
+    //                 comparison matches what NUMERIC(15,2) would have stored
     // - $7::bigint[] partner_id matches users.id BIGINT (avoid int overflow)
     const sql = `
         WITH candidates AS (
@@ -536,7 +540,7 @@ async function findBulkDuplicateEntries(userId, candidates) {
              OR (c.partner_id IS NOT NULL AND e.user_id = c.partner_id AND e.is_couple_expense = TRUE))
             AND e.month = c.month
             AND e.type = c.type
-            AND e.amount = c.amount
+            AND e.amount = ROUND(c.amount, 2)
             AND regexp_replace(LOWER(BTRIM(e.description)), '\\s+', ' ', 'g') = c.ndesc
         ORDER BY c.idx, e.id
     `;
