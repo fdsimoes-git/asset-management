@@ -22,6 +22,16 @@ const QRCode = require('qrcode');
 
 const app = express();
 
+// App version — single source of truth, derived from package.json so release
+// bumps don't require touching headers/UA strings scattered across the code.
+const APP_VERSION = (() => {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
+    } catch {
+        return '0.0.0';
+    }
+})();
+
 // Precomputed dummy bcrypt hash (cost factor 10) for constant-time comparison on unknown users
 const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8VS.wG.ZyWQ/2t6WvTDWv1Q5I8bHHy';
 
@@ -253,7 +263,7 @@ function hasAnthropicCredentials(user) {
 // GitHub Copilot exposes an OpenAI-compatible chat completions API at
 // `https://api.githubcopilot.com`, but it requires:
 //   1. A short-lived (~30 min) Copilot session token, obtained by exchanging
-//      the user's long-lived GitHub OAuth token (gho_/ghu_/ghp_...) at
+//      the user's long-lived GitHub OAuth token (gho_/ghu_/ghp_/github_pat_...) at
 //      `GET https://api.github.com/copilot_internal/v2/token`.
 //   2. A specific set of headers identifying the integration (Editor-Version,
 //      Editor-Plugin-Version, Copilot-Integration-Id, etc.).
@@ -263,9 +273,9 @@ function hasAnthropicCredentials(user) {
 //   - github.com/farion1231/cc-switch/src-tauri/src/proxy/providers/copilot_auth.rs
 const COPILOT_TOKEN_EXCHANGE_URL = 'https://api.github.com/copilot_internal/v2/token';
 const COPILOT_API_BASE_URL       = 'https://api.githubcopilot.com';
-const COPILOT_EDITOR_VERSION     = 'AssetManager/2.4.0';
+const COPILOT_EDITOR_VERSION     = `AssetManager/${APP_VERSION}`;
 const COPILOT_PLUGIN_VERSION     = 'asset-management/0.1.0';
-const COPILOT_USER_AGENT         = 'AssetManager/2.4.0';
+const COPILOT_USER_AGENT         = `AssetManager/${APP_VERSION}`;
 const COPILOT_INTEGRATION_ID     = 'vscode-chat';
 // Refresh the cached session token this many seconds before its real expiry
 // to avoid races where the request fires just as it expires.
@@ -1386,7 +1396,7 @@ app.delete('/api/user/claude-oauth-token', requireAuth, asyncHandler(async (req,
     });
 }));
 
-// ── GitHub Copilot OAuth token (gho_/ghu_/ghp_...) ──
+// ── GitHub Copilot OAuth token (gho_/ghu_/ghp_/github_pat_...) ──
 // Long-lived GitHub OAuth token belonging to a Copilot-subscribed account.
 // Exchanged at request time for a short-lived Copilot session token (cached
 // per token in copilotSessionCache).  All Copilot API usage is billed against
@@ -1412,9 +1422,9 @@ app.post('/api/user/github-copilot-token', requireAuth, asyncHandler(async (req,
     if (trimmed.length < 20 || trimmed.length > 400) {
         return res.status(400).json({ message: 'OAuth token must be between 20 and 400 characters.' });
     }
-    if (!/^(gho_|ghu_|ghp_)/.test(trimmed)) {
+    if (!/^(gho_|ghu_|ghp_|github_pat_)/.test(trimmed)) {
         return res.status(400).json({
-            message: 'This does not look like a GitHub OAuth token. Tokens issued by GitHub start with "gho_", "ghu_", or "ghp_". Get one by signing in to a GitHub account that has an active Copilot subscription.'
+            message: 'This does not look like a GitHub token. Tokens issued by GitHub may start with "gho_", "ghu_", "ghp_", or "github_pat_". Get one by signing in to a GitHub account that has an active Copilot subscription.'
         });
     }
 

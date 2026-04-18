@@ -3106,7 +3106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     input.focus();
                     return;
                 }
-                if (!/^(gho_|ghu_|ghp_)/.test(value)) {
+                if (!/^(gho_|ghu_|ghp_|github_pat_)/.test(value)) {
                     alert(t('settings.copilotOauthInvalid'));
                     return;
                 }
