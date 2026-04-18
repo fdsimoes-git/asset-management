@@ -103,6 +103,23 @@ const COPILOT_CHAT_MODEL = 'gpt-4.1';   // AI chat advisor (can be changed indep
 
 // Model list cache for /api/ai/models endpoint
 const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
+const MODEL_LIST_CACHE_MAX = 50;
+
+// Apply cap/eviction policy before writing a new entry: drop expired entries,
+// then drop oldest until we're under the cap. Centralized so all branches of
+// /api/ai/models stay within the intended bound.
+function evictModelListCacheIfNeeded() {
+    if (modelListCache.size < MODEL_LIST_CACHE_MAX) return;
+    const now = Date.now();
+    for (const [k, v] of modelListCache) {
+        if (now - v.timestamp >= MODEL_CACHE_TTL) modelListCache.delete(k);
+    }
+    while (modelListCache.size >= MODEL_LIST_CACHE_MAX) {
+        const oldestKey = modelListCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        modelListCache.delete(oldestKey);
+    }
+}
 const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 const ALLOWED_AI_PROVIDERS = ['gemini', 'openai', 'anthropic', 'copilot'];
@@ -275,13 +292,13 @@ function copilotExchangeHeaders(oauthToken) {
     };
 }
 
-function copilotApiHeaders(sessionToken) {
+function copilotApiHeaders() {
     return {
-        'Editor-Version':        COPILOT_EDITOR_VERSION,
-        'Editor-Plugin-Version': COPILOT_PLUGIN_VERSION,
-        'User-Agent':            COPILOT_USER_AGENT,
+        'Editor-Version':         COPILOT_EDITOR_VERSION,
+        'Editor-Plugin-Version':  COPILOT_PLUGIN_VERSION,
+        'User-Agent':             COPILOT_USER_AGENT,
         'Copilot-Integration-Id': COPILOT_INTEGRATION_ID,
-        'OpenAI-Intent':         'conversation-panel',
+        'OpenAI-Intent':          'conversation-panel',
     };
 }
 
@@ -375,7 +392,7 @@ async function createCopilotClient(user, { forceRefresh = false } = {}) {
     const client = new OpenAI({
         apiKey:   sessionToken,
         baseURL:  COPILOT_API_BASE_URL,
-        defaultHeaders: copilotApiHeaders(sessionToken)
+        defaultHeaders: copilotApiHeaders()
     });
     return { client, oauthToken, sessionToken };
 }
@@ -1393,6 +1410,18 @@ app.post('/api/user/github-copilot-token', requireAuth, asyncHandler(async (req,
         });
     }
 
+    // Evict any session token cached against the user's PREVIOUS OAuth token
+    // before overwriting; otherwise the stale entry sits in the cache until
+    // FIFO eviction even though it can never be looked up again.
+    if (req.user.githubCopilotToken) {
+        try {
+            const oldOauth = decryptString(req.user.githubCopilotToken.encryptedData, req.user.githubCopilotToken.iv);
+            if (oldOauth && oldOauth !== trimmed) {
+                copilotSessionCache.delete(copilotCacheKey(oldOauth));
+            }
+        } catch (e) { /* ignore decryption errors — stale entry will FIFO out */ }
+    }
+
     await db.updateUser(req.user.id, { githubCopilotToken: encryptString(trimmed), updatedAt: new Date().toISOString() });
 
     res.json({
@@ -1464,6 +1493,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
                 models.push({ id: model.id, name: displayName });
             }
             models.sort((a, b) => a.name.localeCompare(b.name));
+            evictModelListCacheIfNeeded();
             modelListCache.set(cacheKey, { models, timestamp: Date.now() });
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
@@ -1497,6 +1527,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
         try {
             const models = await listCopilotModels(req.user);
             models.sort((a, b) => a.name.localeCompare(b.name));
+            evictModelListCacheIfNeeded();
             modelListCache.set(cacheKey, { models, timestamp: Date.now() });
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
@@ -1587,18 +1618,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
 
         models.sort((a, b) => a.name.localeCompare(b.name));
 
-        // Enforce hard cap: evict expired first, then oldest if still over limit
-        if (modelListCache.size >= 50) {
-            const now = Date.now();
-            for (const [k, v] of modelListCache) {
-                if (now - v.timestamp >= MODEL_CACHE_TTL) modelListCache.delete(k);
-            }
-            // Still over limit — remove oldest entries
-            while (modelListCache.size >= 50) {
-                const oldestKey = modelListCache.keys().next().value;
-                modelListCache.delete(oldestKey);
-            }
-        }
+        evictModelListCacheIfNeeded();
 
         modelListCache.set(cacheKey, { models, timestamp: Date.now() });
         const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;

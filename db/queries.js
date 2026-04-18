@@ -185,7 +185,7 @@ const USER_COLUMN_MAP = {
     geminiApiKey:    { col: 'gemini_api_key',    json: true },
     openaiApiKey:    { col: 'openai_api_key',    json: true },
     anthropicApiKey: { col: 'anthropic_api_key', json: true },
-    claudeOauthToken:{ col: 'claude_oauth_token', json: true },
+    claudeOauthToken: { col: 'claude_oauth_token', json: true },
     githubCopilotToken: { col: 'github_copilot_token', json: true },
     totpSecret:      { col: 'totp_secret',       json: true },
     totpEnabled:     'totp_enabled',
