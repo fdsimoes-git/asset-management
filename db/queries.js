@@ -399,8 +399,9 @@ async function getEntryByIdAndUser(entryId, userId) {
  * Match criteria (per issue #50):
  *   - same month (YYYY-MM)
  *   - same type (income/expense)
- *   - same amount (compared rounded to 2 decimals)
- *   - same description (case-insensitive, whitespace-trimmed)
+ *   - same amount (compared rounded to 2 decimals using Postgres NUMERIC semantics)
+ *   - same description after normalization: trim + lowercase + collapse runs
+ *     of whitespace (incl. tabs/newlines) into single spaces
  *
  * Tags/category are intentionally ignored.
  *

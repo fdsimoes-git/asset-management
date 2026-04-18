@@ -1556,10 +1556,11 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
 
 // Bulk duplicate-detection check used before confirming a bulk upload.
 // Accepts { entries: [...] } and returns { results: [{ index, duplicate: <existing entry or null> }] }.
-// Performs no writes. Match criteria: same month, same type, same amount (2dp), same
-// case-insensitive trimmed description. Tags/category are ignored. Searches the
-// caller's own entries; for couple-flagged candidates it also considers the partner's
-// couple entries.
+// Performs no writes. Match criteria: same month, same type, same amount (rounded
+// to 2dp using Postgres NUMERIC semantics), and same description after normalization
+// (trim + lowercase + collapse internal whitespace runs to single spaces).
+// Tags/category are ignored. Searches the caller's own entries; for couple-flagged
+// candidates it also considers the partner's couple entries.
 app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, res) => {
     const { entries } = req.body || {};
     if (!Array.isArray(entries)) {

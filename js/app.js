@@ -1675,9 +1675,41 @@ async function resolveBulkDuplicates(candidates) {
     const skipAllBtn = document.getElementById('bulkDupSkipAllBtn');
     const addAllBtn = document.getElementById('bulkDupAddAllBtn');
 
+    // Decimal-safe round-half-away-from-zero to 2dp on the string form,
+    // mirroring Postgres NUMERIC `ROUND(x, 2)` semantics. Avoids the
+    // parseFloat→toFixed IEEE-754 trap (e.g. "1.005" → "1.00" with toFixed
+    // but "1.01" with Postgres ROUND), so the modal shows the exact value
+    // that the duplicate check used and that NUMERIC(15,2) would store.
     const fmtAmount = (a) => {
-        const n = parseFloat(a);
-        return Number.isFinite(n) ? n.toFixed(2) : String(a);
+        if (a == null) return '';
+        const s = String(a).trim();
+        const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(s);
+        if (!m) {
+            const n = parseFloat(s);
+            return Number.isFinite(n) ? n.toFixed(2) : s;
+        }
+        const sign = m[1] || '';
+        const intPart = m[2];
+        const frac = m[3] || '';
+        if (frac.length <= 2) {
+            return sign + intPart + '.' + (frac + '00').slice(0, 2);
+        }
+        const head = frac.slice(0, 2);
+        const next = frac.charCodeAt(2) - 48; // ASCII '0'
+        if (next < 5) return sign + intPart + '.' + head;
+        // round up: increment the 2dp number with carry propagation
+        const arr = (intPart + head).split('');
+        let i = arr.length - 1;
+        let carry = 1;
+        while (carry && i >= 0) {
+            const d = arr[i].charCodeAt(0) - 48 + carry;
+            arr[i] = String(d % 10);
+            carry = d >= 10 ? 1 : 0;
+            i--;
+        }
+        if (carry) arr.unshift('1');
+        const out = arr.join('');
+        return sign + out.slice(0, out.length - 2) + '.' + out.slice(out.length - 2);
     };
     const renderEntry = (e) => {
         const tag = (e.tags && e.tags[0]) || 'other';
