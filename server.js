@@ -1225,8 +1225,16 @@ app.get('/api/user', requireAuth, asyncHandler(async (req, res) => {
         hasGithubCopilotToken: !!(req.user.githubCopilotToken && req.user.githubCopilotToken.iv && req.user.githubCopilotToken.encryptedData),
         hasGeminiKeyAvailable: !!(req.user.geminiApiKey && req.user.geminiApiKey.iv && req.user.geminiApiKey.encryptedData) || !!config.geminiApiKey,
         hasOpenaiKeyAvailable: !!(req.user.openaiApiKey && req.user.openaiApiKey.iv && req.user.openaiApiKey.encryptedData) || !!config.openaiApiKey,
-        hasAnthropicKeyAvailable: hasAnthropicCredentials(req.user),
-        hasCopilotKeyAvailable: hasCopilotCredentials(req.user),
+        hasAnthropicKeyAvailable: !!(
+            (req.user.anthropicApiKey && req.user.anthropicApiKey.iv && req.user.anthropicApiKey.encryptedData) ||
+            (req.user.claudeOauthToken && req.user.claudeOauthToken.iv && req.user.claudeOauthToken.encryptedData) ||
+            config.anthropicApiKey ||
+            config.claudeOauthToken
+        ),
+        hasCopilotKeyAvailable: !!(
+            (req.user.githubCopilotToken && req.user.githubCopilotToken.iv && req.user.githubCopilotToken.encryptedData) ||
+            config.githubCopilotToken
+        ),
         aiProvider: resolveProvider(req.user),
         aiModel: req.user.aiModel || null,
         has2FA: !!req.user.totpEnabled

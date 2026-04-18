@@ -3012,8 +3012,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (input) {
             input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') saveBtn.click();
-                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+                if (e.key === 'Enter' && saveBtn) saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn && cancelBtn.style.display !== 'none') cancelBtn.click();
             });
         }
     }
@@ -3142,8 +3142,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (input) {
             input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') saveBtn.click();
-                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+                if (e.key === 'Enter' && saveBtn) saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn && cancelBtn.style.display !== 'none') cancelBtn.click();
             });
         }
     }
