@@ -268,6 +268,19 @@ const translations = {
     'settings.anthropicSaveSuccess': 'Anthropic API key saved successfully',
     'settings.anthropicRemoveSuccess': 'Anthropic API key removed',
 
+    // ── Claude Code OAuth token (issue #47) ──
+    'settings.claudeOauthSection': 'Claude Code OAuth Token',
+    'settings.claudeOauthSaved': 'Token saved (Claude Code subscription credits)',
+    'settings.claudeOauthChange': 'Change',
+    'settings.claudeOauthRemove': 'Remove',
+    'settings.claudeOauthNone': 'No OAuth token configured',
+    'settings.claudeOauthPlaceholder': 'Paste your Claude Code OAuth token (sk-ant-oat01-...)',
+    'settings.claudeOauthHelp': 'Generate with `claude setup-token` from the Claude Code CLI. When set, Anthropic API calls are billed against your Claude Code subscription credits instead of pay-as-you-go API usage. Takes precedence over your Anthropic API key.',
+    'settings.claudeOauthSaveSuccess': 'Claude Code OAuth token saved',
+    'settings.claudeOauthRemoveSuccess': 'Claude Code OAuth token removed',
+    'claude.oauth.confirmRemove': 'Remove your saved Claude Code OAuth token?',
+    'claude.oauth.removeFailed': 'Failed to remove OAuth token.',
+
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'AI Provider',
     'settings.aiProviderLabel': 'Select which AI provider to use for PDF processing and chat',
@@ -733,6 +746,19 @@ const translations = {
     'settings.anthropicHelp': 'Usada para processamento de PDF com IA e consultor financeiro quando Anthropic está selecionado. Obtenha em console.anthropic.com.',
     'settings.anthropicSaveSuccess': 'Chave API Anthropic salva com sucesso',
     'settings.anthropicRemoveSuccess': 'Chave API Anthropic removida',
+
+    // ── Token OAuth Claude Code (issue #47) ──
+    'settings.claudeOauthSection': 'Token OAuth do Claude Code',
+    'settings.claudeOauthSaved': 'Token salvo (cr\u00e9ditos da assinatura Claude Code)',
+    'settings.claudeOauthChange': 'Alterar',
+    'settings.claudeOauthRemove': 'Remover',
+    'settings.claudeOauthNone': 'Nenhum token OAuth configurado',
+    'settings.claudeOauthPlaceholder': 'Cole seu token OAuth do Claude Code (sk-ant-oat01-...)',
+    'settings.claudeOauthHelp': 'Gere com `claude setup-token` na CLI do Claude Code. Quando definido, as chamadas \u00e0 API Anthropic s\u00e3o cobradas dos cr\u00e9ditos da sua assinatura Claude Code em vez do uso pay-as-you-go. Tem prioridade sobre sua chave API Anthropic.',
+    'settings.claudeOauthSaveSuccess': 'Token OAuth do Claude Code salvo',
+    'settings.claudeOauthRemoveSuccess': 'Token OAuth do Claude Code removido',
+    'claude.oauth.confirmRemove': 'Remover seu token OAuth do Claude Code salvo?',
+    'claude.oauth.removeFailed': 'Falha ao remover o token OAuth.',
 
     // ── AI Provider settings ──
     'settings.aiProviderSection': 'Provedor de IA',

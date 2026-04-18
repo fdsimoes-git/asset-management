@@ -2181,6 +2181,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.claudeOauthSection')}</h3>
+                    <div id="settingsClaudeOauthDisplay">
+                        ${currentUser && currentUser.hasClaudeOauthToken
+                            ? `<p style="margin: 0 0 0.75rem 0;">
+                                <span style="color: var(--color-success);">&#10003;</span>
+                                <span style="color: var(--color-success);">${t('settings.claudeOauthSaved')}</span>
+                               </p>
+                               <div style="display: flex; gap: 0.5rem;">
+                                   <button type="button" id="settingsClaudeOauthChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.claudeOauthChange')}</button>
+                                   <button type="button" id="settingsClaudeOauthRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.claudeOauthRemove')}</button>
+                               </div>`
+                            : `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.claudeOauthNone')}</p>`
+                        }
+                    </div>
+                    <div id="settingsClaudeOauthForm" style="display: ${currentUser && currentUser.hasClaudeOauthToken ? 'none' : 'block'};">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <input type="password" id="settingsClaudeOauthInput" placeholder="${t('settings.claudeOauthPlaceholder')}" style="width: 100%; padding: 0.75rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);" autocomplete="off">
+                        </div>
+                        <small style="color: var(--color-text-muted); display: block; margin-bottom: 0.75rem;">${t('settings.claudeOauthHelp')}</small>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="settingsClaudeOauthSaveBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('common.save')}</button>
+                            <button type="button" id="settingsClaudeOauthCancelBtn" class="edit-btn" style="padding: 0.4rem 0.8rem; display: none;">${t('common.cancel')}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 2rem;">
                     <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.aiProviderSection')}</h3>
                     <p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiProviderLabel')}</p>
                     <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
@@ -2224,6 +2251,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsGemini(overlay);
         wireSettingsOpenai(overlay);
         wireSettingsAnthropic(overlay);
+        wireSettingsClaudeOauth(overlay);
         wireSettingsAiProvider(overlay);
         wireSettingsAiModel(overlay);
     }
@@ -2808,6 +2836,132 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert(t('settings.anthropicSaveSuccess'));
                     } else {
                         const data = await response.json();
+                        alert(data.message || t('error.generic'));
+                    }
+                } catch (e) {
+                    alert(t('error.generic'));
+                } finally {
+                    setButtonLoading(saveBtn, false);
+                }
+            });
+        }
+
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveBtn.click();
+                if (e.key === 'Escape' && cancelBtn.style.display !== 'none') cancelBtn.click();
+            });
+        }
+    }
+
+    function wireSettingsClaudeOauth(overlay) {
+        const display = overlay.querySelector('#settingsClaudeOauthDisplay');
+        const form = overlay.querySelector('#settingsClaudeOauthForm');
+        const input = overlay.querySelector('#settingsClaudeOauthInput');
+        const saveBtn = overlay.querySelector('#settingsClaudeOauthSaveBtn');
+        const cancelBtn = overlay.querySelector('#settingsClaudeOauthCancelBtn');
+
+        if (!display || !form) return;
+
+        function rebuildDisplay(hasToken) {
+            if (hasToken) {
+                display.innerHTML = `
+                    <p style="margin: 0 0 0.75rem 0;">
+                        <span style="color: var(--color-success);">&#10003;</span>
+                        <span style="color: var(--color-success);">${t('settings.claudeOauthSaved')}</span>
+                    </p>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" id="settingsClaudeOauthChangeBtn" class="edit-btn" style="padding: 0.4rem 0.8rem;">${t('settings.claudeOauthChange')}</button>
+                        <button type="button" id="settingsClaudeOauthRemoveBtn" class="delete-btn" style="padding: 0.4rem 0.8rem;">${t('settings.claudeOauthRemove')}</button>
+                    </div>`;
+                wireChangeAndRemove();
+            } else {
+                display.innerHTML = `<p style="margin: 0 0 0.75rem 0; color: var(--color-text-muted);">${t('settings.claudeOauthNone')}</p>`;
+            }
+        }
+
+        function wireChangeAndRemove() {
+            const changeBtn = overlay.querySelector('#settingsClaudeOauthChangeBtn');
+            const removeBtn = overlay.querySelector('#settingsClaudeOauthRemoveBtn');
+
+            if (changeBtn) {
+                changeBtn.addEventListener('click', () => {
+                    display.style.display = 'none';
+                    form.style.display = 'block';
+                    cancelBtn.style.display = '';
+                    input.value = '';
+                    input.focus();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm(t('claude.oauth.confirmRemove'))) return;
+                    setButtonLoading(removeBtn, true);
+                    try {
+                        const response = await csrfFetch('/api/user/claude-oauth-token', { method: 'DELETE', credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            currentUser.hasClaudeOauthToken = false;
+                            if (typeof data.hasAnthropicKeyAvailable === 'boolean') {
+                                currentUser.hasAnthropicKeyAvailable = data.hasAnthropicKeyAvailable;
+                            }
+                            rebuildDisplay(false);
+                            form.style.display = 'block';
+                            cancelBtn.style.display = 'none';
+                            input.value = '';
+                            updateAiKeyUI();
+                            alert(t('settings.claudeOauthRemoveSuccess'));
+                        } else {
+                            alert(t('claude.oauth.removeFailed'));
+                        }
+                    } catch (e) {
+                        alert(t('claude.oauth.removeFailed'));
+                    } finally {
+                        setButtonLoading(removeBtn, false);
+                    }
+                });
+            }
+        }
+
+        wireChangeAndRemove();
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                form.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                display.style.display = '';
+                input.value = '';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.focus();
+                    return;
+                }
+                setButtonLoading(saveBtn, true);
+                try {
+                    const response = await csrfFetch('/api/user/claude-oauth-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ claudeOauthToken: value }),
+                        credentials: 'include'
+                    });
+                    if (response.ok) {
+                        currentUser.hasClaudeOauthToken = true;
+                        currentUser.hasAnthropicKeyAvailable = true;
+                        rebuildDisplay(true);
+                        display.style.display = '';
+                        form.style.display = 'none';
+                        cancelBtn.style.display = 'none';
+                        input.value = '';
+                        updateAiKeyUI();
+                        alert(t('settings.claudeOauthSaveSuccess'));
+                    } else {
+                        const data = await response.json().catch(() => ({}));
                         alert(data.message || t('error.generic'));
                     }
                 } catch (e) {

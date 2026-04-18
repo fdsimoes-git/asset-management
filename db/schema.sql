@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     gemini_api_key    TEXT,              -- JSON: encrypted
     openai_api_key    TEXT,              -- JSON: encrypted
     anthropic_api_key TEXT,              -- JSON: encrypted
+    claude_oauth_token TEXT,             -- JSON: encrypted (Claude Code CLI OAuth token, sk-ant-oat01-...)
     totp_secret       TEXT,              -- JSON: encrypted
     totp_enabled      BOOLEAN NOT NULL DEFAULT FALSE,
     backup_codes      TEXT[] NOT NULL DEFAULT '{}',

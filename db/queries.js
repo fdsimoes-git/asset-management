@@ -17,6 +17,7 @@ function dbRowToUser(row) {
         geminiApiKey:    parseJsonField(row.gemini_api_key),
         openaiApiKey:    parseJsonField(row.openai_api_key),
         anthropicApiKey: parseJsonField(row.anthropic_api_key),
+        claudeOauthToken: parseJsonField(row.claude_oauth_token),
         totpSecret:      parseJsonField(row.totp_secret),
         totpEnabled:     row.totp_enabled,
         backupCodes:     row.backup_codes || [],
@@ -101,9 +102,9 @@ async function getEntriesCountByUser() {
 async function createUser(fields) {
     const { rows } = await pool.query(
         `INSERT INTO users (username, password_hash, role, email, gemini_api_key, openai_api_key,
-         anthropic_api_key, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model,
+         anthropic_api_key, claude_oauth_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model,
          partner_id, partner_linked_at, is_active, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [
             fields.username,
             fields.passwordHash,
@@ -112,6 +113,7 @@ async function createUser(fields) {
             stringifyJsonField(fields.geminiApiKey),
             stringifyJsonField(fields.openaiApiKey),
             stringifyJsonField(fields.anthropicApiKey),
+            stringifyJsonField(fields.claudeOauthToken),
             stringifyJsonField(fields.totpSecret),
             fields.totpEnabled || false,
             fields.backupCodes || [],
@@ -181,6 +183,7 @@ const USER_COLUMN_MAP = {
     geminiApiKey:    { col: 'gemini_api_key',    json: true },
     openaiApiKey:    { col: 'openai_api_key',    json: true },
     anthropicApiKey: { col: 'anthropic_api_key', json: true },
+    claudeOauthToken:{ col: 'claude_oauth_token', json: true },
     totpSecret:      { col: 'totp_secret',       json: true },
     totpEnabled:     'totp_enabled',
     backupCodes:     'backup_codes',
