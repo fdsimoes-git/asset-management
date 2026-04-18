@@ -1595,6 +1595,12 @@ app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, 
             || !Number.isFinite(amount) || amount <= 0) {
             continue;
         }
+        // Mirror the 500-char limit enforced by POST /api/entries so a candidate
+        // that would later be rejected on save is also rejected here. Reject the
+        // whole batch (vs silently dropping) so the client can surface the bad row.
+        if (description.trim().length > 500) {
+            return res.status(400).json({ message: 'Description must be 500 characters or less' });
+        }
         validity[i] = true;
         lookupCandidates[i] = {
             month,

@@ -1669,6 +1669,7 @@ async function resolveBulkDuplicates(candidates) {
 
     const drop = new Set();
     let bulkChoice = null; // 'skipAll' | 'addAll' | null
+    const closeBtn = document.getElementById('closeBulkDuplicateModal');
 
     for (let i = 0; i < duplicates.length; i++) {
         const { index, duplicate } = duplicates[i];
@@ -1680,6 +1681,9 @@ async function resolveBulkDuplicates(candidates) {
         existingBox.innerHTML = renderEntry(duplicate);
         progress.textContent = t('bulk.dup.progress', { current: i + 1, total: duplicates.length });
         modal.style.display = 'block';
+        // Move focus into the modal so keyboard users land on an actionable
+        // control (mirrors the focus behavior of openModal()).
+        setTimeout(() => { try { skipBtn.focus(); } catch (_) { /* noop */ } }, 0);
 
         const choice = await new Promise((resolve) => {
             const cleanup = () => {
@@ -1687,15 +1691,40 @@ async function resolveBulkDuplicates(candidates) {
                 addBtn.removeEventListener('click', onAdd);
                 skipAllBtn.removeEventListener('click', onSkipAll);
                 addAllBtn.removeEventListener('click', onAddAll);
+                if (closeBtn) {
+                    closeBtn.removeEventListener('click', onClose);
+                    closeBtn.removeEventListener('keydown', onCloseKey);
+                }
+                document.removeEventListener('keydown', onEscape, true);
             };
             const onSkip = () => { cleanup(); resolve('skip'); };
             const onAdd = () => { cleanup(); resolve('add'); };
             const onSkipAll = () => { cleanup(); resolve('skipAll'); };
             const onAddAll = () => { cleanup(); resolve('addAll'); };
+            // Dismissing the modal (close X / Escape) is treated as "skip all"
+            // — cancel the rest of the duplicate workflow without saving any
+            // of the still-pending duplicate candidates.
+            const onClose = () => { cleanup(); resolve('skipAll'); };
+            const onCloseKey = (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onClose(); }
+            };
+            const onEscape = (ev) => {
+                if (ev.key === 'Escape' && modal.style.display !== 'none') {
+                    ev.stopPropagation();
+                    onClose();
+                }
+            };
             skipBtn.addEventListener('click', onSkip);
             addBtn.addEventListener('click', onAdd);
             skipAllBtn.addEventListener('click', onSkipAll);
             addAllBtn.addEventListener('click', onAddAll);
+            if (closeBtn) {
+                closeBtn.addEventListener('click', onClose);
+                closeBtn.addEventListener('keydown', onCloseKey);
+            }
+            // Capture so we beat the global Escape handler that otherwise
+            // would close the (unrelated) Add Entry modal.
+            document.addEventListener('keydown', onEscape, true);
         });
 
         modal.style.display = 'none';

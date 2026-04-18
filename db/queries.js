@@ -415,31 +415,57 @@ function normalizeDescriptionForDuplicateMatch(description) {
     return String(description).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Convert an incoming amount (string or number) to a string suitable for
+// a Postgres NUMERIC parameter. Avoids JS-side rounding entirely so we don't
+// hit IEEE-754 edge cases like 1.005 -> 1.00 (the canonical Math.round trap).
+// Strings that already look like decimal money (up to 2 fractional digits)
+// are passed through verbatim and Postgres performs exact decimal arithmetic.
+// Numbers are serialized via toFixed(2) as a best-effort fallback for callers
+// that already lost precision before reaching this layer.
+function toAmountParam(amount) {
+    if (amount == null) return null;
+    if (typeof amount === 'string') {
+        const trimmed = amount.trim();
+        if (/^-?\d+(\.\d{1,2})?$/.test(trimmed)) return trimmed;
+        const n = Number(trimmed);
+        if (!Number.isFinite(n)) return null;
+        return n.toFixed(2);
+    }
+    if (typeof amount === 'number' && Number.isFinite(amount)) {
+        return amount.toFixed(2);
+    }
+    const n = Number(amount);
+    return Number.isFinite(n) ? n.toFixed(2) : null;
+}
+
 async function findDuplicateEntry(userId, { month, type, amount, description }, partnerId = null) {
     if (!userId || !month || !type || amount == null || description == null) {
         return null;
     }
     const normalizedDescription = normalizeDescriptionForDuplicateMatch(description);
     if (!normalizedDescription) return null;
-    const roundedAmount = Math.round(parseFloat(amount) * 100) / 100;
-    if (!Number.isFinite(roundedAmount)) return null;
+    const amountParam = toAmountParam(amount);
+    if (amountParam == null) return null;
 
     // Build user_id filter: either just the user, or the user + partner's couple expenses.
     // We always allow the candidate user's own entries (any couple flag).
     // If partnerId given, additionally allow partner's entries flagged is_couple_expense.
-    const params = [userId, month, type, roundedAmount, normalizedDescription];
+    const params = [userId, month, type, amountParam, normalizedDescription];
     let userFilter = 'user_id = $1';
     if (partnerId) {
         params.push(partnerId);
         userFilter = '(user_id = $1 OR (user_id = $6 AND is_couple_expense = TRUE))';
     }
 
+    // entries.amount is NUMERIC(15,2) so it is already stored at exact-cent
+    // precision; comparing against $4::numeric gives us exact-cents semantics
+    // without any JS-side rounding.
     const sql = `
         SELECT * FROM entries
         WHERE ${userFilter}
           AND month = $2
           AND type = $3
-          AND ROUND(amount::numeric, 2) = $4
+          AND amount = $4::numeric
           AND regexp_replace(LOWER(BTRIM(description)), '\\s+', ' ', 'g') = $5
         ORDER BY id
         LIMIT 1
@@ -480,23 +506,27 @@ async function findBulkDuplicateEntries(userId, candidates) {
         if (!c.month || !c.type || c.amount == null || c.description == null) continue;
         const normalizedDescription = normalizeDescriptionForDuplicateMatch(c.description);
         if (!normalizedDescription) continue;
-        const roundedAmount = Math.round(parseFloat(c.amount) * 100) / 100;
-        if (!Number.isFinite(roundedAmount)) continue;
+        const amountParam = toAmountParam(c.amount);
+        if (amountParam == null) continue;
 
         indices.push(i);
         months.push(c.month);
         types.push(c.type);
-        amounts.push(roundedAmount);
+        amounts.push(amountParam);
         descriptions.push(normalizedDescription);
         partnerIds.push(c.partnerId != null ? c.partnerId : null);
     }
 
     if (indices.length === 0) return result;
 
+    // Notes on parameter casts:
+    // - $2::int[]    candidate row index (0..N-1, safely fits int)
+    // - $5::numeric[] amount strings parsed by Postgres for exact-cent compare
+    // - $7::bigint[] partner_id matches users.id BIGINT (avoid int overflow)
     const sql = `
         WITH candidates AS (
             SELECT * FROM unnest(
-                $2::int[], $3::text[], $4::text[], $5::numeric[], $6::text[], $7::int[]
+                $2::int[], $3::text[], $4::text[], $5::numeric[], $6::text[], $7::bigint[]
             ) AS c(idx, month, type, amount, ndesc, partner_id)
         )
         SELECT DISTINCT ON (c.idx) c.idx AS candidate_index, e.*
@@ -506,7 +536,7 @@ async function findBulkDuplicateEntries(userId, candidates) {
              OR (c.partner_id IS NOT NULL AND e.user_id = c.partner_id AND e.is_couple_expense = TRUE))
             AND e.month = c.month
             AND e.type = c.type
-            AND ROUND(e.amount::numeric, 2) = ROUND(c.amount, 2)
+            AND e.amount = c.amount
             AND regexp_replace(LOWER(BTRIM(e.description)), '\\s+', ' ', 'g') = c.ndesc
         ORDER BY c.idx, e.id
     `;
