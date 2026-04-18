@@ -13,7 +13,7 @@
 -- subscription rather than any pay-as-you-go AI provider key.
 --
 -- Stored as TEXT containing the JSON {"iv":"...","encryptedData":"..."}
--- produced by the same AES-256-CBC `encrypt()` helper that wraps the
+-- produced by the same AES-256-CBC `encryptString()` helper that wraps the
 -- existing `anthropic_api_key` / `claude_oauth_token` columns.
 
 BEGIN;

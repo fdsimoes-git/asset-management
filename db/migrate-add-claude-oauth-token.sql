@@ -9,7 +9,7 @@
 -- pay-as-you-go API usage.
 --
 -- Stored as TEXT containing the JSON {"iv":"...","encryptedData":"..."}
--- produced by the same AES-256-CBC `encrypt()` helper that wraps the existing
+-- produced by the same AES-256-CBC `encryptString()` helper that wraps the existing
 -- `anthropic_api_key` column.
 
 BEGIN;

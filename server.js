@@ -1468,8 +1468,15 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
         } catch (err) {
-            console.error('Anthropic models.list failed:', err.message);
-            return res.json({ provider, models: [], selectedModel: null, error: 'fetch_failed' });
+            const upstreamStatus = err && (err.status || err.statusCode || (err.response && err.response.status));
+            console.error('Anthropic models.list failed:', err.message, 'status:', upstreamStatus);
+            if (upstreamStatus === 401 || upstreamStatus === 403) {
+                return res.status(400).json({ message: 'Invalid or unauthorized API key.', error: 'auth_error' });
+            }
+            if (upstreamStatus === 429) {
+                return res.status(429).json({ message: 'Rate limit exceeded. Please try again later.', error: 'rate_limited' });
+            }
+            return res.status(500).json({ message: 'Failed to fetch model list.', error: 'fetch_failed' });
         }
     }
 
@@ -1494,9 +1501,18 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
         } catch (err) {
-            console.error('Copilot models.list failed:', err.message);
-            // Fall back to a small hardcoded list of known good model IDs so
-            // the UI still has something to pick from when /models is down.
+            const upstreamStatus = err && (err.status || err.statusCode || (err.response && err.response.status));
+            console.error('Copilot models.list failed:', err.message, 'status:', upstreamStatus);
+            // Surface auth / rate-limit failures so the UI can prompt the user to
+            // fix their token; falling back silently here would hide the real cause.
+            if (upstreamStatus === 401 || upstreamStatus === 403) {
+                return res.status(400).json({ message: 'Invalid or unauthorized GitHub Copilot token.', error: 'auth_error' });
+            }
+            if (upstreamStatus === 429) {
+                return res.status(429).json({ message: 'Rate limit exceeded. Please try again later.', error: 'rate_limited' });
+            }
+            // For transient/unknown failures, fall back to a small hardcoded list of
+            // known good model IDs so the UI still has something to pick from.
             const fallback = [
                 { id: 'gpt-4.1',         name: 'GPT-4.1' },
                 { id: 'gpt-4o',          name: 'GPT-4o' },
