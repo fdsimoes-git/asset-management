@@ -1621,6 +1621,32 @@ function renderBulkPreviewTable() {
 // server reports as a duplicate (same month + type + amount + case-insensitive
 // trimmed description). User can Skip / Add anyway, or apply Skip-all /
 // Add-all for the remaining duplicates. Returns the indices to drop.
+//
+// Non-blocking inline notice shown inside the bulk upload modal when the
+// duplicate-check round-trip fails — better UX than alert() because it
+// doesn't interrupt the flow, the user can still confirm the entries.
+function showBulkUploadBanner(message) {
+    const modalContent = document.querySelector('#bulkUploadModal .modal-content');
+    if (!modalContent) return;
+    let banner = document.getElementById('bulkUploadBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'bulkUploadBanner';
+        banner.setAttribute('role', 'status');
+        banner.setAttribute('aria-live', 'polite');
+        banner.style.cssText = 'padding: 0.75rem 1rem; margin: 0.75rem 0; border-radius: var(--radius-md); border: 1px solid var(--color-warning, #b45309); background: rgba(180, 83, 9, 0.1); color: var(--color-text-primary); font-size: 0.85rem;';
+        // Insert above the preview heading if present, else append.
+        const previewHeading = modalContent.querySelector('h3');
+        if (previewHeading) modalContent.insertBefore(banner, previewHeading);
+        else modalContent.appendChild(banner);
+    }
+    banner.textContent = message;
+    if (banner._dismissTimer) clearTimeout(banner._dismissTimer);
+    banner._dismissTimer = setTimeout(() => {
+        if (banner.parentNode) banner.parentNode.removeChild(banner);
+    }, 6000);
+}
+
 async function resolveBulkDuplicates(candidates) {
     let duplicates;
     try {
@@ -1634,7 +1660,7 @@ async function resolveBulkDuplicates(candidates) {
         duplicates = (data.results || []).filter(r => r && r.duplicate);
     } catch (err) {
         console.warn('Duplicate check failed, proceeding without it:', err);
-        alert(t('bulk.dup.checkFailed'));
+        showBulkUploadBanner(t('bulk.dup.checkFailed'));
         return new Set();
     }
 
