@@ -411,11 +411,15 @@ async function getEntryByIdAndUser(entryId, userId) {
  *
  * Returns the first matching entry as a JS object, or `null` if none.
  */
+function normalizeDescriptionForDuplicateMatch(description) {
+    return String(description).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 async function findDuplicateEntry(userId, { month, type, amount, description }, partnerId = null) {
     if (!userId || !month || !type || amount == null || description == null) {
         return null;
     }
-    const normalizedDescription = String(description).trim().toLowerCase();
+    const normalizedDescription = normalizeDescriptionForDuplicateMatch(description);
     if (!normalizedDescription) return null;
     const roundedAmount = Math.round(parseFloat(amount) * 100) / 100;
     if (!Number.isFinite(roundedAmount)) return null;
@@ -436,12 +440,85 @@ async function findDuplicateEntry(userId, { month, type, amount, description }, 
           AND month = $2
           AND type = $3
           AND ROUND(amount::numeric, 2) = $4
-          AND LOWER(BTRIM(description)) = $5
+          AND regexp_replace(LOWER(BTRIM(description)), '\\s+', ' ', 'g') = $5
         ORDER BY id
         LIMIT 1
     `;
     const { rows } = await pool.query(sql, params);
     return dbRowToEntry(rows[0]);
+}
+
+/**
+ * Batched duplicate lookup for many candidates in a single query.
+ *
+ * `candidates` is an array of objects shaped like:
+ *   { month, type, amount, description, partnerId? }
+ * `partnerId` may be null/undefined to scope that row to the user only,
+ * or a numeric partner id to additionally include the partner's
+ * couple-flagged entries (mirrors findDuplicateEntry's semantics).
+ *
+ * Returns a Map keyed by candidate index → first matching existing entry
+ * (as a JS object via dbRowToEntry). Indices with no match are absent.
+ *
+ * Invalid candidates (missing/bad fields) are silently skipped.
+ */
+async function findBulkDuplicateEntries(userId, candidates) {
+    const result = new Map();
+    if (!userId || !Array.isArray(candidates) || candidates.length === 0) {
+        return result;
+    }
+
+    const indices = [];
+    const months = [];
+    const types = [];
+    const amounts = [];
+    const descriptions = [];
+    const partnerIds = [];
+
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i] || {};
+        if (!c.month || !c.type || c.amount == null || c.description == null) continue;
+        const normalizedDescription = normalizeDescriptionForDuplicateMatch(c.description);
+        if (!normalizedDescription) continue;
+        const roundedAmount = Math.round(parseFloat(c.amount) * 100) / 100;
+        if (!Number.isFinite(roundedAmount)) continue;
+
+        indices.push(i);
+        months.push(c.month);
+        types.push(c.type);
+        amounts.push(roundedAmount);
+        descriptions.push(normalizedDescription);
+        partnerIds.push(c.partnerId != null ? c.partnerId : null);
+    }
+
+    if (indices.length === 0) return result;
+
+    const sql = `
+        WITH candidates AS (
+            SELECT * FROM unnest(
+                $2::int[], $3::text[], $4::text[], $5::numeric[], $6::text[], $7::int[]
+            ) AS c(idx, month, type, amount, ndesc, partner_id)
+        )
+        SELECT DISTINCT ON (c.idx) c.idx AS candidate_index, e.*
+        FROM candidates c
+        JOIN entries e ON
+            (e.user_id = $1
+             OR (c.partner_id IS NOT NULL AND e.user_id = c.partner_id AND e.is_couple_expense = TRUE))
+            AND e.month = c.month
+            AND e.type = c.type
+            AND ROUND(e.amount::numeric, 2) = ROUND(c.amount, 2)
+            AND regexp_replace(LOWER(BTRIM(e.description)), '\\s+', ' ', 'g') = c.ndesc
+        ORDER BY c.idx, e.id
+    `;
+    const { rows } = await pool.query(sql, [
+        userId, indices, months, types, amounts, descriptions, partnerIds
+    ]);
+    for (const row of rows) {
+        const idx = row.candidate_index;
+        delete row.candidate_index;
+        result.set(idx, dbRowToEntry(row));
+    }
+    return result;
 }
 
 async function createEntry({ userId, month, type, amount, description, tags, isCoupleExpense }) {
@@ -692,6 +769,7 @@ module.exports = {
     getMyShareEntries,
     getEntryByIdAndUser,
     findDuplicateEntry,
+    findBulkDuplicateEntries,
     createEntry,
     updateEntry,
     deleteEntry,

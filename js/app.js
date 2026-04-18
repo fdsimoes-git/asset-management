@@ -1720,6 +1720,7 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
                 type: e.type || 'expense',
                 amount: e.amount,
                 description: e.description,
+                tags: Array.isArray(e.tags) ? e.tags.slice() : [],
                 isCoupleExpense: !!e.isCoupleExpense
             }));
             const skipIndices = await resolveBulkDuplicates(candidates);

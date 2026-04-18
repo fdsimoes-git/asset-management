@@ -1578,7 +1578,10 @@ app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, 
         }
     }
 
-    const results = [];
+    // Validate each candidate up front; only valid ones are looked up in the
+    // batched DB call. Invalid candidates get a null duplicate.
+    const validity = new Array(entries.length).fill(false);
+    const lookupCandidates = new Array(entries.length).fill(null);
     for (let i = 0; i < entries.length; i++) {
         const e = entries[i] || {};
         const month = typeof e.month === 'string' ? e.month : null;
@@ -1590,17 +1593,31 @@ app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, 
             || !type || !VALID_ENTRY_TYPES.includes(type)
             || !description || !description.trim()
             || !Number.isFinite(amount) || amount <= 0) {
+            continue;
+        }
+        validity[i] = true;
+        lookupCandidates[i] = {
+            month,
+            type,
+            amount,
+            description,
+            partnerId: (e.isCoupleExpense && validPartner) ? validPartner.id : null
+        };
+    }
+
+    // Batched: one query for all valid candidates instead of N awaited queries.
+    const dupMap = await db.findBulkDuplicateEntries(
+        req.user.id,
+        lookupCandidates.map(c => c || {})
+    );
+
+    const results = [];
+    for (let i = 0; i < entries.length; i++) {
+        if (!validity[i]) {
             results.push({ index: i, duplicate: null });
             continue;
         }
-
-        const partnerIdForLookup = (e.isCoupleExpense && validPartner) ? validPartner.id : null;
-        const dup = await db.findDuplicateEntry(
-            req.user.id,
-            { month, type, amount, description },
-            partnerIdForLookup
-        );
-        results.push({ index: i, duplicate: dup });
+        results.push({ index: i, duplicate: dupMap.get(i) || null });
     }
 
     res.json({ results });
