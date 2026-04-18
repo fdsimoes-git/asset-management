@@ -1282,7 +1282,7 @@ function updateAiKeyUI() {
     const hasUserKey = provider === 'openai'
         ? (currentUser && currentUser.hasOpenaiApiKey)
         : provider === 'anthropic'
-        ? (currentUser && currentUser.hasAnthropicApiKey)
+        ? (currentUser && (currentUser.hasAnthropicApiKey || currentUser.hasClaudeOauthToken))
         : provider === 'copilot'
         ? (currentUser && currentUser.hasGithubCopilotToken)
         : (currentUser && currentUser.hasGeminiApiKey);

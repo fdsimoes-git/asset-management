@@ -1471,7 +1471,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
             const upstreamStatus = err && (err.status || err.statusCode || (err.response && err.response.status));
             console.error('Anthropic models.list failed:', err.message, 'status:', upstreamStatus);
             if (upstreamStatus === 401 || upstreamStatus === 403) {
-                return res.status(400).json({ message: 'Invalid or unauthorized API key.', error: 'auth_error' });
+                return res.status(400).json({ message: 'Invalid or unauthorized Anthropic credentials.', error: 'auth_error' });
             }
             if (upstreamStatus === 429) {
                 return res.status(429).json({ message: 'Rate limit exceeded. Please try again later.', error: 'rate_limited' });
@@ -1567,8 +1567,11 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
                 }
             }
         } else if (provider === 'anthropic') {
-            // Unreachable: anthropic is handled in the early-return branch above.
-            return;
+            // Defensive: Anthropic is handled by the early-return branch above,
+            // so this should never run. If a future refactor breaks that
+            // invariant, fail loudly instead of silently hanging the request.
+            console.error('Unexpected fall-through to anthropic branch in /api/ai/models');
+            return res.status(500).json({ message: 'Internal routing error.', error: 'internal_error' });
         } else {
             const listGenAI = new GoogleGenAI({ apiKey });
             const pager = await listGenAI.models.list({ pageSize: 100 });
@@ -3911,7 +3914,10 @@ ${text}`;
             : provider === 'copilot' ? 'GitHub Copilot'
             : 'Gemini';
         if (error.message?.includes('API key') || error.status === 401) {
-            errorMessage = `Invalid ${providerName} API key. Please check your API key and try again.`;
+            const credLabel = (provider === 'copilot') ? 'GitHub Copilot token'
+                : (provider === 'anthropic') ? 'Anthropic credentials'
+                : `${providerName} API key`;
+            errorMessage = `Invalid ${credLabel}. Please check your settings and try again.`;
             statusCode = 400;
         } else if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
             errorMessage = `${providerName} API quota exceeded. Please try again later.`;
