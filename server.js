@@ -252,12 +252,6 @@ function createAnthropicClient({ authToken, apiKey }) {
     return new Anthropic({ apiKey });
 }
 
-/** True if any Anthropic credential (per-user or env) is available for this user. */
-function hasAnthropicCredentials(user) {
-    const { authToken, apiKey } = resolveAnthropicAuth(user);
-    return !!(authToken || apiKey);
-}
-
 // ── GitHub Copilot client ───────────────────────────────────────────
 //
 // GitHub Copilot exposes an OpenAI-compatible chat completions API at
@@ -4066,7 +4060,7 @@ ${text}`;
             : provider === 'anthropic' ? 'Anthropic'
             : provider === 'copilot' ? 'GitHub Copilot'
             : 'Gemini';
-        if (error.message?.includes('API key') || error.status === 401) {
+        if (error.message?.includes('API key') || error.status === 401 || error.status === 403) {
             const credLabel = (provider === 'copilot') ? 'GitHub Copilot token'
                 : (provider === 'anthropic') ? 'Anthropic credentials'
                 : `${providerName} API key`;
