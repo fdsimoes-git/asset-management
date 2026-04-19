@@ -321,7 +321,14 @@ function resolveCopilotOauthToken(user) {
 }
 
 function hasCopilotCredentials(user) {
-    return !!resolveCopilotOauthToken(user);
+    // Pure presence check (iv + encryptedData + env fallback) — does not
+    // decrypt. Decryption happens lazily inside resolveCopilotOauthToken()
+    // when a request actually needs the token.
+    const stored = user && user.githubCopilotToken;
+    return !!(
+        (stored && stored.encryptedData && stored.iv) ||
+        config.githubCopilotToken
+    );
 }
 
 /**
