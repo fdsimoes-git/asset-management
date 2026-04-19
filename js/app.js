@@ -1616,15 +1616,216 @@ function renderBulkPreviewTable() {
     }
 }
 
+// ── Bulk upload duplicate detection ──
+// Walks the user through a confirmation modal for each candidate that the
+// server reports as a duplicate (same month + type + amount + case-insensitive
+// trimmed description). User can Skip / Add anyway, or apply Skip-all /
+// Add-all for the remaining duplicates. Returns the indices to drop.
+//
+// Non-blocking inline notice shown inside the bulk upload modal when the
+// duplicate-check round-trip fails — better UX than alert() because it
+// doesn't interrupt the flow, the user can still confirm the entries.
+function showBulkUploadBanner(message) {
+    const modalContent = document.querySelector('#bulkUploadModal .modal-content');
+    if (!modalContent) return;
+    let banner = document.getElementById('bulkUploadBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'bulkUploadBanner';
+        banner.setAttribute('role', 'status');
+        banner.setAttribute('aria-live', 'polite');
+        banner.style.cssText = 'padding: 0.75rem 1rem; margin: 0.75rem 0; border-radius: var(--radius-md); border: 1px solid var(--color-warning, #b45309); background: rgba(180, 83, 9, 0.1); color: var(--color-text-primary); font-size: 0.85rem;';
+        // Insert above the preview heading if present, else append.
+        const previewHeading = modalContent.querySelector('h3');
+        if (previewHeading) modalContent.insertBefore(banner, previewHeading);
+        else modalContent.appendChild(banner);
+    }
+    banner.textContent = message;
+    if (banner._dismissTimer) clearTimeout(banner._dismissTimer);
+    banner._dismissTimer = setTimeout(() => {
+        if (banner.parentNode) banner.parentNode.removeChild(banner);
+    }, 6000);
+}
+
+async function resolveBulkDuplicates(candidates) {
+    let duplicates;
+    try {
+        const resp = await csrfFetch('/api/entries/check-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entries: candidates })
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        duplicates = (data.results || []).filter(r => r && r.duplicate);
+    } catch (err) {
+        console.warn('Duplicate check failed, proceeding without it:', err);
+        showBulkUploadBanner(t('bulk.dup.checkFailed'));
+        return new Set();
+    }
+
+    if (duplicates.length === 0) return new Set();
+
+    const modal = document.getElementById('bulkDuplicateModal');
+    const candidateBox = document.getElementById('bulkDuplicateCandidate');
+    const existingBox = document.getElementById('bulkDuplicateExisting');
+    const progress = document.getElementById('bulkDuplicateProgress');
+    const skipBtn = document.getElementById('bulkDupSkipBtn');
+    const addBtn = document.getElementById('bulkDupAddBtn');
+    const skipAllBtn = document.getElementById('bulkDupSkipAllBtn');
+    const addAllBtn = document.getElementById('bulkDupAddAllBtn');
+
+    // Decimal-safe round-half-away-from-zero to 2dp on the string form,
+    // mirroring Postgres NUMERIC `ROUND(x, 2)` semantics. Avoids the
+    // parseFloat→toFixed IEEE-754 trap (e.g. "1.005" → "1.00" with toFixed
+    // but "1.01" with Postgres ROUND), so the modal shows the exact value
+    // that the duplicate check used and that NUMERIC(15,2) would store.
+    const fmtAmount = (a) => {
+        if (a == null) return '';
+        const s = String(a).trim();
+        const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(s);
+        if (!m) {
+            const n = parseFloat(s);
+            return Number.isFinite(n) ? n.toFixed(2) : s;
+        }
+        const sign = m[1] || '';
+        const intPart = m[2];
+        const frac = m[3] || '';
+        if (frac.length <= 2) {
+            return sign + intPart + '.' + (frac + '00').slice(0, 2);
+        }
+        const head = frac.slice(0, 2);
+        const next = frac.charCodeAt(2) - 48; // ASCII '0'
+        if (next < 5) return sign + intPart + '.' + head;
+        // round up: increment the 2dp number with carry propagation
+        const arr = (intPart + head).split('');
+        let i = arr.length - 1;
+        let carry = 1;
+        while (carry && i >= 0) {
+            const d = arr[i].charCodeAt(0) - 48 + carry;
+            arr[i] = String(d % 10);
+            carry = d >= 10 ? 1 : 0;
+            i--;
+        }
+        if (carry) arr.unshift('1');
+        const out = arr.join('');
+        return sign + out.slice(0, out.length - 2) + '.' + out.slice(out.length - 2);
+    };
+    const renderEntry = (e) => {
+        const tag = (e.tags && e.tags[0]) || 'other';
+        const typeLabel = e.type === 'income' ? t('type.income') : t('type.expense');
+        const couple = e.isCoupleExpense ? t('bulk.dup.yes') : t('bulk.dup.no');
+        return `
+            <div><strong>${t('bulk.dup.fieldMonth')}:</strong> ${escapeHtml(e.month || '')}</div>
+            <div><strong>${t('bulk.dup.fieldType')}:</strong> ${escapeHtml(typeLabel)}</div>
+            <div><strong>${t('bulk.dup.fieldAmount')}:</strong> ${escapeHtml(fmtAmount(e.amount))}</div>
+            <div><strong>${t('bulk.dup.fieldDescription')}:</strong> ${escapeHtml(e.description || '')}</div>
+            <div><strong>${t('bulk.dup.fieldCategory')}:</strong> ${escapeHtml(t('cat.' + tag))}</div>
+            <div><strong>${t('bulk.dup.fieldCouple')}:</strong> ${escapeHtml(couple)}</div>
+        `;
+    };
+
+    const drop = new Set();
+    let bulkChoice = null; // 'skipAll' | 'addAll' | null
+    const closeBtn = document.getElementById('closeBulkDuplicateModal');
+
+    for (let i = 0; i < duplicates.length; i++) {
+        const { index, duplicate } = duplicates[i];
+        if (bulkChoice === 'skipAll') { drop.add(index); continue; }
+        if (bulkChoice === 'addAll') { continue; }
+
+        const candidate = candidates[index];
+        candidateBox.innerHTML = renderEntry(candidate);
+        existingBox.innerHTML = renderEntry(duplicate);
+        progress.textContent = t('bulk.dup.progress', { current: i + 1, total: duplicates.length });
+        modal.style.display = 'block';
+        // Move focus into the modal so keyboard users land on an actionable
+        // control (mirrors the focus behavior of openModal()).
+        setTimeout(() => { try { skipBtn.focus(); } catch (_) { /* noop */ } }, 0);
+
+        const choice = await new Promise((resolve) => {
+            const cleanup = () => {
+                skipBtn.removeEventListener('click', onSkip);
+                addBtn.removeEventListener('click', onAdd);
+                skipAllBtn.removeEventListener('click', onSkipAll);
+                addAllBtn.removeEventListener('click', onAddAll);
+                if (closeBtn) {
+                    closeBtn.removeEventListener('click', onClose);
+                    closeBtn.removeEventListener('keydown', onCloseKey);
+                }
+                document.removeEventListener('keydown', onEscape, true);
+            };
+            const onSkip = () => { cleanup(); resolve('skip'); };
+            const onAdd = () => { cleanup(); resolve('add'); };
+            const onSkipAll = () => { cleanup(); resolve('skipAll'); };
+            const onAddAll = () => { cleanup(); resolve('addAll'); };
+            // Dismissing the modal (close X / Escape) is treated as "skip all"
+            // — cancel the rest of the duplicate workflow without saving any
+            // of the still-pending duplicate candidates.
+            const onClose = () => { cleanup(); resolve('skipAll'); };
+            const onCloseKey = (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onClose(); }
+            };
+            const onEscape = (ev) => {
+                if (ev.key === 'Escape' && modal.style.display !== 'none') {
+                    ev.stopPropagation();
+                    onClose();
+                }
+            };
+            skipBtn.addEventListener('click', onSkip);
+            addBtn.addEventListener('click', onAdd);
+            skipAllBtn.addEventListener('click', onSkipAll);
+            addAllBtn.addEventListener('click', onAddAll);
+            if (closeBtn) {
+                closeBtn.addEventListener('click', onClose);
+                closeBtn.addEventListener('keydown', onCloseKey);
+            }
+            // Capture so we beat the global Escape handler that otherwise
+            // would close the (unrelated) Add Entry modal.
+            document.addEventListener('keydown', onEscape, true);
+        });
+
+        modal.style.display = 'none';
+
+        if (choice === 'skip') drop.add(index);
+        else if (choice === 'skipAll') { drop.add(index); bulkChoice = 'skipAll'; }
+        else if (choice === 'addAll') { bulkChoice = 'addAll'; }
+        // 'add' — keep as-is
+    }
+
+    return drop;
+}
+
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
         const originalText = confirmBulkEntriesBtn.textContent;
         confirmBulkEntriesBtn.disabled = true;
         try {
+            // Pre-flight duplicate detection — user confirms per duplicate.
+            const candidates = bulkExtractedEntries.map(e => ({
+                month: e.month,
+                type: e.type || 'expense',
+                amount: e.amount,
+                description: e.description,
+                tags: Array.isArray(e.tags) ? e.tags.slice() : [],
+                isCoupleExpense: !!e.isCoupleExpense
+            }));
+            const skipIndices = await resolveBulkDuplicates(candidates);
+            const toSave = bulkExtractedEntries.filter((_, i) => !skipIndices.has(i));
+            const skippedCount = skipIndices.size;
+
+            if (toSave.length === 0) {
+                bulkUploadModal.style.display = 'none';
+                if (skippedCount > 0) {
+                    alert(t('bulk.dup.skippedSummary', { skipped: skippedCount }));
+                }
+                return;
+            }
+
             // Save each entry sequentially to avoid overwhelming the DB pool
             const savedEntries = [];
-            const total = bulkExtractedEntries.length;
-            for (const entry of bulkExtractedEntries) {
+            const total = toSave.length;
+            for (const entry of toSave) {
                 confirmBulkEntriesBtn.textContent = t('bulk.saving', { current: savedEntries.length + 1, total });
                 const response = await csrfFetch('/api/entries', {
                     method: 'POST',
@@ -1653,7 +1854,11 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
 
             // Close modal and show success message
             bulkUploadModal.style.display = 'none';
-            alert(t('bulk.successAdd', { count: savedEntries.length }));
+            const baseMsg = t('bulk.successAdd', { count: savedEntries.length });
+            const summary = skippedCount > 0
+                ? `${baseMsg}\n${t('bulk.dup.skippedSummary', { skipped: skippedCount })}`
+                : baseMsg;
+            alert(summary);
 
         } catch (error) {
             console.error('Error saving bulk entries:', error);

@@ -392,6 +392,170 @@ async function getEntryByIdAndUser(entryId, userId) {
     return dbRowToEntry(rows[0]);
 }
 
+/**
+ * Find an existing entry that exactly matches the given candidate for
+ * duplicate detection during bulk upload.
+ *
+ * Match criteria (per issue #50):
+ *   - same month (YYYY-MM)
+ *   - same type (income/expense)
+ *   - same amount (compared rounded to 2 decimals using Postgres NUMERIC semantics)
+ *   - same description after normalization: trim + lowercase + collapse runs
+ *     of whitespace (incl. tabs/newlines) into single spaces
+ *
+ * Tags/category are intentionally ignored.
+ *
+ * Scope: searches the candidate user's own entries. If `partnerId` is
+ * provided, also searches the partner's couple-expense entries (since a
+ * couple expense recorded by either partner shows up in shared views, so
+ * re-adding the same line by the other partner would still be a duplicate).
+ *
+ * Returns the first matching entry as a JS object, or `null` if none.
+ */
+function normalizeDescriptionForDuplicateMatch(description) {
+    return String(description).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Convert an incoming amount (string or number) to a string suitable for a
+// Postgres NUMERIC parameter — WITHOUT any JS-side rounding. Strings that
+// look like decimals are passed through verbatim; numbers are serialized
+// directly via String() (which preserves their exact IEEE-754 decimal form,
+// e.g. 0.1+0.2 → "0.30000000000000004"). Postgres parses the result into
+// NUMERIC and the caller is responsible for any rounding semantics in SQL
+// (e.g. `ROUND($::numeric, 2)`), avoiding all JS rounding pitfalls.
+function toAmountParam(amount) {
+    if (amount == null) return null;
+    if (typeof amount === 'string') {
+        const trimmed = amount.trim();
+        if (trimmed === '') return null;
+        // Accept either a plain decimal or the textual form of a JS number;
+        // pass through verbatim so Postgres does the parsing exactly.
+        const n = Number(trimmed);
+        if (!Number.isFinite(n)) return null;
+        return trimmed;
+    }
+    if (typeof amount === 'number' && Number.isFinite(amount)) {
+        return String(amount);
+    }
+    const n = Number(amount);
+    return Number.isFinite(n) ? String(n) : null;
+}
+
+async function findDuplicateEntry(userId, { month, type, amount, description }, partnerId = null) {
+    if (!userId || !month || !type || amount == null || description == null) {
+        return null;
+    }
+    const normalizedDescription = normalizeDescriptionForDuplicateMatch(description);
+    if (!normalizedDescription) return null;
+    const amountParam = toAmountParam(amount);
+    if (amountParam == null) return null;
+
+    // Build user_id filter: either just the user, or the user + partner's couple expenses.
+    // We always allow the candidate user's own entries (any couple flag).
+    // If partnerId given, additionally allow partner's entries flagged is_couple_expense.
+    const params = [userId, month, type, amountParam, normalizedDescription];
+    let userFilter = 'user_id = $1';
+    if (partnerId) {
+        params.push(partnerId);
+        userFilter = '(user_id = $1 OR (user_id = $6 AND is_couple_expense = TRUE))';
+    }
+
+    // entries.amount is stored as NUMERIC(15,2). We round the *candidate*
+    // amount to 2dp in SQL (round-half-away-from-zero, same semantics
+    // Postgres uses when storing into NUMERIC(15,2)), guaranteeing the
+    // comparison matches what `INSERT ... amount $...` would have stored.
+    const sql = `
+        SELECT * FROM entries
+        WHERE ${userFilter}
+          AND month = $2
+          AND type = $3
+          AND amount = ROUND($4::numeric, 2)
+          AND regexp_replace(LOWER(BTRIM(description)), '\\s+', ' ', 'g') = $5
+        ORDER BY id
+        LIMIT 1
+    `;
+    const { rows } = await pool.query(sql, params);
+    return dbRowToEntry(rows[0]);
+}
+
+/**
+ * Batched duplicate lookup for many candidates in a single query.
+ *
+ * `candidates` is an array of objects shaped like:
+ *   { month, type, amount, description, partnerId? }
+ * `partnerId` may be null/undefined to scope that row to the user only,
+ * or a numeric partner id to additionally include the partner's
+ * couple-flagged entries (mirrors findDuplicateEntry's semantics).
+ *
+ * Returns a Map keyed by candidate index → first matching existing entry
+ * (as a JS object via dbRowToEntry). Indices with no match are absent.
+ *
+ * Invalid candidates (missing/bad fields) are silently skipped.
+ */
+async function findBulkDuplicateEntries(userId, candidates) {
+    const result = new Map();
+    if (!userId || !Array.isArray(candidates) || candidates.length === 0) {
+        return result;
+    }
+
+    const indices = [];
+    const months = [];
+    const types = [];
+    const amounts = [];
+    const descriptions = [];
+    const partnerIds = [];
+
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i] || {};
+        if (!c.month || !c.type || c.amount == null || c.description == null) continue;
+        const normalizedDescription = normalizeDescriptionForDuplicateMatch(c.description);
+        if (!normalizedDescription) continue;
+        const amountParam = toAmountParam(c.amount);
+        if (amountParam == null) continue;
+
+        indices.push(i);
+        months.push(c.month);
+        types.push(c.type);
+        amounts.push(amountParam);
+        descriptions.push(normalizedDescription);
+        partnerIds.push(c.partnerId != null ? c.partnerId : null);
+    }
+
+    if (indices.length === 0) return result;
+
+    // Notes on parameter casts:
+    // - $2::int[]    candidate row index (0..N-1, safely fits int)
+    // - $5::numeric[] amount strings — rounded to 2dp in the JOIN below so
+    //                 comparison matches what NUMERIC(15,2) would have stored
+    // - $7::bigint[] partner_id matches users.id BIGINT (avoid int overflow)
+    const sql = `
+        WITH candidates AS (
+            SELECT * FROM unnest(
+                $2::int[], $3::text[], $4::text[], $5::numeric[], $6::text[], $7::bigint[]
+            ) AS c(idx, month, type, amount, ndesc, partner_id)
+        )
+        SELECT DISTINCT ON (c.idx) c.idx AS candidate_index, e.*
+        FROM candidates c
+        JOIN entries e ON
+            (e.user_id = $1
+             OR (c.partner_id IS NOT NULL AND e.user_id = c.partner_id AND e.is_couple_expense = TRUE))
+            AND e.month = c.month
+            AND e.type = c.type
+            AND e.amount = ROUND(c.amount, 2)
+            AND regexp_replace(LOWER(BTRIM(e.description)), '\\s+', ' ', 'g') = c.ndesc
+        ORDER BY c.idx, e.id
+    `;
+    const { rows } = await pool.query(sql, [
+        userId, indices, months, types, amounts, descriptions, partnerIds
+    ]);
+    for (const row of rows) {
+        const idx = row.candidate_index;
+        delete row.candidate_index;
+        result.set(idx, dbRowToEntry(row));
+    }
+    return result;
+}
+
 async function createEntry({ userId, month, type, amount, description, tags, isCoupleExpense }) {
     try {
         const { rows } = await pool.query(
@@ -639,6 +803,8 @@ module.exports = {
     getIndividualEntries,
     getMyShareEntries,
     getEntryByIdAndUser,
+    findDuplicateEntry,
+    findBulkDuplicateEntries,
     createEntry,
     updateEntry,
     deleteEntry,
