@@ -2092,6 +2092,88 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     res.status(201).json(newEntry);
 }));
 
+// Bulk duplicate-detection check used before confirming a bulk upload.
+// Accepts { entries: [...] } and returns { results: [{ index, duplicate: <existing entry or null> }] }.
+// Performs no writes. Match criteria: same month, same type, same amount (rounded
+// to 2dp using Postgres NUMERIC semantics), and same description after normalization
+// (trim + lowercase + collapse internal whitespace runs to single spaces).
+// Tags/category are ignored. Searches the caller's own entries; for couple-flagged
+// candidates it also considers the partner's couple entries.
+app.post('/api/entries/check-duplicates', requireAuth, asyncHandler(async (req, res) => {
+    const { entries } = req.body || {};
+    if (!Array.isArray(entries)) {
+        return res.status(400).json({ message: 'entries must be an array' });
+    }
+    if (entries.length > 500) {
+        return res.status(400).json({ message: 'Too many entries (max 500 per request).' });
+    }
+
+    // Resolve a valid partner once (mirrors GET /api/entries logic).
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+
+    // Validate each candidate up front; only valid ones are looked up in the
+    // batched DB call. Invalid candidates get a null duplicate.
+    const validity = new Array(entries.length).fill(false);
+    const lookupCandidates = new Array(entries.length).fill(null);
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i] || {};
+        const month = typeof e.month === 'string' ? e.month : null;
+        const type = typeof e.type === 'string' ? e.type : null;
+        const description = typeof e.description === 'string' ? e.description : null;
+        // Use parseFloat ONLY for the >0 / finite check; pass the original
+        // (possibly-string) e.amount through to the DB helper unchanged so
+        // toAmountParam can hand the exact decimal text to Postgres without
+        // round-tripping through a JS float (which would lose precision for
+        // values like 1.005 — IEEE-754).
+        const amountForCheck = parseFloat(e.amount);
+
+        if (!month || !MONTH_FORMAT.test(month)
+            || !type || !VALID_ENTRY_TYPES.includes(type)
+            || !description || !description.trim()
+            || !Number.isFinite(amountForCheck) || amountForCheck <= 0) {
+            continue;
+        }
+        // Mirror the 500-char limit enforced by POST /api/entries so a
+        // candidate that would later be rejected on save is also flagged
+        // here. Treat as "invalid candidate" (duplicate=null) so one bad
+        // row never blocks the rest of the batch.
+        if (description.trim().length > 500) {
+            continue;
+        }
+        validity[i] = true;
+        lookupCandidates[i] = {
+            month,
+            type,
+            amount: e.amount,
+            description,
+            partnerId: (e.isCoupleExpense && validPartner) ? validPartner.id : null
+        };
+    }
+
+    // Batched: one query for all valid candidates instead of N awaited queries.
+    const dupMap = await db.findBulkDuplicateEntries(
+        req.user.id,
+        lookupCandidates.map(c => c || {})
+    );
+
+    const results = [];
+    for (let i = 0; i < entries.length; i++) {
+        if (!validity[i]) {
+            results.push({ index: i, duplicate: null });
+            continue;
+        }
+        results.push({ index: i, duplicate: dupMap.get(i) || null });
+    }
+
+    res.json({ results });
+}));
+
 // Update entry - ensure user owns the entry
 app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id);
