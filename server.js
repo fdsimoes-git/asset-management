@@ -348,10 +348,29 @@ async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {})
         copilotSessionCache.delete(cacheKey);
     }
 
-    const response = await fetch(COPILOT_TOKEN_EXCHANGE_URL, {
-        method: 'GET',
-        headers: copilotExchangeHeaders(oauthToken)
-    });
+    // Hard timeout: GitHub's exchange endpoint normally responds in <500ms.
+    // Cap the wait at 15s so a stalled connection can't tie up the request
+    // (and any user-facing Copilot call that needs a refresh) indefinitely.
+    const COPILOT_EXCHANGE_TIMEOUT_MS = 15000;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), COPILOT_EXCHANGE_TIMEOUT_MS);
+    let response;
+    try {
+        response = await fetch(COPILOT_TOKEN_EXCHANGE_URL, {
+            method: 'GET',
+            headers: copilotExchangeHeaders(oauthToken),
+            signal: ac.signal
+        });
+    } catch (e) {
+        if (e && e.name === 'AbortError') {
+            const err = new Error(`Copilot token exchange timed out after ${COPILOT_EXCHANGE_TIMEOUT_MS}ms`);
+            err.status = 504;
+            throw err;
+        }
+        throw e;
+    } finally {
+        clearTimeout(timer);
+    }
     if (!response.ok) {
         const body = await response.text().catch(() => '');
         const err = new Error(`Copilot token exchange failed (${response.status}): ${body.slice(0, 200)}`);
@@ -1335,11 +1354,18 @@ app.post('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) =
 app.delete('/api/user/anthropic-key', requireAuth, asyncHandler(async (req, res) => {
     await db.updateUser(req.user.id, { anthropicApiKey: null, updatedAt: new Date().toISOString() });
 
-    const updatedUser = await db.findUserById(req.user.id);
+    // Compute the post-delete availability locally — no extra DB round-trip.
+    // Mirror the field-presence checks used in /api/user so the helpers
+    // never need to decrypt credentials just to compute a boolean.
+    const hasClaudeOauthToken = !!(
+        req.user.claudeOauthToken &&
+        req.user.claudeOauthToken.iv &&
+        req.user.claudeOauthToken.encryptedData
+    );
     res.json({
         message: 'Anthropic API key removed.',
         hasAnthropicApiKey: false,
-        hasAnthropicKeyAvailable: hasAnthropicCredentials(updatedUser)
+        hasAnthropicKeyAvailable: hasClaudeOauthToken || !!config.anthropicApiKey || !!config.claudeOauthToken
     });
 }));
 
@@ -1388,11 +1414,17 @@ app.post('/api/user/claude-oauth-token', requireAuth, asyncHandler(async (req, r
 app.delete('/api/user/claude-oauth-token', requireAuth, asyncHandler(async (req, res) => {
     await db.updateUser(req.user.id, { claudeOauthToken: null, updatedAt: new Date().toISOString() });
 
-    const updatedUser = await db.findUserById(req.user.id);
+    // Compute availability locally — treat claudeOauthToken as null after the
+    // update — instead of re-querying the user just to derive a boolean.
+    const hasAnthropicApiKey = !!(
+        req.user.anthropicApiKey &&
+        req.user.anthropicApiKey.iv &&
+        req.user.anthropicApiKey.encryptedData
+    );
     res.json({
         message: 'Claude Code OAuth token removed.',
         hasClaudeOauthToken: false,
-        hasAnthropicKeyAvailable: hasAnthropicCredentials(updatedUser)
+        hasAnthropicKeyAvailable: hasAnthropicApiKey || !!config.anthropicApiKey || !!config.claudeOauthToken
     });
 }));
 
@@ -1461,11 +1493,12 @@ app.delete('/api/user/github-copilot-token', requireAuth, asyncHandler(async (re
 
     await db.updateUser(req.user.id, { githubCopilotToken: null, updatedAt: new Date().toISOString() });
 
-    const updatedUser = await db.findUserById(req.user.id);
+    // After the update, the only remaining source for a Copilot credential is
+    // the env fallback — derive locally instead of round-tripping to the DB.
     res.json({
         message: 'GitHub Copilot OAuth token removed.',
         hasGithubCopilotToken: false,
-        hasCopilotKeyAvailable: hasCopilotCredentials(updatedUser)
+        hasCopilotKeyAvailable: !!config.githubCopilotToken
     });
 }));
 
