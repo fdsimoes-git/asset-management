@@ -147,7 +147,7 @@ function resolveProvider(user) {
 /**
  * Resolve AI model: user preference → hardcoded default.
  * @param {object} user - user object
- * @param {'openai'|'gemini'|'anthropic'} provider
+ * @param {'openai'|'gemini'|'anthropic'|'copilot'} provider
  * @param {'chat'|'pdf'} usage
  */
 function modelMatchesProvider(model, provider) {
@@ -399,8 +399,11 @@ async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {})
         expiresAt = nowSec + 25 * 60; // conservative 25 min fallback
     }
 
-    // Cap cache size at 200 entries to avoid unbounded growth.
-    if (copilotSessionCache.size >= 200) {
+    // Cap cache size at 200 entries to avoid unbounded growth. Only evict
+    // when adding a new key — refreshes of an existing cacheKey overwrite
+    // in place and don't grow the map, so they shouldn't displace another
+    // user's cached session token.
+    if (!copilotSessionCache.has(cacheKey) && copilotSessionCache.size >= 200) {
         const oldestKey = copilotSessionCache.keys().next().value;
         copilotSessionCache.delete(oldestKey);
     }

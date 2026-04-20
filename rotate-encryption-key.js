@@ -7,7 +7,8 @@
  * re-encrypts with a freshly generated key, and updates each row in a transaction.
  *
  * Encrypted user fields: email, gemini_api_key, openai_api_key,
- *                        anthropic_api_key, totp_secret
+ *                        anthropic_api_key, claude_oauth_token,
+ *                        github_copilot_token, totp_secret
  *
  * Usage:
  *   sudo systemctl stop asset-management
@@ -68,6 +69,8 @@ const ENCRYPTED_COLUMNS = [
     'gemini_api_key',
     'openai_api_key',
     'anthropic_api_key',
+    'claude_oauth_token',
+    'github_copilot_token',
     'totp_secret'
 ];
 

@@ -160,7 +160,7 @@ const translations = {
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Please select a PDF file.',
     'bulk.alertTooLarge': 'File is too large. Maximum size is 10MB.',
-    'bulk.alertEnterKey': 'No API key configured for the selected AI provider. Please add one in Settings.',
+    'bulk.alertEnterKey': 'No AI credentials configured for the selected provider. Please add them in Settings.',
     'bulk.alertValidMonth': 'Please enter a valid month in YYYY-MM format',
     'bulk.alertValidAmount': 'Please enter a valid positive amount',
     'bulk.alertEnterDesc': 'Please enter a description',
@@ -667,7 +667,7 @@ const translations = {
     // ── Bulk upload alerts ──
     'bulk.alertSelectPdf': 'Por favor, selecione um arquivo PDF.',
     'bulk.alertTooLarge': 'Arquivo muito grande. Tamanho máximo é 10MB.',
-    'bulk.alertEnterKey': 'Nenhuma chave API configurada para o provedor de IA selecionado. Adicione uma em Ajustes.',
+    'bulk.alertEnterKey': 'Nenhuma credencial de IA configurada para o provedor selecionado. Adicione em Ajustes.',
     'bulk.alertValidMonth': 'Por favor, insira um mês válido no formato AAAA-MM',
     'bulk.alertValidAmount': 'Por favor, insira um valor positivo válido',
     'bulk.alertEnterDesc': 'Por favor, insira uma descrição',
