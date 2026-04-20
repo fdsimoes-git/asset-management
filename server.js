@@ -454,6 +454,30 @@ async function copilotCallWithRetry(user, fn) {
     }
 }
 
+/**
+ * Build a Copilot invoker that creates the OpenAI-compatible client once and
+ * reuses it across many calls (e.g., the chat tool-calling loop), forcing a
+ * one-time refresh + retry on a 401.  Avoids re-decrypting the OAuth token and
+ * re-instantiating the client on every iteration of a multi-turn conversation.
+ */
+function makeCopilotInvoker(user) {
+    let clientPromise = createCopilotClient(user).then(r => r.client);
+    return async function invoke(fn) {
+        let client = await clientPromise;
+        try {
+            return await fn(client);
+        } catch (err) {
+            const status = err.status || err.statusCode || (err.response && err.response.status);
+            if (status === 401) {
+                clientPromise = createCopilotClient(user, { forceRefresh: true }).then(r => r.client);
+                client = await clientPromise;
+                return await fn(client);
+            }
+            throw err;
+        }
+    };
+}
+
 /** Fetch the Copilot-served model list (OpenAI-compatible /models response). */
 async function listCopilotModels(user) {
     return copilotCallWithRetry(user, async (client) => {
@@ -3484,8 +3508,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             copilotMessages.push({ role: 'user', content: message });
 
             let currentMessages = copilotMessages;
+            const invokeCopilot = makeCopilotInvoker(req.user);
             for (let i = 0; i < maxIterations; i++) {
-                const response = await copilotCallWithRetry(req.user, (client) =>
+                const response = await invokeCopilot((client) =>
                     client.chat.completions.create({
                         model: resolveModel(req.user, 'copilot', 'chat'),
                         messages: currentMessages,
@@ -4074,7 +4099,13 @@ ${text}`;
         console.log('PDF processing complete, extracted', entries.length, 'entries');
         res.json(entries);
     } catch (error) {
-        console.error('Error processing PDF with AI:', error);
+        // Log only sanitized fields — the raw `error` object from the AI SDKs
+        // can include request config/headers (Authorization bearer tokens,
+        // Copilot session tokens) that must not be persisted to logs.
+        console.error('Error processing PDF with AI:',
+            'message=', error.message,
+            'status=', error.status || error.statusCode || 'n/a',
+            'code=', error.code || 'n/a');
 
         // Provide more specific error messages with appropriate status codes
         let errorMessage = 'Failed to process PDF with AI. Please check your API key and try again.';
