@@ -4083,7 +4083,13 @@ ${text}`;
             : provider === 'anthropic' ? 'Anthropic'
             : provider === 'copilot' ? 'GitHub Copilot'
             : 'Gemini';
-        if (error.message?.includes('API key') || error.status === 401 || error.status === 403) {
+        if (error.code === 'no_copilot_token') {
+            // hasCopilotCredentials() is a presence check, so we can reach here
+            // when the stored Copilot token isn't decryptable and no env fallback
+            // is configured. Surface the same "no credentials" UX as the preflight.
+            errorMessage = 'No GitHub Copilot OAuth token available. Please add one in Settings.';
+            statusCode = 400;
+        } else if (error.message?.includes('API key') || error.status === 401 || error.status === 403) {
             const credLabel = (provider === 'copilot') ? 'GitHub Copilot token'
                 : (provider === 'anthropic') ? 'Anthropic credentials'
                 : `${providerName} API key`;
