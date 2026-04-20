@@ -3678,7 +3678,15 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
-        if (error.message?.includes('API key') || error.message?.includes('authentication') || error.status === 401) {
+        // Surface the Copilot-specific "no token decryptable + no env fallback"
+        // case as the same no_api_key UX the providers use up front.
+        if (error.code === 'no_copilot_token') {
+            return res.status(400).json({ error: 'no_api_key' });
+        }
+        // Treat 401 and 403 as auth failures: some providers (incl. the Copilot
+        // token-exchange endpoint) return 403 for unauthorized tokens/keys.
+        if (error.message?.includes('API key') || error.message?.includes('authentication')
+            || error.status === 401 || error.status === 403) {
             return res.status(400).json({ error: 'invalid_api_key' });
         }
         if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
