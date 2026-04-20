@@ -115,10 +115,15 @@ const COPILOT_CHAT_MODEL = 'gpt-4.1';   // AI chat advisor (can be changed indep
 const modelListCache = new Map(); // "provider:keyHash" → { models, timestamp }
 const MODEL_LIST_CACHE_MAX = 50;
 
-// Apply cap/eviction policy before writing a new entry: drop expired entries,
-// then drop oldest until we're under the cap. Centralized so all branches of
+// Apply cap/eviction policy before writing a new entry under `pendingKey`:
+// drop expired entries, then drop oldest until we're under the cap. When
+// `pendingKey` is already in the cache, the upcoming `set()` is an update
+// (size stays the same) so eviction is a no-op — without this guard we'd
+// otherwise evict an unrelated entry. Centralized so all branches of
 // /api/ai/models stay within the intended bound.
-function evictModelListCacheIfNeeded() {
+function evictModelListCacheIfNeeded(pendingKey) {
+    // Update of an existing key — size won't grow, nothing to evict.
+    if (pendingKey !== undefined && modelListCache.has(pendingKey)) return;
     if (modelListCache.size < MODEL_LIST_CACHE_MAX) return;
     const now = Date.now();
     for (const [k, v] of modelListCache) {
@@ -1545,7 +1550,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
                 models.push({ id: model.id, name: displayName });
             }
             models.sort((a, b) => a.name.localeCompare(b.name));
-            evictModelListCacheIfNeeded();
+            evictModelListCacheIfNeeded(cacheKey);
             modelListCache.set(cacheKey, { models, timestamp: Date.now() });
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
@@ -1579,7 +1584,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
         try {
             const models = await listCopilotModels(req.user);
             models.sort((a, b) => a.name.localeCompare(b.name));
-            evictModelListCacheIfNeeded();
+            evictModelListCacheIfNeeded(cacheKey);
             modelListCache.set(cacheKey, { models, timestamp: Date.now() });
             const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
             return res.json({ provider, models, selectedModel });
@@ -1670,7 +1675,7 @@ app.get('/api/ai/models', requireAuth, aiModelsLimiter, asyncHandler(async (req,
 
         models.sort((a, b) => a.name.localeCompare(b.name));
 
-        evictModelListCacheIfNeeded();
+        evictModelListCacheIfNeeded(cacheKey);
 
         modelListCache.set(cacheKey, { models, timestamp: Date.now() });
         const selectedModel = (req.user.aiModel && modelMatchesProvider(req.user.aiModel, provider)) ? req.user.aiModel : null;
