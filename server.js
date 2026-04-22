@@ -3060,16 +3060,30 @@ if (typeof webSearchDailyCleanupInterval.unref === 'function') {
 // Citation `title` and `url` originate from live web pages and are
 // attacker-controlled. They are concatenated into the reply, which the
 // chat client renders through its markdown parser. We sanitize titles
-// (strip newlines, escape markdown metacharacters, length-cap) and
-// validate URLs (only http/https schemes, strip whitespace, length-cap)
-// before embedding them so a hostile page title cannot inject headings,
-// tables, or arbitrary formatting into the chat UI.
+// (strip newlines, replace markdown metacharacters with visually
+// similar plain-text lookalikes, length-cap) and validate URLs (only
+// http/https schemes, strip whitespace, length-cap) before embedding
+// them so a hostile page title cannot inject headings, tables, italic,
+// bold, or other formatting into the chat UI.
+//
+// Note: backslash-escaping is NOT used here because the chat client's
+// `parseMarkdown()` does not honour backslash escapes for inline
+// formatting — a `\*foo\*` title would still be parsed as italics. The
+// only reliable mitigation that survives that parser is to ensure the
+// raw metacharacters never reach the rendered text.
+const _CITATION_TITLE_REPLACEMENTS = {
+    '\\': '＼', '`': '｀', '*': '＊', '_': '＿',
+    '{': '｛', '}': '｝', '[': '［', ']': '］',
+    '(': '（', ')': '）', '#': '＃', '+': '＋',
+    '-': '－', '!': '！', '|': '｜', '>': '＞',
+    '<': '＜', '~': '～'
+};
 function _sanitizeCitationTitle(raw) {
     let s = String(raw || '');
     // Collapse newlines/control chars to spaces — prevents heading/table injection.
     s = s.replace(/[\r\n\t\u0000-\u001F\u007F]+/g, ' ');
-    // Escape markdown metacharacters that the chat parser interprets.
-    s = s.replace(/([\\`*_{}\[\]()#+\-!|>~])/g, '\\$1');
+    // Replace markdown metacharacters with full-width Unicode lookalikes.
+    s = s.replace(/[\\`*_{}\[\]()#+\-!|<>~]/g, (ch) => _CITATION_TITLE_REPLACEMENTS[ch] || ch);
     // Length cap.
     if (s.length > 200) s = s.slice(0, 200) + '…';
     return s.trim();
