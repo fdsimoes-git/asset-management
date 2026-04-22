@@ -298,6 +298,20 @@
                 renderToolsUsedPanel(data.toolsUsed);
             }
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
+            if (data.webSearchUnavailable) {
+                const reason = data.webSearchUnavailable.reason;
+                let hint;
+                if (reason === 'provider') {
+                    hint = t('chat.webSearchUnavailableProvider', { provider: data.webSearchUnavailable.activeProvider || '' });
+                } else if (reason === 'daily_cap') {
+                    hint = t('chat.webSearchUnavailableDailyCap', { cap: data.webSearchUnavailable.cap || 30 });
+                } else if (reason === 'not_supported') {
+                    hint = t('chat.webSearchUnavailableNotSupported');
+                } else {
+                    hint = t('chat.webSearchUnavailableGeneric');
+                }
+                appendMessage('assistant', `_${hint}_`);
+            }
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
             }

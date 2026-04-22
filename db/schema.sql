@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     backup_codes      TEXT[] NOT NULL DEFAULT '{}',
     ai_provider       TEXT,
     ai_model          TEXT,
+    web_search_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     partner_id        BIGINT REFERENCES users(id) ON DELETE SET NULL,
     partner_linked_at TIMESTAMPTZ,
     is_active         BOOLEAN NOT NULL DEFAULT TRUE,
@@ -76,5 +77,8 @@ CREATE INDEX IF NOT EXISTS idx_users_partner_id        ON users(partner_id);
 CREATE INDEX IF NOT EXISTS idx_entries_is_couple_expense ON entries(is_couple_expense);
 CREATE INDEX IF NOT EXISTS idx_entries_user_couple_month ON entries(user_id, is_couple_expense, month);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_used_by    ON invite_codes(used_by);
+
+-- ── Idempotent column additions for existing deployments ─────────────
+ALTER TABLE users ADD COLUMN IF NOT EXISTS web_search_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
 COMMIT;
