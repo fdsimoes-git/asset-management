@@ -257,6 +257,31 @@ function createAnthropicClient({ authToken, apiKey }) {
     return new Anthropic({ apiKey });
 }
 
+/**
+ * Build the `system` parameter for an Anthropic messages.create() call.
+ *
+ * When using a Claude Code OAuth token (anthropic-beta: oauth-2025-04-20),
+ * Anthropic requires the first system block to identify the request as
+ * coming from Claude Code. Without this, non-Haiku models (Sonnet, Opus)
+ * reject the call — often surfacing as a misleading "credit balance" /
+ * "quota exceeded" error rather than a proper auth failure. Haiku 4.5 is
+ * more permissive and still answers, which is why it appeared to be the
+ * only working model. See:
+ *   https://github.com/openclaw/openclaw/blob/main/src/agents/anthropic-transport-stream.ts
+ *
+ * For API-key auth this prefix is unnecessary — return the prompt as a
+ * plain string to keep the wire format identical to before.
+ */
+function buildAnthropicSystemPrompt({ authToken }, systemPrompt) {
+    if (authToken) {
+        return [
+            { type: 'text', text: "You are Claude Code, Anthropic's official CLI for Claude." },
+            ...(systemPrompt ? [{ type: 'text', text: systemPrompt }] : [])
+        ];
+    }
+    return systemPrompt;
+}
+
 // ── GitHub Copilot client ───────────────────────────────────────────
 //
 // GitHub Copilot exposes an OpenAI-compatible chat completions API at
@@ -3581,11 +3606,12 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             }
 
             let currentMessages = anthropicMessages;
+            const anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
             for (let i = 0; i < maxIterations; i++) {
                 const response = await anthropicClient.messages.create({
                     model: resolveModel(req.user, 'anthropic', 'chat'),
                     max_tokens: 4096,
-                    system: chatSystemPrompt,
+                    system: anthropicSystem,
                     messages: currentMessages,
                     tools: anthropicToolDeclarations,
                     temperature: 0.7
@@ -3935,7 +3961,8 @@ ${text}`;
                 const response = await anthropicClient.messages.create({
                     model: resolveModel(req.user, 'anthropic', 'pdf'),
                     max_tokens: 4096,
-                    system: 'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.',
+                    system: buildAnthropicSystemPrompt(anthropicAuth,
+                        'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.'),
                     messages: [{ role: 'user', content: prompt }],
                     temperature: 0.2
                 });
