@@ -4201,7 +4201,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     }
                     toolsUsed.push({
                         name: 'web_search',
-                        args: queries.length > 0 ? { queries } : {},
+                        args: queries.length > 0 ? sanitizeToolArgs({ queries }) : {},
                         status: 'success',
                         searchCount: searchesUsed
                     });
