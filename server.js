@@ -3009,9 +3009,17 @@ function filterByDateRange(userEntries, startMonth, endMonth) {
 //   'couple'   → only entries flagged as shared with the partner
 //   'personal' → only entries NOT flagged as couple
 //   anything else (incl. undefined / 'all') → no filter
+// Normalizes any incoming coupleFilter value to one of {'all','couple','personal'}.
+// undefined / null / unknown strings (e.g. model hallucinations like 'shared') all
+// collapse to 'all', so the response metadata always matches the data returned.
+function normalizeCoupleFilter(coupleFilter) {
+    return (coupleFilter === 'couple' || coupleFilter === 'personal') ? coupleFilter : 'all';
+}
+
 function filterByCouple(userEntries, coupleFilter) {
-    if (coupleFilter === 'couple')   return userEntries.filter(e => !!e.isCoupleExpense);
-    if (coupleFilter === 'personal') return userEntries.filter(e => !e.isCoupleExpense);
+    const f = normalizeCoupleFilter(coupleFilter);
+    if (f === 'couple')   return userEntries.filter(e => !!e.isCoupleExpense);
+    if (f === 'personal') return userEntries.filter(e => !e.isCoupleExpense);
     return userEntries;
 }
 
@@ -3043,7 +3051,7 @@ async function toolGetFinancialSummary(userId, args) {
             from: args.startMonth || 'all time',
             to: args.endMonth || 'all time'
         },
-        coupleFilter: args.coupleFilter || 'all'
+        coupleFilter: normalizeCoupleFilter(args.coupleFilter)
     };
 }
 
