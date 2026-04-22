@@ -2705,68 +2705,73 @@ app.get('/', (req, res) => {
 const chatToolDeclarations = [
     {
         name: 'getFinancialSummary',
-        description: 'Get total income, total expenses, net balance, and savings rate for the user, optionally filtered by date range.',
+        description: 'Get total income, total expenses, net balance, savings rate, and a couple-vs-personal breakdown for the user, optionally filtered by date range and/or by the isCoupleExpense flag.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 startMonth: { type: Type.STRING, description: 'Start month in YYYY-MM format (inclusive). Omit for all time.' },
-                endMonth: { type: Type.STRING, description: 'End month in YYYY-MM format (inclusive). Omit for all time.' }
+                endMonth: { type: Type.STRING, description: 'End month in YYYY-MM format (inclusive). Omit for all time.' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to entries flagged as couple/shared (couple), entries NOT flagged (personal), or all entries (default).' }
             }
         }
     },
     {
         name: 'getCategoryBreakdown',
-        description: 'Get spending or income broken down by category tag, with totals and percentages.',
+        description: 'Get spending or income broken down by category tag, with totals and percentages. Can be restricted to couple/personal entries via coupleFilter.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
-                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
             }
         }
     },
     {
         name: 'getMonthlyTrends',
-        description: 'Get month-by-month income, expenses, and net amounts, plus averages.',
+        description: 'Get month-by-month income, expenses, and net amounts, plus averages. Can be restricted to couple/personal entries via coupleFilter.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
-                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
             }
         }
     },
     {
         name: 'getTopExpenses',
-        description: 'Get the largest expense entries, optionally filtered by category or date range.',
+        description: 'Get the largest expense entries (each result includes id, description, amount, month, category, full tags array, and isCoupleExpense flag), optionally filtered by category, date range, or couple/personal flag.',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 limit: { type: Type.NUMBER, description: 'Number of top entries to return. Default 10.' },
                 category: { type: Type.STRING, description: 'Filter by category tag (e.g. "food", "transport").' },
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
-                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' }
+                endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
             }
         }
     },
     {
         name: 'comparePeriods',
-        description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes.',
+        description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes. Can be restricted to couple/personal entries via coupleFilter (applied to both periods).',
         parameters: {
             type: Type.OBJECT,
             properties: {
                 period1Start: { type: Type.STRING, description: 'First period start month YYYY-MM.' },
                 period1End: { type: Type.STRING, description: 'First period end month YYYY-MM.' },
                 period2Start: { type: Type.STRING, description: 'Second period start month YYYY-MM.' },
-                period2End: { type: Type.STRING, description: 'Second period end month YYYY-MM.' }
+                period2End: { type: Type.STRING, description: 'Second period end month YYYY-MM.' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default). Applied to both periods.' }
             },
             required: ['period1Start', 'period1End', 'period2Start', 'period2End']
         }
     },
     {
         name: 'searchEntries',
-        description: 'Search the user\'s financial entries by keyword in description or by category tag.',
+        description: 'Search the user\'s financial entries by keyword in description, category tag, type, date range, or couple/personal flag. Each result includes id, description, amount, type, month, category, full tags array, and isCoupleExpense flag.',
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -2775,6 +2780,7 @@ const chatToolDeclarations = [
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
                 startMonth: { type: Type.STRING, description: 'Start month YYYY-MM (inclusive).' },
                 endMonth: { type: Type.STRING, description: 'End month YYYY-MM (inclusive).' },
+                coupleFilter: { type: Type.STRING, enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' },
                 limit: { type: Type.NUMBER, description: 'Max results to return. Default 20.' }
             }
         }
@@ -2815,12 +2821,13 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'getFinancialSummary',
-            description: 'Get total income, total expenses, net balance, and savings rate for the user, optionally filtered by date range.',
+            description: 'Get total income, total expenses, net balance, savings rate, and a couple-vs-personal breakdown for the user, optionally filtered by date range and/or by the isCoupleExpense flag.',
             parameters: {
                 type: 'object',
                 properties: {
                     startMonth: { type: 'string', description: 'Start month in YYYY-MM format (inclusive). Omit for all time.' },
-                    endMonth: { type: 'string', description: 'End month in YYYY-MM format (inclusive). Omit for all time.' }
+                    endMonth: { type: 'string', description: 'End month in YYYY-MM format (inclusive). Omit for all time.' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to entries flagged as couple/shared (couple), entries NOT flagged (personal), or all entries (default).' }
                 }
             }
         }
@@ -2829,13 +2836,14 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'getCategoryBreakdown',
-            description: 'Get spending or income broken down by category tag, with totals and percentages.',
+            description: 'Get spending or income broken down by category tag, with totals and percentages. Can be restricted to couple/personal entries via coupleFilter.',
             parameters: {
                 type: 'object',
                 properties: {
                     type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense". Defaults to "expense".' },
                     startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
-                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
                 }
             }
         }
@@ -2844,12 +2852,13 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'getMonthlyTrends',
-            description: 'Get month-by-month income, expenses, and net amounts, plus averages.',
+            description: 'Get month-by-month income, expenses, and net amounts, plus averages. Can be restricted to couple/personal entries via coupleFilter.',
             parameters: {
                 type: 'object',
                 properties: {
                     startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
-                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
                 }
             }
         }
@@ -2858,14 +2867,15 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'getTopExpenses',
-            description: 'Get the largest expense entries, optionally filtered by category or date range.',
+            description: 'Get the largest expense entries (each result includes id, description, amount, month, category, full tags array, and isCoupleExpense flag), optionally filtered by category, date range, or couple/personal flag.',
             parameters: {
                 type: 'object',
                 properties: {
                     limit: { type: 'number', description: 'Number of top entries to return. Default 10.' },
                     category: { type: 'string', description: 'Filter by category tag (e.g. "food", "transport").' },
                     startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
-                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' }
+                    endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' }
                 }
             }
         }
@@ -2874,14 +2884,15 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'comparePeriods',
-            description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes.',
+            description: 'Compare two time periods side by side: total income, expenses, net, and percentage changes. Can be restricted to couple/personal entries via coupleFilter (applied to both periods).',
             parameters: {
                 type: 'object',
                 properties: {
                     period1Start: { type: 'string', description: 'First period start month YYYY-MM.' },
                     period1End: { type: 'string', description: 'First period end month YYYY-MM.' },
                     period2Start: { type: 'string', description: 'Second period start month YYYY-MM.' },
-                    period2End: { type: 'string', description: 'Second period end month YYYY-MM.' }
+                    period2End: { type: 'string', description: 'Second period end month YYYY-MM.' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default). Applied to both periods.' }
                 },
                 required: ['period1Start', 'period1End', 'period2Start', 'period2End']
             }
@@ -2891,7 +2902,7 @@ const openaiToolDeclarations = [
         type: 'function',
         function: {
             name: 'searchEntries',
-            description: 'Search the user\'s financial entries by keyword in description or by category tag.',
+            description: 'Search the user\'s financial entries by keyword in description, category tag, type, date range, or couple/personal flag. Each result includes id, description, amount, type, month, category, full tags array, and isCoupleExpense flag.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -2900,6 +2911,7 @@ const openaiToolDeclarations = [
                     type: { type: 'string', enum: ['income', 'expense'], description: 'Filter by "income" or "expense".' },
                     startMonth: { type: 'string', description: 'Start month YYYY-MM (inclusive).' },
                     endMonth: { type: 'string', description: 'End month YYYY-MM (inclusive).' },
+                    coupleFilter: { type: 'string', enum: ['all', 'couple', 'personal'], description: 'Restrict to couple/shared entries, personal-only entries, or all (default).' },
                     limit: { type: 'number', description: 'Max results to return. Default 20.' }
                 }
             }
@@ -2982,7 +2994,8 @@ RULES:
 - If the user asks about something unrelated to finances, politely redirect them.
 - When the user asks to edit entries, ALWAYS use searchEntries first to find the correct entries. Then call editEntry for each entry with the proposed changes. You can call editEntry multiple times in a single turn for bulk edits. The system will automatically show confirmation cards to the user — do NOT ask them to confirm in chat. Simply describe the changes you are proposing.
 - After proposing edits, briefly describe what you proposed. The user will confirm or cancel each edit via buttons in the UI.
-- If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.`;
+- If the user wants to undo a recent edit, use undoLastEdit with the entry ID. Only the most recent edit per entry can be undone.
+- Each entry has an "isCoupleExpense" boolean flag indicating whether it is shared with a partner. All read tools (searchEntries, getTopExpenses, getFinancialSummary, getCategoryBreakdown, getMonthlyTrends, comparePeriods) accept an optional coupleFilter argument ('all' | 'couple' | 'personal') to restrict results, and per-entry results from searchEntries / getTopExpenses include the isCoupleExpense flag and the full tags array. Use these when the user asks about "couple", "shared", "joint", "our", or "personal", "my own", "individual" expenses.`;
 
 function filterByDateRange(userEntries, startMonth, endMonth) {
     return userEntries.filter(e => {
@@ -2992,12 +3005,33 @@ function filterByDateRange(userEntries, startMonth, endMonth) {
     });
 }
 
+// Filter by the per-entry isCoupleExpense flag.
+//   'couple'   → only entries flagged as shared with the partner
+//   'personal' → only entries NOT flagged as couple
+//   anything else (incl. undefined / 'all') → no filter
+// Normalizes any incoming coupleFilter value to one of {'all','couple','personal'}.
+// undefined / null / unknown strings (e.g. model hallucinations like 'shared') all
+// collapse to 'all', so the response metadata always matches the data returned.
+function normalizeCoupleFilter(coupleFilter) {
+    return (coupleFilter === 'couple' || coupleFilter === 'personal') ? coupleFilter : 'all';
+}
+
+function filterByCouple(userEntries, coupleFilter) {
+    const f = normalizeCoupleFilter(coupleFilter);
+    if (f === 'couple')   return userEntries.filter(e => !!e.isCoupleExpense);
+    if (f === 'personal') return userEntries.filter(e => !e.isCoupleExpense);
+    return userEntries;
+}
+
 async function toolGetFinancialSummary(userId, args) {
     let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+    userEntries = filterByCouple(userEntries, args.coupleFilter);
 
     const totalIncome = userEntries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
     const totalExpenses = userEntries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    const coupleIncome = userEntries.filter(e => e.type === 'income' && e.isCoupleExpense).reduce((s, e) => s + e.amount, 0);
+    const coupleExpenses = userEntries.filter(e => e.type === 'expense' && e.isCoupleExpense).reduce((s, e) => s + e.amount, 0);
     const balance = totalIncome - totalExpenses;
     const savingsRate = totalIncome > 0 ? ((balance / totalIncome) * 100).toFixed(1) : 0;
 
@@ -3007,10 +3041,17 @@ async function toolGetFinancialSummary(userId, args) {
         balance: balance.toFixed(2),
         savingsRate: `${savingsRate}%`,
         entryCount: userEntries.length,
+        coupleBreakdown: {
+            coupleIncome: coupleIncome.toFixed(2),
+            coupleExpenses: coupleExpenses.toFixed(2),
+            personalIncome: (totalIncome - coupleIncome).toFixed(2),
+            personalExpenses: (totalExpenses - coupleExpenses).toFixed(2)
+        },
         period: {
             from: args.startMonth || 'all time',
             to: args.endMonth || 'all time'
-        }
+        },
+        coupleFilter: normalizeCoupleFilter(args.coupleFilter)
     };
 }
 
@@ -3019,6 +3060,7 @@ async function toolGetCategoryBreakdown(userId, args) {
     let userEntries = await db.getEntriesByUser(userId);
     userEntries = userEntries.filter(e => e.type === type);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+    userEntries = filterByCouple(userEntries, args.coupleFilter);
 
     const total = userEntries.reduce((s, e) => s + e.amount, 0);
     const byCategory = {};
@@ -3042,6 +3084,7 @@ async function toolGetCategoryBreakdown(userId, args) {
 async function toolGetMonthlyTrends(userId, args) {
     let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+    userEntries = filterByCouple(userEntries, args.coupleFilter);
 
     const byMonth = {};
     userEntries.forEach(e => {
@@ -3076,6 +3119,7 @@ async function toolGetTopExpenses(userId, args) {
     let userEntries = await db.getEntriesByUser(userId);
     userEntries = userEntries.filter(e => e.type === 'expense');
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+    userEntries = filterByCouple(userEntries, args.coupleFilter);
 
     if (args.category) {
         const catQuery = String(args.category).toLowerCase().trim();
@@ -3095,7 +3139,9 @@ async function toolGetTopExpenses(userId, args) {
             description: e.description,
             amount: e.amount.toFixed(2),
             month: e.month,
-            category: (e.tags && e.tags[0]) || 'uncategorized'
+            category: (e.tags && e.tags[0]) || 'uncategorized',
+            tags: Array.isArray(e.tags) ? e.tags : [],
+            isCoupleExpense: !!e.isCoupleExpense
         })),
         count: sorted.length
     };
@@ -3103,8 +3149,9 @@ async function toolGetTopExpenses(userId, args) {
 
 async function toolComparePeriods(userId, args) {
     const allEntries = await db.getEntriesByUser(userId);
+    const filteredAll = filterByCouple(allEntries, args.coupleFilter);
     const get = (start, end) => {
-        const ue = filterByDateRange(allEntries, start, end);
+        const ue = filterByDateRange(filteredAll, start, end);
         const income = ue.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
         const expenses = ue.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
         return { income, expenses, net: income - expenses, entryCount: ue.length };
@@ -3138,6 +3185,7 @@ async function toolComparePeriods(userId, args) {
 async function toolSearchEntries(userId, args) {
     let userEntries = await db.getEntriesByUser(userId);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
+    userEntries = filterByCouple(userEntries, args.coupleFilter);
 
     if (args.type) userEntries = userEntries.filter(e => e.type === args.type);
     if (args.category) {
@@ -3165,7 +3213,9 @@ async function toolSearchEntries(userId, args) {
             amount: e.amount.toFixed(2),
             type: e.type,
             month: e.month,
-            category: (e.tags && e.tags[0]) || 'uncategorized'
+            category: (e.tags && e.tags[0]) || 'uncategorized',
+            tags: Array.isArray(e.tags) ? e.tags : [],
+            isCoupleExpense: !!e.isCoupleExpense
         })),
         totalMatches: userEntries.length,
         showing: results.length
