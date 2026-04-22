@@ -4143,12 +4143,16 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             // retry once without the web_search tool if Anthropic rejects it
             // for capability reasons (org disabled, OAuth not permitted,
             // model unsupported, etc).
+            // 8192 (up from 4096) lets the model emit a meaningfully
+            // larger number of editEntry tool calls in a single turn,
+            // so chat-driven bulk edits don't get truncated mid-list.
+            // Some user-selectable Claude models cap output below 8192
+            // and reject the request — we transparently fall back to
+            // 4096 in the catch block below.
+            let chatMaxTokens = 8192;
             const callAnthropic = async () => anthropicClient.messages.create({
                 model: resolveModel(req.user, 'anthropic', 'chat'),
-                // 8192 (up from 4096) lets the model emit a meaningfully
-                // larger number of editEntry tool calls in a single turn,
-                // so chat-driven bulk edits don't get truncated mid-list.
-                max_tokens: 8192,
+                max_tokens: chatMaxTokens,
                 system: anthropicSystem,
                 messages: currentMessages,
                 tools: currentTools,
@@ -4177,6 +4181,17 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         // Rebuild system prompt to drop the web-search instructions
                         // so the model's instructions match the provided tools.
                         anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
+                        response = await callAnthropic();
+                    } else if (chatMaxTokens > 4096 && (
+                        msg.includes('max_tokens') || msg.includes('output token') ||
+                        msg.includes('output tokens') || msg.includes('exceed') ||
+                        msg.includes('too large') || msg.includes('maximum')
+                    )) {
+                        // Some Claude models cap output below 8192 and reject the
+                        // request. Transparently retry once at 4096 (the prior
+                        // proven cap) for the remainder of this chat turn.
+                        console.warn('Anthropic rejected max_tokens=' + chatMaxTokens + ', retrying at 4096:', err.message);
+                        chatMaxTokens = 4096;
                         response = await callAnthropic();
                     } else {
                         throw err;

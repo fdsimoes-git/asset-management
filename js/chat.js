@@ -404,6 +404,8 @@
                 progressEl = document.createElement('div');
                 progressEl.className = 'chat-confirm-progress';
                 progressEl.setAttribute('aria-live', 'polite');
+                progressEl.setAttribute('role', 'status');
+                progressEl.setAttribute('aria-atomic', 'true');
                 progressEl.textContent = t('chat.bulkEditProgress', { current: 0, total: pendingEdits.length });
                 card.appendChild(progressEl);
             }
