@@ -3405,18 +3405,58 @@ async function toolUndoLastEdit(userId, args) {
 }
 
 // Picks a small, safe subset of tool arguments to surface in the UI.
-// We never expose anything sensitive; tool args are entry IDs, dates, queries,
-// limits, etc. We just trim long strings so the chip stays compact.
+// Tool args are model-controlled and untrusted, so we hard-cap the number of
+// keys, the size of each string/array, and refuse anything that isn't a plain
+// data type. Sensitive internal flags (e.g. confirmed) are stripped.
+const MAX_SANITIZED_TOOL_ARG_KEYS = 20;
+const MAX_SANITIZED_TOOL_ARG_ARRAY_ITEMS = 10;
+const MAX_SANITIZED_TOOL_ARG_STRING_LENGTH = 80;
+
+function isPlainObject(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+}
+
+function sanitizeToolArgString(value) {
+    return value.length > MAX_SANITIZED_TOOL_ARG_STRING_LENGTH
+        ? value.slice(0, MAX_SANITIZED_TOOL_ARG_STRING_LENGTH - 1) + '…'
+        : value;
+}
+
+function sanitizeToolArgArrayValue(value) {
+    if (value == null) return null;
+    if (typeof value === 'string') return sanitizeToolArgString(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    if (Array.isArray(value)) return '[array]';
+    if (isPlainObject(value)) return '[object]';
+    return null;
+}
+
 function sanitizeToolArgs(args) {
-    if (!args || typeof args !== 'object') return {};
+    if (!isPlainObject(args)) return {};
     const out = {};
+    let captured = 0;
     for (const [k, v] of Object.entries(args)) {
+        if (captured >= MAX_SANITIZED_TOOL_ARG_KEYS) break;
         if (k === 'confirmed') continue;
         if (v == null) continue;
-        if (typeof v === 'string') out[k] = v.length > 80 ? v.slice(0, 77) + '…' : v;
-        else if (Array.isArray(v)) out[k] = v.slice(0, 10);
-        else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
-        else if (typeof v === 'object') out[k] = '[object]';
+        if (typeof v === 'string') {
+            out[k] = sanitizeToolArgString(v);
+            captured++;
+        } else if (typeof v === 'number' || typeof v === 'boolean') {
+            out[k] = v;
+            captured++;
+        } else if (Array.isArray(v)) {
+            out[k] = v
+                .slice(0, MAX_SANITIZED_TOOL_ARG_ARRAY_ITEMS)
+                .map(sanitizeToolArgArrayValue)
+                .filter(item => item != null);
+            captured++;
+        } else if (isPlainObject(v)) {
+            out[k] = '[object]';
+            captured++;
+        }
     }
     return out;
 }
@@ -3582,12 +3622,16 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     result = await executeTool(toolName, req.user.id, toolArgs);
                 }
             } catch (err) {
-                const errorMessage = (err && err.message) ? String(err.message) : 'unknown error';
+                const fullMessage = (err && err.message) ? String(err.message) : 'unknown error';
+                // Log the real error server-side; surface only a generic, safe
+                // message to the UI/model to avoid leaking internal details
+                // (DB error text, stack traces, driver-specific identifiers).
+                console.error(`Tool ${toolName} threw:`, fullMessage, err && err.stack ? err.stack : '');
+                const safeMessage = 'Tool execution failed.';
                 record.status = 'error';
-                record.error = errorMessage.slice(0, 200);
+                record.error = safeMessage;
                 record.durationMs = Date.now() - startedAt;
-                console.error(`Tool ${toolName} threw:`, errorMessage);
-                return { error: errorMessage };
+                return { error: safeMessage };
             }
             record.durationMs = Date.now() - startedAt;
             if (result && typeof result === 'object') {
