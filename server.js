@@ -1325,6 +1325,8 @@ app.get('/api/user', requireAuth, asyncHandler(async (req, res) => {
         aiProvider: resolveProvider(req.user),
         aiModel: req.user.aiModel || null,
         webSearchEnabled: !!req.user.webSearchEnabled,
+        webSearchPerTurnCap: ANTHROPIC_WEB_SEARCH_TOOL.max_uses,
+        webSearchDailyCap: WEB_SEARCH_DAILY_CAP,
         has2FA: !!req.user.totpEnabled
     };
 
@@ -3054,6 +3056,37 @@ if (typeof webSearchDailyCleanupInterval.unref === 'function') {
 // Sources block appended to the reply. `contentBlocks` is the raw
 // `response.content` array. Returns { text, sources } where sources
 // is a deduped [{ url, title }] list.
+//
+// Citation `title` and `url` originate from live web pages and are
+// attacker-controlled. They are concatenated into the reply, which the
+// chat client renders through its markdown parser. We sanitize titles
+// (strip newlines, escape markdown metacharacters, length-cap) and
+// validate URLs (only http/https schemes, strip whitespace, length-cap)
+// before embedding them so a hostile page title cannot inject headings,
+// tables, or arbitrary formatting into the chat UI.
+function _sanitizeCitationTitle(raw) {
+    let s = String(raw || '');
+    // Collapse newlines/control chars to spaces — prevents heading/table injection.
+    s = s.replace(/[\r\n\t\u0000-\u001F\u007F]+/g, ' ');
+    // Escape markdown metacharacters that the chat parser interprets.
+    s = s.replace(/([\\`*_{}\[\]()#+\-!|>~])/g, '\\$1');
+    // Length cap.
+    if (s.length > 200) s = s.slice(0, 200) + '…';
+    return s.trim();
+}
+
+function _sanitizeCitationUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    // Only http(s); reject javascript:, data:, etc.
+    if (!/^https?:\/\//i.test(s)) return null;
+    // Strip any embedded whitespace/control chars.
+    if (/[\s\u0000-\u001F\u007F]/.test(s)) return null;
+    // Length cap to defend against pathological URLs.
+    if (s.length > 500) return null;
+    return s;
+}
+
 function renderAnthropicCitations(contentBlocks) {
     const seen = new Map(); // url → { index, title }
     let text = '';
@@ -3064,11 +3097,12 @@ function renderAnthropicCitations(contentBlocks) {
         if (citations.length > 0) {
             const markers = [];
             for (const c of citations) {
-                const url = c && c.url;
+                const url = _sanitizeCitationUrl(c && c.url);
                 if (!url) continue;
                 let entry = seen.get(url);
                 if (!entry) {
-                    entry = { index: seen.size + 1, title: c.title || c.cited_text || url };
+                    const title = _sanitizeCitationTitle((c && (c.title || c.cited_text)) || url);
+                    entry = { index: seen.size + 1, title };
                     seen.set(url, entry);
                 }
                 if (!markers.includes(entry.index)) markers.push(entry.index);

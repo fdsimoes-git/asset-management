@@ -2484,7 +2484,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="checkbox" id="settingsWebSearchToggle" ${(currentUser && currentUser.webSearchEnabled) ? 'checked' : ''}>
                             <span style="color: var(--color-text-primary); font-size: 0.9rem;">${t('settings.webSearchLabel')}</span>
                         </label>
-                        <small style="display: block; margin-top: 0.35rem; color: var(--color-text-muted); font-size: 0.8rem;">${t('settings.webSearchHelp')}</small>
+                        <small style="display: block; margin-top: 0.35rem; color: var(--color-text-muted); font-size: 0.8rem;">${t('settings.webSearchHelp', { perTurn: (currentUser && currentUser.webSearchPerTurnCap) || 3, perDay: (currentUser && currentUser.webSearchDailyCap) || 30 })}</small>
                         <small id="webSearchInactiveHint" style="display: ${(currentUser && currentUser.webSearchEnabled && currentUser.aiProvider !== 'anthropic') ? 'block' : 'none'}; margin-top: 0.35rem; color: var(--color-warning, #d97706); font-size: 0.8rem;">${t('settings.webSearchInactiveProvider')}</small>
                     </div>
                 </div>

@@ -326,7 +326,7 @@ const translations = {
     'settings.aiProviderSaveSuccess': 'AI provider preference saved',
     'settings.aiProviderSaveError': 'Failed to save AI provider preference',
     'settings.webSearchLabel': 'Enable web search in AI chat',
-    'settings.webSearchHelp': 'Lets the AI assistant look up unknown merchants or venues online. Currently only available with Anthropic (Claude). Capped at 3 searches per message and 30 per day.',
+    'settings.webSearchHelp': 'Lets the AI assistant look up unknown merchants or venues online. Currently only available with Anthropic (Claude). Capped at {perTurn} searches per message and {perDay} per day.',
     'settings.webSearchInactiveProvider': 'Saved, but inactive — switch your AI provider to Anthropic (Claude) to use web search.',
     'settings.webSearchSaveError': 'Failed to save web search preference',
 
@@ -851,7 +851,7 @@ const translations = {
     'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
     'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
     'settings.webSearchLabel': 'Ativar busca na web no chat de IA',
-    'settings.webSearchHelp': 'Permite que o assistente de IA pesquise estabelecimentos ou lojas desconhecidos online. Disponível apenas com Anthropic (Claude). Limite de 3 buscas por mensagem e 30 por dia.',
+    'settings.webSearchHelp': 'Permite que o assistente de IA pesquise estabelecimentos ou lojas desconhecidos online. Disponível apenas com Anthropic (Claude). Limite de {perTurn} buscas por mensagem e {perDay} por dia.',
     'settings.webSearchInactiveProvider': 'Salvo, mas inativo — troque seu provedor de IA para Anthropic (Claude) para usar busca na web.',
     'settings.webSearchSaveError': 'Falha ao salvar preferência de busca na web',
 
