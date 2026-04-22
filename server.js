@@ -4145,7 +4145,10 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             // model unsupported, etc).
             const callAnthropic = async () => anthropicClient.messages.create({
                 model: resolveModel(req.user, 'anthropic', 'chat'),
-                max_tokens: 4096,
+                // 8192 (up from 4096) lets the model emit a meaningfully
+                // larger number of editEntry tool calls in a single turn,
+                // so chat-driven bulk edits don't get truncated mid-list.
+                max_tokens: 8192,
                 system: anthropicSystem,
                 messages: currentMessages,
                 tools: currentTools,
@@ -4395,10 +4398,13 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
     }
 }));
 
-// Confirm a pending AI edit via UI button
+// Confirm a pending AI edit via UI button. Cap is generous so a
+// reasonable bulk-confirm (up to ~300 entries in a 15-min window) can
+// complete without 429s — the chat-side bulk-edit flow POSTs one entry
+// at a time so the user sees per-item progress.
 const editActionLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 60,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests. Please try again later.' },

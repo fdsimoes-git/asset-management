@@ -394,10 +394,25 @@
         confirmBtn.addEventListener('click', async function () {
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
+
+            // Live per-item progress, mirroring the bulk-PDF UX. We render
+            // a status line below the buttons and update it on every
+            // iteration so large bulks don't look frozen. Single-item
+            // edits keep the existing instant-feedback behavior.
+            let progressEl = null;
+            if (isBulk) {
+                progressEl = document.createElement('div');
+                progressEl.className = 'chat-confirm-progress';
+                progressEl.setAttribute('aria-live', 'polite');
+                progressEl.textContent = t('chat.bulkEditProgress', { current: 0, total: pendingEdits.length });
+                card.appendChild(progressEl);
+            }
+
             try {
                 let succeeded = 0;
                 let failed = 0;
                 let expired = false;
+                let processed = 0;
                 for (const pe of pendingEdits) {
                     const res = await csrfFetch('/api/ai/confirm-edit', {
                         method: 'POST',
@@ -407,6 +422,10 @@
                     if (res.status === 410) { failed++; expired = true; }
                     else if (!res.ok) { failed++; }
                     else { succeeded++; }
+                    processed++;
+                    if (progressEl) {
+                        progressEl.textContent = t('chat.bulkEditProgress', { current: processed, total: pendingEdits.length });
+                    }
                 }
                 if (failed > 0 && succeeded === 0) {
                     const errorMsg = expired ? t('chat.editExpired') : t('chat.errorGeneric');
