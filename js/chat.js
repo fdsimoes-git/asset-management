@@ -414,8 +414,13 @@
                 let succeeded = 0;
                 let failed = 0;
                 let expired = false;
-                let processed = 0;
-                for (const pe of pendingEdits) {
+                for (let i = 0; i < pendingEdits.length; i++) {
+                    const pe = pendingEdits[i];
+                    // Update before awaiting so the visible number reflects the
+                    // item currently being saved, not the last one that finished.
+                    if (progressEl) {
+                        progressEl.textContent = t('chat.bulkEditProgress', { current: i + 1, total: pendingEdits.length });
+                    }
                     const res = await csrfFetch('/api/ai/confirm-edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -424,10 +429,6 @@
                     if (res.status === 410) { failed++; expired = true; }
                     else if (!res.ok) { failed++; }
                     else { succeeded++; }
-                    processed++;
-                    if (progressEl) {
-                        progressEl.textContent = t('chat.bulkEditProgress', { current: processed, total: pendingEdits.length });
-                    }
                 }
                 if (failed > 0 && succeeded === 0) {
                     const errorMsg = expired ? t('chat.editExpired') : t('chat.errorGeneric');
