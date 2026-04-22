@@ -295,6 +295,9 @@
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
             }
+            if (data.pendingDeletes && data.pendingDeletes.length > 0) {
+                renderDeleteConfirmationCard(data.pendingDeletes);
+            }
         } catch (err) {
             hideLoading();
             appendMessage('assistant', t('chat.errorGeneric'));
@@ -424,6 +427,99 @@
         msg.className = 'chat-confirm-result chat-confirm-result--' + type;
         msg.textContent = text;
         card.replaceWith(msg);
+        scrollToBottom();
+    }
+
+    function renderDeleteConfirmationCard(pendingDeletes) {
+        const isBulk = pendingDeletes.length > 1;
+        const card = document.createElement('div');
+        card.className = 'chat-confirm-card';
+
+        const titleText = isBulk
+            ? t('chat.confirmDeleteTitleCount', { count: pendingDeletes.length })
+            : t('chat.confirmDeleteTitle');
+        let html = '<div class="chat-confirm-title">' + escapeHtml(titleText) + '</div>';
+
+        for (const pd of pendingDeletes) {
+            const entry = pd.currentEntry;
+            html += '<div class="chat-confirm-entry-group">';
+            html += '<div class="chat-confirm-entry">';
+            html += '<strong>' + escapeHtml(entry.description) + '</strong><br>';
+            html += escapeHtml(entry.type) + ' &middot; ' + escapeHtml(entry.month) + ' &middot; ' + escapeHtml(parseFloat(entry.amount).toFixed(2));
+            if (entry.tags && entry.tags.length) {
+                html += ' &middot; ' + escapeHtml(entry.tags.join(', '));
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+
+        html += '<div class="chat-confirm-warning">⚠️ ' + escapeHtml(t('chat.deleteWarning')) + '</div>';
+
+        const confirmLabel = isBulk ? t('chat.confirmAllDeletes') : t('chat.confirmDelete');
+        html += '<div class="chat-confirm-actions">';
+        html += '<button class="chat-confirm-btn chat-confirm-btn--danger" data-action="confirm">' + escapeHtml(confirmLabel) + '</button>';
+        html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelDelete')) + '</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        messagesEl.appendChild(card);
+
+        const confirmBtn = card.querySelector('[data-action="confirm"]');
+        const cancelBtn = card.querySelector('[data-action="cancel"]');
+
+        confirmBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                let succeeded = 0;
+                let failed = 0;
+                let expired = false;
+                for (const pd of pendingDeletes) {
+                    const res = await csrfFetch('/api/ai/confirm-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pd.entryId })
+                    });
+                    if (res.status === 410) { failed++; expired = true; }
+                    else if (!res.ok) { failed++; }
+                    else { succeeded++; }
+                }
+                if (failed > 0 && succeeded === 0) {
+                    const errorMsg = expired ? t('chat.deleteExpired') : t('chat.errorGeneric');
+                    replaceCardWithMessage(card, errorMsg, 'error');
+                } else if (failed > 0 && succeeded > 0) {
+                    const msg = t('chat.partialDeletesConfirmed', { succeeded, failed });
+                    replaceCardWithMessage(card, msg, 'error');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                } else {
+                    const msg = isBulk ? t('chat.allDeletesConfirmed') : t('chat.deleteConfirmed');
+                    replaceCardWithMessage(card, msg, 'success');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                }
+            } catch (e) {
+                replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
+            }
+        });
+
+        cancelBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                for (const pd of pendingDeletes) {
+                    await csrfFetch('/api/ai/cancel-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pd.entryId })
+                    });
+                }
+            } catch (e) { /* ignore */ }
+            const msg = isBulk ? t('chat.allDeletesCancelled') : t('chat.deleteCancelled');
+            replaceCardWithMessage(card, msg, 'info');
+            chatMessages.push({ role: 'assistant', content: msg });
+        });
+
         scrollToBottom();
     }
 
