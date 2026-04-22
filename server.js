@@ -4182,11 +4182,22 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         // so the model's instructions match the provided tools.
                         anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
                         response = await callAnthropic();
-                    } else if (chatMaxTokens > 4096 && (
-                        msg.includes('max_tokens') || msg.includes('output token') ||
-                        msg.includes('output tokens') || msg.includes('exceed') ||
-                        msg.includes('too large') || msg.includes('maximum')
-                    )) {
+                    } else if (chatMaxTokens > 4096 && (() => {
+                        // Only retry-with-smaller-cap if the error CLEARLY refers
+                        // to output-token limits. Avoid generic words like
+                        // "exceed"/"maximum" which also match rate-limit errors,
+                        // input-token-limit errors, etc — retrying those at 4096
+                        // wastes latency/cost and can worsen 429 storms.
+                        const status = err && (err.status || err.statusCode);
+                        if (status && status !== 400) return false;
+                        if (!msg) return false;
+                        // Must mention max_tokens (the request param) OR the
+                        // specific phrase "output token"/"output tokens".
+                        return msg.includes('max_tokens')
+                            || msg.includes('max tokens')
+                            || msg.includes('output token')
+                            || msg.includes('output tokens');
+                    })()) {
                         // Some Claude models cap output below 8192 and reject the
                         // request. Transparently retry once at 4096 (the prior
                         // proven cap) for the remainder of this chat turn.
