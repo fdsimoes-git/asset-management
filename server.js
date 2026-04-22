@@ -4143,9 +4143,16 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             // retry once without the web_search tool if Anthropic rejects it
             // for capability reasons (org disabled, OAuth not permitted,
             // model unsupported, etc).
+            // 8192 (up from 4096) lets the model emit a meaningfully
+            // larger number of editEntry tool calls in a single turn,
+            // so chat-driven bulk edits don't get truncated mid-list.
+            // Some user-selectable Claude models cap output below 8192
+            // and reject the request — we transparently fall back to
+            // 4096 in the catch block below.
+            let chatMaxTokens = 8192;
             const callAnthropic = async () => anthropicClient.messages.create({
                 model: resolveModel(req.user, 'anthropic', 'chat'),
-                max_tokens: 4096,
+                max_tokens: chatMaxTokens,
                 system: anthropicSystem,
                 messages: currentMessages,
                 tools: currentTools,
@@ -4154,6 +4161,26 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
 
             for (let i = 0; i < maxIterations; i++) {
                 let response;
+                // Detects an Anthropic 400 response specifically about output-token
+                // limits — used to transparently retry at 4096 if a user-selected
+                // model caps output below 8192. Stays narrow on purpose so 429s,
+                // input-token errors, etc never trigger an extra retry.
+                const isMaxTokensReject = (err) => {
+                    if (chatMaxTokens <= 4096) return false;
+                    const status = err && (err.status || err.statusCode);
+                    if (status && status !== 400) return false;
+                    const m = (err && err.message) ? err.message.toLowerCase() : '';
+                    if (!m) return false;
+                    return m.includes('max_tokens')
+                        || m.includes('max tokens')
+                        || m.includes('output token')
+                        || m.includes('output tokens');
+                };
+                const downgradeAndRetry = async (err) => {
+                    console.warn('Anthropic rejected max_tokens=' + chatMaxTokens + ', retrying at 4096:', err.message);
+                    chatMaxTokens = 4096;
+                    return callAnthropic();
+                };
                 try {
                     response = await callAnthropic();
                 } catch (err) {
@@ -4174,7 +4201,20 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         // Rebuild system prompt to drop the web-search instructions
                         // so the model's instructions match the provided tools.
                         anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
-                        response = await callAnthropic();
+                        try {
+                            response = await callAnthropic();
+                        } catch (err2) {
+                            // The capability retry can itself trip the
+                            // max_tokens cap on smaller models — chain into the
+                            // same downgrade path so both fallbacks apply.
+                            if (isMaxTokensReject(err2)) {
+                                response = await downgradeAndRetry(err2);
+                            } else {
+                                throw err2;
+                            }
+                        }
+                    } else if (isMaxTokensReject(err)) {
+                        response = await downgradeAndRetry(err);
                     } else {
                         throw err;
                     }
@@ -4395,10 +4435,13 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
     }
 }));
 
-// Confirm a pending AI edit via UI button
+// Confirm a pending AI edit via UI button. Cap is generous so a
+// reasonable bulk-confirm (up to ~300 entries in a 15-min window) can
+// complete without 429s — the chat-side bulk-edit flow POSTs one entry
+// at a time so the user sees per-item progress.
 const editActionLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 60,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests. Please try again later.' },
