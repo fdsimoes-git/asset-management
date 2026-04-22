@@ -3559,14 +3559,17 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         return { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
     }
 
+    const toolsUsed = []; // hoisted so error responses can include it { name, args, status: 'success'|'error'|'pending', durationMs, summary?, error? }
+
     try {
         let finalText = null;
         const pendingEditsList = [];
-        const toolsUsed = []; // { name, args, status: 'success'|'error'|'pending', durationMs, summary?, error? }
         const maxIterations = 5;
 
         // Wraps tool dispatch with tracking so the UI can show what the agent did.
-        // Returns whatever the underlying tool returns.
+        // Returns whatever the underlying tool returns. Tool exceptions are caught
+        // and converted to a structured `{ error }` result so the model can keep
+        // iterating, and the failure is recorded in toolsUsed for the UI.
         async function runToolWithTracking(toolName, toolArgs) {
             const startedAt = Date.now();
             const record = { name: toolName, args: sanitizeToolArgs(toolArgs), status: 'success', durationMs: 0 };
@@ -3579,10 +3582,12 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     result = await executeTool(toolName, req.user.id, toolArgs);
                 }
             } catch (err) {
+                const errorMessage = (err && err.message) ? String(err.message) : 'unknown error';
                 record.status = 'error';
-                record.error = err.message || 'unknown error';
+                record.error = errorMessage.slice(0, 200);
                 record.durationMs = Date.now() - startedAt;
-                throw err;
+                console.error(`Tool ${toolName} threw:`, errorMessage);
+                return { error: errorMessage };
             }
             record.durationMs = Date.now() - startedAt;
             if (result && typeof result === 'object') {
@@ -3855,21 +3860,28 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
+        // Helper: include any tools that did run before the failure, so the UI
+        // can still show them in the "tools used" panel even on errors.
+        const errorPayload = (code, status) => {
+            const payload = { error: code };
+            if (toolsUsed.length > 0) payload.toolsUsed = toolsUsed;
+            return res.status(status).json(payload);
+        };
         // Surface the Copilot-specific "no token decryptable + no env fallback"
         // case as the same no_api_key UX the providers use up front.
         if (error.code === 'no_copilot_token') {
-            return res.status(400).json({ error: 'no_api_key' });
+            return errorPayload('no_api_key', 400);
         }
         // Treat 401 and 403 as auth failures: some providers (incl. the Copilot
         // token-exchange endpoint) return 403 for unauthorized tokens/keys.
         if (error.message?.includes('API key') || error.message?.includes('authentication')
             || error.status === 401 || error.status === 403) {
-            return res.status(400).json({ error: 'invalid_api_key' });
+            return errorPayload('invalid_api_key', 400);
         }
         if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
-            return res.status(429).json({ error: 'quota_exceeded' });
+            return errorPayload('quota_exceeded', 429);
         }
-        res.status(500).json({ error: 'generic' });
+        errorPayload('generic', 500);
     }
 }));
 

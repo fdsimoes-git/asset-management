@@ -276,6 +276,9 @@
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
+                if (data.toolsUsed && data.toolsUsed.length > 0) {
+                    renderToolsUsedPanel(data.toolsUsed);
+                }
                 if (data.error === 'no_api_key') {
                     appendMessage('assistant', t('chat.errorNoKey'));
                 } else if (data.error === 'invalid_api_key') {
