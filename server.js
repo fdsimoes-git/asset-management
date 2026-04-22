@@ -2742,7 +2742,7 @@ const chatToolDeclarations = [
     },
     {
         name: 'getTopExpenses',
-            description: 'Get the largest expense entries (each result includes id, description, amount, month, category, full tags array, isCoupleExpense flag, owner ("me" or "partner"), and editable flag), optionally filtered by category, date range, or couple/personal flag. When the user has a linked partner, results may include the partner\'s couple-flagged entries (owner: "partner", editable: false) — these can be analyzed but cannot be edited or deleted.',
+        description: 'Get the largest expense entries (each result includes id, description, amount, month, category, full tags array, isCoupleExpense flag, owner ("me" or "partner"), and editable flag), optionally filtered by category, date range, or couple/personal flag. When the user has a linked partner, results may include the partner\'s couple-flagged entries (owner: "partner", editable: false) — these can be analyzed but cannot be edited or deleted.',
         parameters: {
             type: Type.OBJECT,
             properties: {
