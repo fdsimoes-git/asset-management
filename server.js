@@ -4185,6 +4185,27 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     && Number(response.usage.server_tool_use.web_search_requests);
                 if (Number.isFinite(searchesUsed) && searchesUsed > 0) {
                     bumpWebSearchUsage(req.user.id, searchesUsed);
+
+                    // Surface the searches in the chat "tools used" panel so users
+                    // see them alongside client tools. server_tool_use blocks are
+                    // executed by Anthropic — runToolWithTracking is bypassed —
+                    // so we synthesize the record here. Query strings are pulled
+                    // from the matching server_tool_use blocks in this response.
+                    const queries = [];
+                    for (const block of response.content) {
+                        if (block.type === 'server_tool_use' && block.name === 'web_search'
+                            && block.input && typeof block.input.query === 'string') {
+                            const q = block.input.query.trim();
+                            if (q) queries.push(q.length > 80 ? q.slice(0, 77) + '…' : q);
+                        }
+                    }
+                    toolsUsed.push({
+                        name: 'web_search',
+                        args: queries.length > 0 ? { queries } : {},
+                        status: 'success',
+                        searchCount: searchesUsed
+                    });
+
                     if (getWebSearchUsage(req.user.id).count >= WEB_SEARCH_DAILY_CAP) {
                         webSearchActive = false;
                         currentTools = anthropicToolDeclarations;

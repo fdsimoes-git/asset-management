@@ -484,7 +484,18 @@
             const li = document.createElement('li');
             li.className = 'chat-tools-item chat-tools-item--' + (inv.status || 'success');
             const argsStr = formatToolArgs(inv.args);
-            const summaryStr = inv.summary ? ` → ${inv.summary}` : '';
+            // web_search records carry a structured searchCount so we can
+            // localize the "N searches" summary instead of relying on a
+            // server-side English string.
+            let summaryText;
+            if (inv.name === 'web_search' && typeof inv.searchCount === 'number') {
+                summaryText = inv.searchCount === 1
+                    ? t('chat.webSearchCountOne')
+                    : t('chat.webSearchCountMany', { count: inv.searchCount });
+            } else {
+                summaryText = inv.summary;
+            }
+            const summaryStr = summaryText ? ` → ${summaryText}` : '';
             const errStr = inv.status === 'error' && inv.error ? ` — ${inv.error}` : '';
             const durStr = inv.durationMs != null ? ` (${inv.durationMs}ms)` : '';
             li.innerHTML =
