@@ -49,6 +49,14 @@
         scrollToBottom();
     }
 
+    // Render a UI-only notice (e.g. web-search unavailable hint) without
+    // pushing it into chatMessages — those get sent back as conversation
+    // history on the next turn and would pollute model context.
+    function renderNotice(content) {
+        renderMessage('assistant', content);
+        scrollToBottom();
+    }
+
     function renderMessage(role, content) {
         const div = document.createElement('div');
         div.className = role === 'user' ? 'chat-message-user' : 'chat-message-assistant';
@@ -276,6 +284,9 @@
 
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
+                if (data.toolsUsed && data.toolsUsed.length > 0) {
+                    renderToolsUsedPanel(data.toolsUsed);
+                }
                 if (data.error === 'no_api_key') {
                     appendMessage('assistant', t('chat.errorNoKey'));
                 } else if (data.error === 'invalid_api_key') {
@@ -291,7 +302,24 @@
             }
 
             const data = await res.json();
+            if (data.toolsUsed && data.toolsUsed.length > 0) {
+                renderToolsUsedPanel(data.toolsUsed);
+            }
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
+            if (data.webSearchUnavailable) {
+                const reason = data.webSearchUnavailable.reason;
+                let hint;
+                if (reason === 'provider') {
+                    hint = t('chat.webSearchUnavailableProvider', { provider: data.webSearchUnavailable.activeProvider || '' });
+                } else if (reason === 'daily_cap') {
+                    hint = t('chat.webSearchUnavailableDailyCap', { cap: data.webSearchUnavailable.cap || 30 });
+                } else if (reason === 'not_supported') {
+                    hint = t('chat.webSearchUnavailableNotSupported');
+                } else {
+                    hint = t('chat.webSearchUnavailableGeneric');
+                }
+                renderNotice(`*${hint}*`);
+            }
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
             }
@@ -369,11 +397,33 @@
         confirmBtn.addEventListener('click', async function () {
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
+
+            // Live per-item progress, mirroring the bulk-PDF UX. We render
+            // a status line below the buttons and update it on every
+            // iteration so large bulks don't look frozen. Single-item
+            // edits keep the existing instant-feedback behavior.
+            let progressEl = null;
+            if (isBulk) {
+                progressEl = document.createElement('div');
+                progressEl.className = 'chat-confirm-progress';
+                progressEl.setAttribute('aria-live', 'polite');
+                progressEl.setAttribute('role', 'status');
+                progressEl.setAttribute('aria-atomic', 'true');
+                progressEl.textContent = t('chat.bulkEditProgress', { current: 1, total: pendingEdits.length });
+                card.appendChild(progressEl);
+            }
+
             try {
                 let succeeded = 0;
                 let failed = 0;
                 let expired = false;
-                for (const pe of pendingEdits) {
+                for (let i = 0; i < pendingEdits.length; i++) {
+                    const pe = pendingEdits[i];
+                    // Update before awaiting so the visible number reflects the
+                    // item currently being saved, not the last one that finished.
+                    if (progressEl) {
+                        progressEl.textContent = t('chat.bulkEditProgress', { current: i + 1, total: pendingEdits.length });
+                    }
                     const res = await csrfFetch('/api/ai/confirm-edit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -427,6 +477,62 @@
         msg.className = 'chat-confirm-result chat-confirm-result--' + type;
         msg.textContent = text;
         card.replaceWith(msg);
+        scrollToBottom();
+    }
+
+    function formatToolArgs(args) {
+        if (!args || typeof args !== 'object') return '';
+        const parts = [];
+        for (const [k, v] of Object.entries(args)) {
+            let val;
+            if (Array.isArray(v)) val = v.join(', ');
+            else val = String(v);
+            if (val.length > 40) val = val.slice(0, 37) + '…';
+            parts.push(`${k}: ${val}`);
+        }
+        return parts.join(' · ');
+    }
+
+    function renderToolsUsedPanel(toolsUsed) {
+        const panel = document.createElement('details');
+        panel.className = 'chat-tools-panel';
+        const count = toolsUsed.length;
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'chat-tools-summary';
+        const label = count === 1 ? t('chat.toolsUsedOne') : t('chat.toolsUsedMany', { count });
+        summaryEl.innerHTML = '<span class="chat-tools-icon">🔧</span> ' + escapeHtml(label);
+        panel.appendChild(summaryEl);
+
+        const list = document.createElement('ul');
+        list.className = 'chat-tools-list';
+        for (const inv of toolsUsed) {
+            const li = document.createElement('li');
+            li.className = 'chat-tools-item chat-tools-item--' + (inv.status || 'success');
+            const argsStr = formatToolArgs(inv.args);
+            // web_search records carry a structured searchCount so we can
+            // localize the "N searches" summary instead of relying on a
+            // server-side English string.
+            let summaryText;
+            if (inv.name === 'web_search' && typeof inv.searchCount === 'number') {
+                summaryText = inv.searchCount === 1
+                    ? t('chat.webSearchCountOne')
+                    : t('chat.webSearchCountMany', { count: inv.searchCount });
+            } else {
+                summaryText = inv.summary;
+            }
+            const summaryStr = summaryText ? ` → ${summaryText}` : '';
+            const errStr = inv.status === 'error' && inv.error ? ` — ${inv.error}` : '';
+            const durStr = inv.durationMs != null ? ` (${inv.durationMs}ms)` : '';
+            li.innerHTML =
+                '<code class="chat-tools-name">' + escapeHtml(inv.name) + '</code>' +
+                (argsStr ? '<span class="chat-tools-args">(' + escapeHtml(argsStr) + ')</span>' : '') +
+                (summaryStr ? '<span class="chat-tools-result">' + escapeHtml(summaryStr) + '</span>' : '') +
+                (errStr ? '<span class="chat-tools-error">' + escapeHtml(errStr) + '</span>' : '') +
+                '<span class="chat-tools-duration">' + escapeHtml(durStr) + '</span>';
+            list.appendChild(li);
+        }
+        panel.appendChild(list);
+        messagesEl.appendChild(panel);
         scrollToBottom();
     }
 
@@ -508,7 +614,8 @@
             cancelBtn.disabled = true;
             try {
                 if (isBulk) {
-                    // One round-trip cancels all pending deletes for this user.
+                    // Server clears all pending deletes for this user when
+                    // entryId is omitted — one request avoids the rate limiter.
                     await csrfFetch('/api/ai/cancel-delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

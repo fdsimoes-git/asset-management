@@ -24,6 +24,7 @@ function dbRowToUser(row) {
         backupCodes:     row.backup_codes || [],
         aiProvider:      row.ai_provider,
         aiModel:         row.ai_model,
+        webSearchEnabled: !!row.web_search_enabled,
         partnerId:       row.partner_id != null ? Number(row.partner_id) : null,
         partnerLinkedAt: row.partner_linked_at ? row.partner_linked_at.toISOString() : null,
         isActive:        row.is_active,
@@ -192,6 +193,7 @@ const USER_COLUMN_MAP = {
     backupCodes:     'backup_codes',
     aiProvider:      'ai_provider',
     aiModel:         'ai_model',
+    webSearchEnabled: 'web_search_enabled',
     partnerId:       'partner_id',
     partnerLinkedAt: 'partner_linked_at',
     isActive:        'is_active',
@@ -328,6 +330,24 @@ async function getCoupleEntries(userId, partnerId, month) {
     const { rows } = await pool.query(
         'SELECT * FROM entries WHERE is_couple_expense = TRUE AND user_id = ANY($1) ORDER BY id',
         [[userId, partnerId]]
+    );
+    return rows.map(dbRowToEntry);
+}
+
+// Fetches ONLY the partner's couple-flagged entries — used by the AI
+// chat agent's loadChatEntries() to avoid re-fetching the current
+// user's couple rows that getEntriesByUser already returned.
+async function getPartnerCoupleEntries(partnerId, month) {
+    if (month) {
+        const { rows } = await pool.query(
+            'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = TRUE AND month = $2 ORDER BY id',
+            [partnerId, month]
+        );
+        return rows.map(dbRowToEntry);
+    }
+    const { rows } = await pool.query(
+        'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = TRUE ORDER BY id',
+        [partnerId]
     );
     return rows.map(dbRowToEntry);
 }
@@ -806,6 +826,7 @@ module.exports = {
     // Entries
     getEntriesByUser,
     getCoupleEntries,
+    getPartnerCoupleEntries,
     getIndividualEntries,
     getMyShareEntries,
     getEntryByIdAndUser,
