@@ -504,6 +504,8 @@ const translations = {
     'chat.editCancelled': 'Edit cancelled.',
     'chat.allEditsCancelled': 'All edits cancelled.',
     'chat.editExpired': 'This edit has expired. Please request it again.',
+    'chat.toolsUsedOne': '1 tool used',
+    'chat.toolsUsedMany': '{count} tools used',
     'chat.currentValue': 'Current',
     'chat.newValue': 'New',
   },
@@ -1011,6 +1013,8 @@ const translations = {
     'chat.editCancelled': 'Edição cancelada.',
     'chat.allEditsCancelled': 'Todas as edições canceladas.',
     'chat.editExpired': 'Esta edição expirou. Solicite novamente.',
+    'chat.toolsUsedOne': '1 ferramenta utilizada',
+    'chat.toolsUsedMany': '{count} ferramentas utilizadas',
     'chat.currentValue': 'Atual',
     'chat.newValue': 'Novo',
   }

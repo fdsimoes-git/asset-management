@@ -3404,6 +3404,97 @@ async function toolUndoLastEdit(userId, args) {
     };
 }
 
+// Picks a small, safe subset of tool arguments to surface in the UI.
+// Tool args are model-controlled and untrusted, so we hard-cap the number of
+// keys, the size of each string/array, and refuse anything that isn't a plain
+// data type. Sensitive internal flags (e.g. confirmed) are stripped.
+const MAX_SANITIZED_TOOL_ARG_KEYS = 20;
+const MAX_SANITIZED_TOOL_ARG_ARRAY_ITEMS = 10;
+const MAX_SANITIZED_TOOL_ARG_STRING_LENGTH = 80;
+
+function isPlainObject(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+}
+
+function sanitizeToolArgString(value) {
+    return value.length > MAX_SANITIZED_TOOL_ARG_STRING_LENGTH
+        ? value.slice(0, MAX_SANITIZED_TOOL_ARG_STRING_LENGTH - 1) + '…'
+        : value;
+}
+
+function sanitizeToolArgArrayValue(value) {
+    if (value == null) return null;
+    if (typeof value === 'string') return sanitizeToolArgString(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    if (Array.isArray(value)) return '[array]';
+    if (isPlainObject(value)) return '[object]';
+    return null;
+}
+
+function sanitizeToolArgs(args) {
+    if (!isPlainObject(args)) return {};
+    const out = {};
+    let captured = 0;
+    for (const [k, v] of Object.entries(args)) {
+        if (captured >= MAX_SANITIZED_TOOL_ARG_KEYS) break;
+        if (k === 'confirmed') continue;
+        if (v == null) continue;
+        if (typeof v === 'string') {
+            out[k] = sanitizeToolArgString(v);
+            captured++;
+        } else if (typeof v === 'number' || typeof v === 'boolean') {
+            out[k] = v;
+            captured++;
+        } else if (Array.isArray(v)) {
+            out[k] = v
+                .slice(0, MAX_SANITIZED_TOOL_ARG_ARRAY_ITEMS)
+                .map(sanitizeToolArgArrayValue)
+                .filter(item => item != null);
+            captured++;
+        } else if (isPlainObject(v)) {
+            out[k] = '[object]';
+            captured++;
+        }
+    }
+    return out;
+}
+
+// Builds a one-line human-readable summary of what a tool returned, for the UI.
+// Returns null when nothing useful can be summarized.
+function summarizeToolResult(toolName, result) {
+    if (!result || typeof result !== 'object' || result.error) return null;
+    switch (toolName) {
+        case 'searchEntries': {
+            const total = result.totalMatches != null ? result.totalMatches : (result.results ? result.results.length : null);
+            const showing = result.showing != null ? result.showing : (result.results ? result.results.length : null);
+            if (total == null) return null;
+            return showing != null && showing !== total
+                ? `${total} match(es), showing ${showing}`
+                : `${total} match(es)`;
+        }
+        case 'getTopExpenses': {
+            const n = Array.isArray(result.topExpenses) ? result.topExpenses.length : null;
+            return n != null ? `${n} entries` : null;
+        }
+        case 'getFinancialSummary':
+            return result.entryCount != null ? `${result.entryCount} entries analyzed` : null;
+        case 'getCategoryBreakdown':
+            return Array.isArray(result.breakdown) ? `${result.breakdown.length} categories` : null;
+        case 'getMonthlyTrends':
+            return Array.isArray(result.months) ? `${result.months.length} months` : null;
+        case 'comparePeriods':
+            return 'compared';
+        case 'editEntry':
+            return result.pending ? 'awaiting confirmation' : 'updated';
+        case 'undoLastEdit':
+            return 'restored';
+        default:
+            return null;
+    }
+}
+
 async function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
@@ -3508,10 +3599,53 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         return { pending: true, message: 'Edit sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
     }
 
+    const toolsUsed = []; // hoisted so error responses can include it { name, args, status: 'success'|'error'|'pending', durationMs, summary?, error? }
+
     try {
         let finalText = null;
         const pendingEditsList = [];
         const maxIterations = 5;
+
+        // Wraps tool dispatch with tracking so the UI can show what the agent did.
+        // Returns whatever the underlying tool returns. Tool exceptions are caught
+        // and converted to a structured `{ error }` result so the model can keep
+        // iterating, and the failure is recorded in toolsUsed for the UI.
+        async function runToolWithTracking(toolName, toolArgs) {
+            const startedAt = Date.now();
+            const record = { name: toolName, args: sanitizeToolArgs(toolArgs), status: 'success', durationMs: 0 };
+            toolsUsed.push(record);
+            let result;
+            try {
+                if (toolName === 'editEntry') {
+                    result = await handleEditEntryCall(toolArgs, pendingEditsList);
+                } else {
+                    result = await executeTool(toolName, req.user.id, toolArgs);
+                }
+            } catch (err) {
+                const fullMessage = (err && err.message) ? String(err.message) : 'unknown error';
+                // Log the real error server-side; surface only a generic, safe
+                // message to the UI/model to avoid leaking internal details
+                // (DB error text, stack traces, driver-specific identifiers).
+                console.error(`Tool ${toolName} threw:`, fullMessage, err && err.stack ? err.stack : '');
+                const safeMessage = 'Tool execution failed.';
+                record.status = 'error';
+                record.error = safeMessage;
+                record.durationMs = Date.now() - startedAt;
+                return { error: safeMessage };
+            }
+            record.durationMs = Date.now() - startedAt;
+            if (result && typeof result === 'object') {
+                if (result.error) {
+                    record.status = 'error';
+                    record.error = String(result.error).slice(0, 200);
+                } else if (result.pending) {
+                    record.status = 'pending';
+                }
+                const summary = summarizeToolResult(toolName, result);
+                if (summary) record.summary = summary;
+            }
+            return result;
+        }
 
         if (provider === 'openai') {
             // ── OpenAI branch ──────────────────────────────────────────
@@ -3554,12 +3688,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
                         console.error(`Failed to parse OpenAI tool args for ${toolName}:`, parseErr.message);
                     }
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
@@ -3613,12 +3742,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
                         console.error(`Failed to parse Copilot tool args for ${toolName}:`, parseErr.message);
                     }
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
@@ -3679,12 +3803,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                 for (const toolUse of toolUseBlocks) {
                     const toolName = toolUse.name;
                     const toolArgs = toolUse.input || {};
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResults.push({
                         type: 'tool_result',
                         tool_use_id: toolUse.id,
@@ -3762,12 +3881,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                 for (const fc of functionCalls) {
                     const toolName = fc.functionCall.name;
                     const toolArgs = fc.functionCall.args || {};
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultParts.push({
                         functionResponse: { name: toolName, response: result }
                     });
@@ -3784,24 +3898,34 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         if (pendingEditsList.length > 0) {
             responsePayload.pendingEdits = pendingEditsList;
         }
+        if (toolsUsed.length > 0) {
+            responsePayload.toolsUsed = toolsUsed;
+        }
         res.json(responsePayload);
     } catch (error) {
         console.error('AI Chat error:', error.message, error.status ? `(status ${error.status})` : '');
+        // Helper: include any tools that did run before the failure, so the UI
+        // can still show them in the "tools used" panel even on errors.
+        const errorPayload = (code, status) => {
+            const payload = { error: code };
+            if (toolsUsed.length > 0) payload.toolsUsed = toolsUsed;
+            return res.status(status).json(payload);
+        };
         // Surface the Copilot-specific "no token decryptable + no env fallback"
         // case as the same no_api_key UX the providers use up front.
         if (error.code === 'no_copilot_token') {
-            return res.status(400).json({ error: 'no_api_key' });
+            return errorPayload('no_api_key', 400);
         }
         // Treat 401 and 403 as auth failures: some providers (incl. the Copilot
         // token-exchange endpoint) return 403 for unauthorized tokens/keys.
         if (error.message?.includes('API key') || error.message?.includes('authentication')
             || error.status === 401 || error.status === 403) {
-            return res.status(400).json({ error: 'invalid_api_key' });
+            return errorPayload('invalid_api_key', 400);
         }
         if (error.message?.includes('quota') || error.message?.includes('credit balance') || error.status === 429) {
-            return res.status(429).json({ error: 'quota_exceeded' });
+            return errorPayload('quota_exceeded', 429);
         }
-        res.status(500).json({ error: 'generic' });
+        errorPayload('generic', 500);
     }
 }));
 
