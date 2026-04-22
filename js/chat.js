@@ -291,6 +291,9 @@
             }
 
             const data = await res.json();
+            if (data.toolsUsed && data.toolsUsed.length > 0) {
+                renderToolsUsedPanel(data.toolsUsed);
+            }
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
@@ -424,6 +427,51 @@
         msg.className = 'chat-confirm-result chat-confirm-result--' + type;
         msg.textContent = text;
         card.replaceWith(msg);
+        scrollToBottom();
+    }
+
+    function formatToolArgs(args) {
+        if (!args || typeof args !== 'object') return '';
+        const parts = [];
+        for (const [k, v] of Object.entries(args)) {
+            let val;
+            if (Array.isArray(v)) val = v.join(', ');
+            else val = String(v);
+            if (val.length > 40) val = val.slice(0, 37) + '…';
+            parts.push(`${k}: ${val}`);
+        }
+        return parts.join(' · ');
+    }
+
+    function renderToolsUsedPanel(toolsUsed) {
+        const panel = document.createElement('details');
+        panel.className = 'chat-tools-panel';
+        const count = toolsUsed.length;
+        const summaryEl = document.createElement('summary');
+        summaryEl.className = 'chat-tools-summary';
+        const label = count === 1 ? t('chat.toolsUsedOne') : t('chat.toolsUsedMany', { count });
+        summaryEl.innerHTML = '<span class="chat-tools-icon">🔧</span> ' + escapeHtml(label);
+        panel.appendChild(summaryEl);
+
+        const list = document.createElement('ul');
+        list.className = 'chat-tools-list';
+        for (const inv of toolsUsed) {
+            const li = document.createElement('li');
+            li.className = 'chat-tools-item chat-tools-item--' + (inv.status || 'success');
+            const argsStr = formatToolArgs(inv.args);
+            const summaryStr = inv.summary ? ` → ${inv.summary}` : '';
+            const errStr = inv.status === 'error' && inv.error ? ` — ${inv.error}` : '';
+            const durStr = inv.durationMs != null ? ` (${inv.durationMs}ms)` : '';
+            li.innerHTML =
+                '<code class="chat-tools-name">' + escapeHtml(inv.name) + '</code>' +
+                (argsStr ? '<span class="chat-tools-args">(' + escapeHtml(argsStr) + ')</span>' : '') +
+                (summaryStr ? '<span class="chat-tools-result">' + escapeHtml(summaryStr) + '</span>' : '') +
+                (errStr ? '<span class="chat-tools-error">' + escapeHtml(errStr) + '</span>' : '') +
+                '<span class="chat-tools-duration">' + escapeHtml(durStr) + '</span>';
+            list.appendChild(li);
+        }
+        panel.appendChild(list);
+        messagesEl.appendChild(panel);
         scrollToBottom();
     }
 

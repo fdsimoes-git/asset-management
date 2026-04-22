@@ -3404,6 +3404,57 @@ async function toolUndoLastEdit(userId, args) {
     };
 }
 
+// Picks a small, safe subset of tool arguments to surface in the UI.
+// We never expose anything sensitive; tool args are entry IDs, dates, queries,
+// limits, etc. We just trim long strings so the chip stays compact.
+function sanitizeToolArgs(args) {
+    if (!args || typeof args !== 'object') return {};
+    const out = {};
+    for (const [k, v] of Object.entries(args)) {
+        if (k === 'confirmed') continue;
+        if (v == null) continue;
+        if (typeof v === 'string') out[k] = v.length > 80 ? v.slice(0, 77) + '…' : v;
+        else if (Array.isArray(v)) out[k] = v.slice(0, 10);
+        else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+        else if (typeof v === 'object') out[k] = '[object]';
+    }
+    return out;
+}
+
+// Builds a one-line human-readable summary of what a tool returned, for the UI.
+// Returns null when nothing useful can be summarized.
+function summarizeToolResult(toolName, result) {
+    if (!result || typeof result !== 'object' || result.error) return null;
+    switch (toolName) {
+        case 'searchEntries': {
+            const total = result.totalMatches != null ? result.totalMatches : (result.results ? result.results.length : null);
+            const showing = result.showing != null ? result.showing : (result.results ? result.results.length : null);
+            if (total == null) return null;
+            return showing != null && showing !== total
+                ? `${total} match(es), showing ${showing}`
+                : `${total} match(es)`;
+        }
+        case 'getTopExpenses': {
+            const n = Array.isArray(result.topExpenses) ? result.topExpenses.length : null;
+            return n != null ? `${n} entries` : null;
+        }
+        case 'getFinancialSummary':
+            return result.entryCount != null ? `${result.entryCount} entries analyzed` : null;
+        case 'getCategoryBreakdown':
+            return Array.isArray(result.categories) ? `${result.categories.length} categories` : null;
+        case 'getMonthlyTrends':
+            return Array.isArray(result.months) ? `${result.months.length} months` : null;
+        case 'comparePeriods':
+            return 'compared';
+        case 'editEntry':
+            return result.pending ? 'awaiting confirmation' : 'updated';
+        case 'undoLastEdit':
+            return 'restored';
+        default:
+            return null;
+    }
+}
+
 async function executeTool(name, userId, args) {
     switch (name) {
         case 'getFinancialSummary': return toolGetFinancialSummary(userId, args);
@@ -3511,7 +3562,41 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
     try {
         let finalText = null;
         const pendingEditsList = [];
+        const toolsUsed = []; // { name, args, status: 'success'|'error'|'pending', durationMs, summary?, error? }
         const maxIterations = 5;
+
+        // Wraps tool dispatch with tracking so the UI can show what the agent did.
+        // Returns whatever the underlying tool returns.
+        async function runToolWithTracking(toolName, toolArgs) {
+            const startedAt = Date.now();
+            const record = { name: toolName, args: sanitizeToolArgs(toolArgs), status: 'success', durationMs: 0 };
+            toolsUsed.push(record);
+            let result;
+            try {
+                if (toolName === 'editEntry') {
+                    result = await handleEditEntryCall(toolArgs, pendingEditsList);
+                } else {
+                    result = await executeTool(toolName, req.user.id, toolArgs);
+                }
+            } catch (err) {
+                record.status = 'error';
+                record.error = err.message || 'unknown error';
+                record.durationMs = Date.now() - startedAt;
+                throw err;
+            }
+            record.durationMs = Date.now() - startedAt;
+            if (result && typeof result === 'object') {
+                if (result.error) {
+                    record.status = 'error';
+                    record.error = String(result.error).slice(0, 200);
+                } else if (result.pending) {
+                    record.status = 'pending';
+                }
+                const summary = summarizeToolResult(toolName, result);
+                if (summary) record.summary = summary;
+            }
+            return result;
+        }
 
         if (provider === 'openai') {
             // ── OpenAI branch ──────────────────────────────────────────
@@ -3554,12 +3639,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
                         console.error(`Failed to parse OpenAI tool args for ${toolName}:`, parseErr.message);
                     }
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
@@ -3613,12 +3693,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     try { toolArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch (parseErr) {
                         console.error(`Failed to parse Copilot tool args for ${toolName}:`, parseErr.message);
                     }
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultMessages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
@@ -3679,12 +3754,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                 for (const toolUse of toolUseBlocks) {
                     const toolName = toolUse.name;
                     const toolArgs = toolUse.input || {};
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResults.push({
                         type: 'tool_result',
                         tool_use_id: toolUse.id,
@@ -3762,12 +3832,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                 for (const fc of functionCalls) {
                     const toolName = fc.functionCall.name;
                     const toolArgs = fc.functionCall.args || {};
-                    let result;
-                    if (toolName === 'editEntry') {
-                        result = await handleEditEntryCall(toolArgs, pendingEditsList);
-                    } else {
-                        result = await executeTool(toolName, req.user.id, toolArgs);
-                    }
+                    const result = await runToolWithTracking(toolName, toolArgs);
                     toolResultParts.push({
                         functionResponse: { name: toolName, response: result }
                     });
@@ -3783,6 +3848,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
         const responsePayload = { reply: finalText };
         if (pendingEditsList.length > 0) {
             responsePayload.pendingEdits = pendingEditsList;
+        }
+        if (toolsUsed.length > 0) {
+            responsePayload.toolsUsed = toolsUsed;
         }
         res.json(responsePayload);
     } catch (error) {
