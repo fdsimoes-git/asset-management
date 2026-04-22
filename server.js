@@ -3047,16 +3047,15 @@ async function resolveChatPartner(user) {
 // only couple-flagged rows cross the boundary. Amounts are NOT halved
 // (the chat is a different surface from the My Share dashboard view;
 // halving would skew answers like "how much did we spend on groceries").
+//
+// Uses db.getPartnerCoupleEntries (a targeted single-user query) instead
+// of db.getCoupleEntries, so we don't re-fetch the user's own couple rows
+// that are already in `own`.
 async function loadChatEntries(userId, partnerId) {
     const own = await db.getEntriesByUser(userId);
     const ownDecorated = own.map(e => ({ ...e, owner: 'me' }));
     if (!partnerId) return ownDecorated;
-    // getCoupleEntries returns BOTH partners' couple-flagged rows; the
-    // user's own couple rows are already in `own`, so keep only the
-    // partner's contributions to avoid duplicating IDs.
-    const couple = await db.getCoupleEntries(userId, partnerId);
-    const partnerCouple = couple
-        .filter(e => Number(e.userId) === Number(partnerId))
+    const partnerCouple = (await db.getPartnerCoupleEntries(partnerId))
         .map(e => ({ ...e, owner: 'partner' }));
     // Sort merged set by id so any downstream `.slice(limit)` is
     // deterministic and doesn't bias toward the user's rows just
@@ -3079,8 +3078,8 @@ function partnerScopeMeta(partnerId, filteredEntries) {
 }
 
 async function toolGetFinancialSummary(context, args) {
-    const { userId, partnerId } = context;
-    let userEntries = await loadChatEntries(userId, partnerId);
+    const { partnerId } = context;
+    let userEntries = await context.getEntries();
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
     userEntries = filterByCouple(userEntries, args.coupleFilter);
 
@@ -3113,9 +3112,9 @@ async function toolGetFinancialSummary(context, args) {
 }
 
 async function toolGetCategoryBreakdown(context, args) {
-    const { userId, partnerId } = context;
+    const { partnerId } = context;
     const type = args.type || 'expense';
-    let userEntries = await loadChatEntries(userId, partnerId);
+    let userEntries = await context.getEntries();
     userEntries = userEntries.filter(e => e.type === type);
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
     userEntries = filterByCouple(userEntries, args.coupleFilter);
@@ -3145,8 +3144,8 @@ async function toolGetCategoryBreakdown(context, args) {
 }
 
 async function toolGetMonthlyTrends(context, args) {
-    const { userId, partnerId } = context;
-    let userEntries = await loadChatEntries(userId, partnerId);
+    const { partnerId } = context;
+    let userEntries = await context.getEntries();
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
     userEntries = filterByCouple(userEntries, args.coupleFilter);
 
@@ -3181,8 +3180,8 @@ async function toolGetMonthlyTrends(context, args) {
 }
 
 async function toolGetTopExpenses(context, args) {
-    const { userId, partnerId } = context;
-    let userEntries = await loadChatEntries(userId, partnerId);
+    const { partnerId } = context;
+    let userEntries = await context.getEntries();
     userEntries = userEntries.filter(e => e.type === 'expense');
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
     userEntries = filterByCouple(userEntries, args.coupleFilter);
@@ -3217,8 +3216,8 @@ async function toolGetTopExpenses(context, args) {
 }
 
 async function toolComparePeriods(context, args) {
-    const { userId, partnerId } = context;
-    const allEntries = await loadChatEntries(userId, partnerId);
+    const { partnerId } = context;
+    const allEntries = await context.getEntries();
     const filteredAll = filterByCouple(allEntries, args.coupleFilter);
     const get = (start, end) => {
         const ue = filterByDateRange(filteredAll, start, end);
@@ -3256,13 +3255,13 @@ async function toolComparePeriods(context, args) {
             expenses: pctChange(p1.expenses, p2.expenses),
             net: pctChange(p1.net, p2.net)
         },
-        partnerScope: { hasLinkedPartner: !!partnerId }
+        partnerScope: partnerScopeMeta(partnerId, filteredAll)
     };
 }
 
 async function toolSearchEntries(context, args) {
-    const { userId, partnerId } = context;
-    let userEntries = await loadChatEntries(userId, partnerId);
+    const { partnerId } = context;
+    let userEntries = await context.getEntries();
     userEntries = filterByDateRange(userEntries, args.startMonth, args.endMonth);
     userEntries = filterByCouple(userEntries, args.coupleFilter);
 
@@ -3686,14 +3685,36 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
 
     const toolsUsed = []; // hoisted so error responses can include it { name, args, status: 'success'|'error'|'pending', durationMs, summary?, error? }
 
-    // Resolve linked partner once per request so all tool calls share a
-    // consistent partner-visibility snapshot. If the partner is invalid
-    // (unlinked, deactivated, or non-mutual), partnerId stays null and
-    // tools behave exactly like the legacy single-user path.
-    const chatPartner = await resolveChatPartner(req.user);
-    const toolContext = { userId: req.user.id, partnerId: chatPartner ? chatPartner.id : null };
-
     try {
+        // Resolve linked partner once per request so all tool calls share a
+        // consistent partner-visibility snapshot. If the partner is invalid
+        // (unlinked, deactivated, or non-mutual), partnerId stays null and
+        // tools behave exactly like the legacy single-user path. A DB hiccup
+        // in the partner lookup must not fail the whole chat — degrade to
+        // the single-user path and log so we still get to runToolWithTracking
+        // and the structured `{ error, toolsUsed }` response shape.
+        let chatPartner = null;
+        try {
+            chatPartner = await resolveChatPartner(req.user);
+        } catch (err) {
+            console.error('Failed to resolve chat partner; defaulting to single-user path:', err && err.message ? err.message : err);
+        }
+        const partnerIdForChat = chatPartner ? chatPartner.id : null;
+        // Memoize the merged entry set for the lifetime of this request so
+        // multiple read-tool invocations in a single turn share the load
+        // (no mutating tool runs synchronously inside this handler — editEntry
+        // returns { pending: true } and only mutates via the separate
+        // /api/ai/confirm-edit endpoint — so the cache cannot go stale here).
+        let entriesPromise = null;
+        const toolContext = {
+            userId: req.user.id,
+            partnerId: partnerIdForChat,
+            getEntries() {
+                if (!entriesPromise) entriesPromise = loadChatEntries(req.user.id, partnerIdForChat);
+                return entriesPromise;
+            }
+        };
+
         let finalText = null;
         const pendingEditsList = [];
         const maxIterations = 5;
