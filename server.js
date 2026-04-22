@@ -3487,7 +3487,7 @@ async function toolDeleteEntry(userId, args) {
     if (validation.error) return validation;
 
     const { entry } = validation;
-    // Drop any pending edit snapshot for this entry — the entry will no longer exist.
+    // Drop the stored last-edit (undo) snapshot for this entry — the entry will no longer exist.
     lastEditSnapshots.delete(`${userId}:${entry.id}`);
 
     const deleted = await db.deleteEntry(entry.id, userId);

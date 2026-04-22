@@ -453,7 +453,7 @@
             html += '</div>';
         }
 
-        html += '<div class="chat-confirm-warning">⚠️ ' + escapeHtml(t('chat.deleteWarning')) + '</div>';
+        html += '<div class="chat-confirm-warning"><span aria-hidden="true">⚠️</span><span>' + escapeHtml(t('chat.deleteWarning')) + '</span></div>';
 
         const confirmLabel = isBulk ? t('chat.confirmAllDeletes') : t('chat.confirmDelete');
         html += '<div class="chat-confirm-actions">';
@@ -507,11 +507,18 @@
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
             try {
-                for (const pd of pendingDeletes) {
+                if (isBulk) {
+                    // One round-trip cancels all pending deletes for this user.
                     await csrfFetch('/api/ai/cancel-delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ entryId: pd.entryId })
+                        body: JSON.stringify({})
+                    });
+                } else {
+                    await csrfFetch('/api/ai/cancel-delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entryId: pendingDeletes[0].entryId })
                     });
                 }
             } catch (e) { /* ignore */ }
