@@ -3030,11 +3030,22 @@ function filterByCouple(userEntries, coupleFilter) {
 //
 // Mirrors the validation used by the entries endpoint (server.js ~2066):
 // only treat the partner as valid if they exist, are active, and the link
-// is mutual.
+// is mutual. Also explicitly reject a self-link (user.partnerId === user.id):
+// the existing checks would otherwise accept it (the user record IS active
+// and IS "linked to" itself), causing loadChatEntries to duplicate every
+// couple-flagged row of the user with conflicting owner metadata. A
+// self-link can't leak another user's data, but it would inflate the chat
+// agent's view and break the editable=false contract.
 async function resolveChatPartner(user) {
     if (!user || !user.partnerId) return null;
+    if (Number(user.partnerId) === Number(user.id)) return null;
     const partner = await db.findUserById(user.partnerId);
-    if (partner && partner.isActive && partner.partnerId === user.id) return partner;
+    if (
+        partner &&
+        partner.id !== user.id &&
+        partner.isActive &&
+        partner.partnerId === user.id
+    ) return partner;
     return null;
 }
 
