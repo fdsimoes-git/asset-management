@@ -3207,10 +3207,16 @@ async function toolGetTopExpenses(context, args) {
     let limit = parseInt(args.limit, 10);
     if (!Number.isFinite(limit) || limit <= 0) limit = 10;
     limit = Math.min(limit, 50);
-    const sorted = userEntries.sort((a, b) => b.amount - a.amount).slice(0, limit);
+    // Sort defensively on a clone — context.getEntries() returns a memoized
+    // array that other tools in the same chat turn rely on being id-ordered.
+    // (The earlier filter steps usually clone, but filterByCouple is a
+    // passthrough when coupleFilter is 'all'/undefined — defending here
+    // is cheap and removes the foot-gun entirely.)
+    const sorted = userEntries.slice().sort((a, b) => b.amount - a.amount);
+    const top = sorted.slice(0, limit);
 
     return {
-        topExpenses: sorted.map(e => ({
+        topExpenses: top.map(e => ({
             id: e.id,
             description: e.description,
             amount: e.amount.toFixed(2),
@@ -3221,8 +3227,11 @@ async function toolGetTopExpenses(context, args) {
             owner: e.owner || 'me',
             editable: (e.owner || 'me') === 'me'
         })),
-        count: sorted.length,
-        partnerScope: partnerScopeMeta(partnerId, sorted)
+        count: top.length,
+        // Scope metadata reflects the FULL post-filter set, not just the
+        // returned top-N — otherwise partner involvement is undercounted
+        // whenever partner entries fall outside the limit.
+        partnerScope: partnerScopeMeta(partnerId, userEntries)
     };
 }
 
@@ -3235,6 +3244,7 @@ async function toolComparePeriods(context, args) {
         const income = ue.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
         const expenses = ue.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
         return {
+            ue,
             income, expenses,
             net: income - expenses,
             entryCount: ue.length,
@@ -3249,6 +3259,14 @@ async function toolComparePeriods(context, args) {
         if (a === 0) return b === 0 ? '0%' : 'N/A';
         return ((b - a) / a * 100).toFixed(1) + '%';
     };
+
+    // Scope metadata must reflect the entries that actually fed the
+    // comparison — i.e. the union of the two period-filtered sets,
+    // not the all-time filteredAll set (which would also include any
+    // entries between/outside the periods). Dedupe by id since periods
+    // may overlap.
+    const seenIds = new Set(p1.ue.map(e => e.id));
+    const periodUnion = p1.ue.concat(p2.ue.filter(e => !seenIds.has(e.id)));
 
     return {
         period1: {
@@ -3266,7 +3284,7 @@ async function toolComparePeriods(context, args) {
             expenses: pctChange(p1.expenses, p2.expenses),
             net: pctChange(p1.net, p2.net)
         },
-        partnerScope: partnerScopeMeta(partnerId, filteredAll)
+        partnerScope: partnerScopeMeta(partnerId, periodUnion)
     };
 }
 
