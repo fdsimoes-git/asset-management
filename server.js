@@ -1579,10 +1579,12 @@ app.put('/api/user/ai-provider', requireAuth, asyncHandler(async (req, res) => {
 //
 // The web search capability is currently only wired through Anthropic's
 // `web_search_20250305` server tool (see the Anthropic chat branch in
-// /api/ai/chat). When this toggle is ON but the user's active AI
-// provider is something other than Anthropic, the chat handler will
-// surface `webSearchUnavailable: true` in the response payload so the
-// UI can show a hint — see notes in plan.md / issue #58.
+// /api/ai/chat). When this toggle is ON but web search cannot be used,
+// the chat handler surfaces a structured `webSearchUnavailable` object
+// in the response payload so the UI can show a hint, e.g.
+// `{ reason: 'provider', activeProvider }`,
+// `{ reason: 'daily_cap', cap }`, or
+// `{ reason: 'not_supported' }` — see notes in plan.md / issue #58.
 app.put('/api/user/web-search-toggle', requireAuth, asyncHandler(async (req, res) => {
     const { enabled } = req.body;
     if (typeof enabled !== 'boolean') {
@@ -3010,8 +3012,8 @@ WEB SEARCH:
 // per-turn `max_uses` cap and complements (not replaces) it. Resets at
 // UTC midnight; capped at WEB_SEARCH_DAILY_CAP per user per day. When
 // the cap is hit, the chat handler omits the web_search tool from
-// subsequent requests that day and surfaces `webSearchUnavailable: true`
-// with `reason: 'daily_cap'`.
+// subsequent requests that day and surfaces `webSearchUnavailable` as
+// an object with `reason: 'daily_cap'` (and a contextual `cap` field).
 const WEB_SEARCH_DAILY_CAP = 30;
 const webSearchDaily = new Map(); // userId → { date: 'YYYY-MM-DD', count }
 

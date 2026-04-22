@@ -310,7 +310,7 @@
                 } else {
                     hint = t('chat.webSearchUnavailableGeneric');
                 }
-                appendMessage('assistant', `_${hint}_`);
+                appendMessage('assistant', `*${hint}*`);
             }
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
