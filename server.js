@@ -4161,6 +4161,26 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
 
             for (let i = 0; i < maxIterations; i++) {
                 let response;
+                // Detects an Anthropic 400 response specifically about output-token
+                // limits — used to transparently retry at 4096 if a user-selected
+                // model caps output below 8192. Stays narrow on purpose so 429s,
+                // input-token errors, etc never trigger an extra retry.
+                const isMaxTokensReject = (err) => {
+                    if (chatMaxTokens <= 4096) return false;
+                    const status = err && (err.status || err.statusCode);
+                    if (status && status !== 400) return false;
+                    const m = (err && err.message) ? err.message.toLowerCase() : '';
+                    if (!m) return false;
+                    return m.includes('max_tokens')
+                        || m.includes('max tokens')
+                        || m.includes('output token')
+                        || m.includes('output tokens');
+                };
+                const downgradeAndRetry = async (err) => {
+                    console.warn('Anthropic rejected max_tokens=' + chatMaxTokens + ', retrying at 4096:', err.message);
+                    chatMaxTokens = 4096;
+                    return callAnthropic();
+                };
                 try {
                     response = await callAnthropic();
                 } catch (err) {
@@ -4181,29 +4201,20 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         // Rebuild system prompt to drop the web-search instructions
                         // so the model's instructions match the provided tools.
                         anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
-                        response = await callAnthropic();
-                    } else if (chatMaxTokens > 4096 && (() => {
-                        // Only retry-with-smaller-cap if the error CLEARLY refers
-                        // to output-token limits. Avoid generic words like
-                        // "exceed"/"maximum" which also match rate-limit errors,
-                        // input-token-limit errors, etc — retrying those at 4096
-                        // wastes latency/cost and can worsen 429 storms.
-                        const status = err && (err.status || err.statusCode);
-                        if (status && status !== 400) return false;
-                        if (!msg) return false;
-                        // Must mention max_tokens (the request param) OR the
-                        // specific phrase "output token"/"output tokens".
-                        return msg.includes('max_tokens')
-                            || msg.includes('max tokens')
-                            || msg.includes('output token')
-                            || msg.includes('output tokens');
-                    })()) {
-                        // Some Claude models cap output below 8192 and reject the
-                        // request. Transparently retry once at 4096 (the prior
-                        // proven cap) for the remainder of this chat turn.
-                        console.warn('Anthropic rejected max_tokens=' + chatMaxTokens + ', retrying at 4096:', err.message);
-                        chatMaxTokens = 4096;
-                        response = await callAnthropic();
+                        try {
+                            response = await callAnthropic();
+                        } catch (err2) {
+                            // The capability retry can itself trip the
+                            // max_tokens cap on smaller models — chain into the
+                            // same downgrade path so both fallbacks apply.
+                            if (isMaxTokensReject(err2)) {
+                                response = await downgradeAndRetry(err2);
+                            } else {
+                                throw err2;
+                            }
+                        }
+                    } else if (isMaxTokensReject(err)) {
+                        response = await downgradeAndRetry(err);
                     } else {
                         throw err;
                     }
