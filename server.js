@@ -3098,6 +3098,14 @@ function _sanitizeCitationUrl(raw) {
     if (/[\s\u0000-\u001F\u007F]/.test(s)) return null;
     // Length cap to defend against pathological URLs.
     if (s.length > 500) return null;
+    // Reject URLs containing markdown metacharacters that the chat
+    // client's parseMarkdown() actively interprets when concatenated
+    // into the Sources line: `*` (italic/bold), `` ` `` (inline code),
+    // `|` (table column). These are rarely present in legitimate URLs;
+    // the safer choice is to drop the citation rather than mangle the
+    // URL into something un-copy-pastable. (`<`/`>` are HTML-escaped
+    // by parseMarkdown before markdown parsing, so they are safe.)
+    if (/[`*|]/.test(s)) return null;
     return s;
 }
 
