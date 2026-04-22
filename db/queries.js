@@ -332,6 +332,24 @@ async function getCoupleEntries(userId, partnerId, month) {
     return rows.map(dbRowToEntry);
 }
 
+// Fetches ONLY the partner's couple-flagged entries — used by the AI
+// chat agent's loadChatEntries() to avoid re-fetching the current
+// user's couple rows that getEntriesByUser already returned.
+async function getPartnerCoupleEntries(partnerId, month) {
+    if (month) {
+        const { rows } = await pool.query(
+            'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = TRUE AND month = $2 ORDER BY id',
+            [partnerId, month]
+        );
+        return rows.map(dbRowToEntry);
+    }
+    const { rows } = await pool.query(
+        'SELECT * FROM entries WHERE user_id = $1 AND is_couple_expense = TRUE ORDER BY id',
+        [partnerId]
+    );
+    return rows.map(dbRowToEntry);
+}
+
 async function getIndividualEntries(userId, month) {
     if (month) {
         const { rows } = await pool.query(
@@ -806,6 +824,7 @@ module.exports = {
     // Entries
     getEntriesByUser,
     getCoupleEntries,
+    getPartnerCoupleEntries,
     getIndividualEntries,
     getMyShareEntries,
     getEntryByIdAndUser,
