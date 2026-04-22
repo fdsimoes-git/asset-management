@@ -4108,7 +4108,6 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             }
 
             let currentMessages = anthropicMessages;
-            const anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt + (req.user.webSearchEnabled ? ANTHROPIC_WEB_SEARCH_PROMPT : ''));
 
             // Decide whether to expose the web_search server tool this turn.
             // Gate on (a) user opt-in, (b) we haven't hit the daily cap.
@@ -4123,6 +4122,12 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             } else if (req.user.webSearchEnabled && dailyCapReached) {
                 webSearchUnavailable = { reason: 'daily_cap', cap: WEB_SEARCH_DAILY_CAP };
             }
+
+            // Build the system prompt to match the *actual* tool availability
+            // for this turn — only mention web_search when the tool is in
+            // currentTools, so the prompt/tooling contract stays consistent
+            // (even if the daily cap is reached or capability fallback fires).
+            let anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt + (webSearchActive ? ANTHROPIC_WEB_SEARCH_PROMPT : ''));
 
             // Per-request tools array — never mutate the global declarations.
             let currentTools = webSearchActive
@@ -4163,6 +4168,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         webSearchActive = false;
                         webSearchUnavailable = { reason: 'not_supported' };
                         currentTools = anthropicToolDeclarations;
+                        // Rebuild system prompt to drop the web-search instructions
+                        // so the model's instructions match the provided tools.
+                        anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
                         response = await callAnthropic();
                     } else {
                         throw err;
@@ -4177,6 +4185,9 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                     if (getWebSearchUsage(req.user.id).count >= WEB_SEARCH_DAILY_CAP) {
                         webSearchActive = false;
                         currentTools = anthropicToolDeclarations;
+                        // Drop the web-search instructions for any subsequent
+                        // iterations of this loop so the prompt matches tools.
+                        anthropicSystem = buildAnthropicSystemPrompt(anthropicAuth, chatSystemPrompt);
                         // Surface the cap in the response so the UI can show
                         // the "daily limit reached" hint, even when the cap
                         // is hit mid-request after some searches succeeded.
