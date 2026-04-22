@@ -3441,7 +3441,7 @@ function summarizeToolResult(toolName, result) {
         case 'getFinancialSummary':
             return result.entryCount != null ? `${result.entryCount} entries analyzed` : null;
         case 'getCategoryBreakdown':
-            return Array.isArray(result.categories) ? `${result.categories.length} categories` : null;
+            return Array.isArray(result.breakdown) ? `${result.breakdown.length} categories` : null;
         case 'getMonthlyTrends':
             return Array.isArray(result.months) ? `${result.months.length} months` : null;
         case 'comparePeriods':
