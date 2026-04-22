@@ -3055,7 +3055,7 @@ if (typeof webSearchDailyCleanupInterval.unref === 'function') {
 // Render Anthropic citation metadata as inline footnote markers + a
 // Sources block appended to the reply. `contentBlocks` is the raw
 // `response.content` array. Returns { text, sources } where sources
-// is a deduped [{ url, title }] list.
+// is a deduped [{ index, url, title }] list.
 //
 // Citation `title` and `url` originate from live web pages and are
 // attacker-controlled. They are concatenated into the reply, which the
@@ -3080,8 +3080,11 @@ const _CITATION_TITLE_REPLACEMENTS = {
 };
 function _sanitizeCitationTitle(raw) {
     let s = String(raw || '');
-    // Collapse newlines/control chars to spaces — prevents heading/table injection.
-    s = s.replace(/[\r\n\t\u0000-\u001F\u007F]+/g, ' ');
+    // Collapse newlines, control chars, C1 controls, and Unicode line/
+    // paragraph separators to spaces — prevents heading/table injection
+    // and visual spoofing via U+2028 / U+2029 line breaks that would
+    // otherwise survive the JSON transport and split the Sources block.
+    s = s.replace(/[\r\n\t\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
     // Replace markdown metacharacters with full-width Unicode lookalikes.
     s = s.replace(/[\\`*_{}\[\]()#+\-!|<>~]/g, (ch) => _CITATION_TITLE_REPLACEMENTS[ch] || ch);
     // Length cap.
