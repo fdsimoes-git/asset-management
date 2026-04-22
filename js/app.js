@@ -2478,6 +2478,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span id="aiModelLoading" style="display: none; color: var(--color-text-muted); font-size: 0.875rem;">${t('settings.aiModelLoading')}</span>
                         </div>
                     </div>
+
+                    <div id="webSearchToggleSection" style="margin-top: 1rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="settingsWebSearchToggle" ${(currentUser && currentUser.webSearchEnabled) ? 'checked' : ''}>
+                            <span style="color: var(--color-text-primary); font-size: 0.9rem;">${t('settings.webSearchLabel')}</span>
+                        </label>
+                        <small style="display: block; margin-top: 0.35rem; color: var(--color-text-muted); font-size: 0.8rem;">${t('settings.webSearchHelp', { perTurn: (currentUser && currentUser.webSearchPerTurnCap) || 3, perDay: (currentUser && currentUser.webSearchDailyCap) || 30 })}</small>
+                        <small id="webSearchInactiveHint" style="display: ${(currentUser && currentUser.webSearchEnabled && currentUser.aiProvider !== 'anthropic') ? 'block' : 'none'}; margin-top: 0.35rem; color: var(--color-warning, #d97706); font-size: 0.8rem;">${t('settings.webSearchInactiveProvider')}</small>
+                    </div>
                 </div>
             </div>
         `;
@@ -2497,6 +2506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsCopilotOauth(overlay);
         wireSettingsAiProvider(overlay);
         wireSettingsAiModel(overlay);
+        wireSettingsWebSearch(overlay);
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -3384,6 +3394,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 setButtonLoading(saveBtn, false);
             }
         });
+    }
+
+    function wireSettingsWebSearch(overlay) {
+        const toggle = overlay.querySelector('#settingsWebSearchToggle');
+        const inactiveHint = overlay.querySelector('#webSearchInactiveHint');
+        if (!toggle) return;
+
+        function refreshInactiveHint() {
+            if (!inactiveHint) return;
+            const enabled = !!toggle.checked;
+            const provider = currentUser && currentUser.aiProvider;
+            inactiveHint.style.display = (enabled && provider && provider !== 'anthropic') ? 'block' : 'none';
+        }
+
+        toggle.addEventListener('change', async () => {
+            const enabled = !!toggle.checked;
+            toggle.disabled = true;
+            try {
+                const response = await csrfFetch('/api/user/web-search-toggle', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    currentUser.webSearchEnabled = enabled;
+                    refreshInactiveHint();
+                } else {
+                    toggle.checked = !enabled;
+                    alert(t('settings.webSearchSaveError'));
+                }
+            } catch (e) {
+                toggle.checked = !enabled;
+                alert(t('settings.webSearchSaveError'));
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+
+        overlay.addEventListener('providerChanged', refreshInactiveHint);
     }
 
     function wireSettingsAiModel(overlay) {

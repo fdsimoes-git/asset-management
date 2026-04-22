@@ -49,6 +49,14 @@
         scrollToBottom();
     }
 
+    // Render a UI-only notice (e.g. web-search unavailable hint) without
+    // pushing it into chatMessages — those get sent back as conversation
+    // history on the next turn and would pollute model context.
+    function renderNotice(content) {
+        renderMessage('assistant', content);
+        scrollToBottom();
+    }
+
     function renderMessage(role, content) {
         const div = document.createElement('div');
         div.className = role === 'user' ? 'chat-message-user' : 'chat-message-assistant';
@@ -298,6 +306,20 @@
                 renderToolsUsedPanel(data.toolsUsed);
             }
             appendMessage('assistant', data.reply || t('chat.errorGeneric'));
+            if (data.webSearchUnavailable) {
+                const reason = data.webSearchUnavailable.reason;
+                let hint;
+                if (reason === 'provider') {
+                    hint = t('chat.webSearchUnavailableProvider', { provider: data.webSearchUnavailable.activeProvider || '' });
+                } else if (reason === 'daily_cap') {
+                    hint = t('chat.webSearchUnavailableDailyCap', { cap: data.webSearchUnavailable.cap || 30 });
+                } else if (reason === 'not_supported') {
+                    hint = t('chat.webSearchUnavailableNotSupported');
+                } else {
+                    hint = t('chat.webSearchUnavailableGeneric');
+                }
+                renderNotice(`*${hint}*`);
+            }
             if (data.pendingEdits && data.pendingEdits.length > 0) {
                 renderConfirmationCard(data.pendingEdits);
             }

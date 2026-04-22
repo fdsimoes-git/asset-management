@@ -325,6 +325,10 @@ const translations = {
     'settings.aiProviderCopilot': 'GitHub Copilot',
     'settings.aiProviderSaveSuccess': 'AI provider preference saved',
     'settings.aiProviderSaveError': 'Failed to save AI provider preference',
+    'settings.webSearchLabel': 'Enable web search in AI chat',
+    'settings.webSearchHelp': 'Lets the AI assistant look up unknown merchants or venues online. Currently only available with Anthropic (Claude). Capped at {perTurn} searches per message and {perDay} per day.',
+    'settings.webSearchInactiveProvider': 'Saved, but inactive — switch your AI provider to Anthropic (Claude) to use web search.',
+    'settings.webSearchSaveError': 'Failed to save web search preference',
 
     // ── AI Model settings ──
     'settings.aiModelLabel': 'AI Model',
@@ -492,6 +496,10 @@ const translations = {
     'chat.errorInvalidKey': 'Your API key for the selected provider appears to be invalid. Please check it in Settings.',
     'chat.errorQuota': 'API quota or credits exceeded for your AI provider. Please check your account or try again later.',
     'chat.errorGeneric': 'Sorry, something went wrong. Please try again.',
+    'chat.webSearchUnavailableProvider': 'Web search is enabled but only works with Anthropic (Claude). Your active provider is {provider}, so it was skipped this turn.',
+    'chat.webSearchUnavailableDailyCap': 'Web search daily limit reached ({cap}/day). It will reset at UTC midnight.',
+    'chat.webSearchUnavailableNotSupported': 'Web search is not available for your current Anthropic credentials or model. The reply was generated without it.',
+    'chat.webSearchUnavailableGeneric': 'Web search was unavailable for this turn.',
     'chat.errorRateLimit': 'Too many messages. Please wait a few minutes and try again.',
     'chat.confirmEditTitle': 'Confirm Entry Edit',
     'chat.confirmEditTitleCount': 'Confirm Edits ({count} entries)',
@@ -842,6 +850,10 @@ const translations = {
     'settings.aiProviderCopilot': 'GitHub Copilot',
     'settings.aiProviderSaveSuccess': 'Preferência de provedor de IA salva',
     'settings.aiProviderSaveError': 'Falha ao salvar preferência de provedor de IA',
+    'settings.webSearchLabel': 'Ativar busca na web no chat de IA',
+    'settings.webSearchHelp': 'Permite que o assistente de IA pesquise estabelecimentos ou lojas desconhecidos online. Disponível apenas com Anthropic (Claude). Limite de {perTurn} buscas por mensagem e {perDay} por dia.',
+    'settings.webSearchInactiveProvider': 'Salvo, mas inativo — troque seu provedor de IA para Anthropic (Claude) para usar busca na web.',
+    'settings.webSearchSaveError': 'Falha ao salvar preferência de busca na web',
 
     // ── AI Model settings ──
     'settings.aiModelLabel': 'Modelo de IA',
@@ -1001,6 +1013,10 @@ const translations = {
     'chat.errorInvalidKey': 'Sua chave API para o provedor selecionado parece ser inválida. Verifique nas Configurações.',
     'chat.errorQuota': 'Cota ou créditos da API excedidos para seu provedor de IA. Verifique sua conta ou tente novamente mais tarde.',
     'chat.errorGeneric': 'Desculpe, algo deu errado. Por favor, tente novamente.',
+    'chat.webSearchUnavailableProvider': 'A busca na web está ativada mas só funciona com Anthropic (Claude). Seu provedor ativo é {provider}, então foi ignorada nesta resposta.',
+    'chat.webSearchUnavailableDailyCap': 'Limite diário de busca na web atingido ({cap}/dia). Será reiniciado à meia-noite UTC.',
+    'chat.webSearchUnavailableNotSupported': 'A busca na web não está disponível para suas credenciais ou modelo Anthropic atuais. A resposta foi gerada sem ela.',
+    'chat.webSearchUnavailableGeneric': 'A busca na web ficou indisponível nesta resposta.',
     'chat.errorRateLimit': 'Muitas mensagens. Por favor, aguarde alguns minutos e tente novamente.',
     'chat.confirmEditTitle': 'Confirmar Edição de Entrada',
     'chat.confirmEditTitleCount': 'Confirmar Edições ({count} entradas)',
