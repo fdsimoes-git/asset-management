@@ -835,6 +835,8 @@ const DEFAULT_CATEGORIES = [
     { slug: 'other',         color: '#94a3b8' },
 ];
 
+const DEFAULT_CATEGORY_SLUGS = new Set(DEFAULT_CATEGORIES.map(c => c.slug));
+
 function dbRowToUserCategory(row) {
     if (!row) return null;
     return {
@@ -925,9 +927,31 @@ async function deleteUserCategory(userId, slug) {
     return rowCount > 0;
 }
 
-// Re-seed any default slugs the user is missing (does not touch user-created).
+// Upsert the 17 default slugs to their canonical state — restoring
+// is_default=TRUE, the canonical color, label=slug, and the original
+// sort_order — even if a row for that slug already exists as a
+// non-default (e.g. partner import or AI auto-create predating the
+// default-slug guards). Truly custom (non-default) slugs are untouched.
 async function resetUserCategoriesToDefaults(userId) {
-    await seedDefaultCategoriesForUser(userId);
+    const values = [];
+    const params = [userId];
+    let i = 2;
+    for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
+        const c = DEFAULT_CATEGORIES[idx];
+        values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
+        params.push(c.slug, c.slug, c.color, idx);
+    }
+    await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO UPDATE SET
+             label = EXCLUDED.label,
+             color = EXCLUDED.color,
+             is_default = TRUE,
+             sort_order = EXCLUDED.sort_order,
+             imported_from_user_id = NULL`,
+        params
+    );
     return getUserCategories(userId);
 }
 
@@ -971,10 +995,21 @@ async function ensurePartnerCategories(userId, partnerId, month) {
         params
     );
     if (rows.length === 0) return 0;
+    return _insertImportedPartnerRows(userId, partnerId, rows);
+}
+
+// Shared insert step for partner-import helpers. Filters out default
+// slugs (those must always remain is_default=TRUE rows so label
+// translation/locking and reset-defaults stay consistent — the user
+// already has the defaults seeded by the caller) and returns the
+// number of rows actually inserted.
+async function _insertImportedPartnerRows(userId, partnerId, rows) {
+    const importable = rows.filter(r => !DEFAULT_CATEGORY_SLUGS.has(r.slug));
+    if (importable.length === 0) return 0;
     const values = [];
     const insertParams = [userId, partnerId];
     let i = 3;
-    for (const r of rows) {
+    for (const r of importable) {
         const label = r.label || r.slug;
         const color = r.color || '#94a3b8';
         values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
@@ -990,11 +1025,6 @@ async function ensurePartnerCategories(userId, partnerId, month) {
     );
     return insertedRows.length;
 }
-
-// Variant that takes a precomputed list of partner slugs (e.g. distilled
-// from partner entry rows already fetched by the caller). Avoids the
-// `entries` scan in ensurePartnerCategories — useful from the AI chat
-// path where partner couple entries are already loaded for the model.
 async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
     if (!partnerId || !Array.isArray(slugs) || slugs.length === 0) return 0;
     const cleaned = [...new Set(
@@ -1023,24 +1053,7 @@ async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
         [userId, partnerId, cleaned]
     );
     if (rows.length === 0) return 0;
-    const values = [];
-    const insertParams = [userId, partnerId];
-    let i = 3;
-    for (const r of rows) {
-        const label = r.label || r.slug;
-        const color = r.color || '#94a3b8';
-        values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
-        insertParams.push(r.slug, label, color);
-    }
-    const { rows: insertedRows } = await pool.query(
-        `INSERT INTO user_categories
-         (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
-         VALUES ${values.join(', ')}
-         ON CONFLICT (user_id, slug) DO NOTHING
-         RETURNING slug`,
-        insertParams
-    );
-    return insertedRows.length;
+    return _insertImportedPartnerRows(userId, partnerId, rows);
 }
 
 module.exports = {
@@ -1091,6 +1104,7 @@ module.exports = {
 
     // User Categories (issue #70)
     DEFAULT_CATEGORIES,
+    DEFAULT_CATEGORY_SLUGS,
     getUserCategories,
     getUserCategorySlugs,
     seedDefaultCategoriesForUser,

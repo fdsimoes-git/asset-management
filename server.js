@@ -2385,6 +2385,12 @@ app.post('/api/categories', requireAuth, asyncHandler(async (req, res) => {
     if (!normColor) {
         return res.status(400).json({ message: 'Color must be a 6-digit hex (e.g. #22c55e).' });
     }
+    // Default slugs are reserved — they must always exist as is_default=TRUE
+    // canonical rows so label translation/locking and reset-defaults stay
+    // consistent. Direct that flow through reset-defaults instead.
+    if (db.DEFAULT_CATEGORY_SLUGS.has(normSlug)) {
+        return res.status(409).json({ message: 'That slug is reserved for a default category. Use Restore Defaults to bring it back.' });
+    }
     // Ensure defaults exist (so a brand-new account adding a custom category
     // first still gets the seeded defaults afterward via GET).
     await getCategoriesForUserSelfHeal(req.user.id);
@@ -3752,6 +3758,13 @@ async function validateEditArgs(userId, args) {
             const toCreate = [];
             for (const t of wellFormed) {
                 if (known.has(t)) continue;
+                // Default-category slugs are reserved — they can only exist
+                // as canonical is_default=TRUE rows (restored via reset-defaults).
+                // If the user previously deleted one, skip auto-create here so
+                // it shows up as an orphan tag the user can explicitly restore,
+                // rather than getting silently re-created as a non-default row
+                // that would corrupt label translation/locking.
+                if (db.DEFAULT_CATEGORY_SLUGS.has(t)) continue;
                 if (toCreate.length >= AUTOCREATE_CAP) break;
                 toCreate.push(t);
                 known.add(t);
