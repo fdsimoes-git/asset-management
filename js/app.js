@@ -1115,16 +1115,35 @@ function updateSortIndicators() {
 }
 
 // Display entries in the table
+// Caches the last sort result keyed by source-array identity + sort settings,
+// so paginating a large list doesn't re-sort O(n log n) on every Prev/Next.
+let _sortedEntriesCache = { source: null, column: null, direction: null, result: null };
 function displayEntries(entriesToShow) {
     const tbody = document.getElementById('entriesBody');
     tbody.innerHTML = '';
 
-    // Apply current sorting if set, otherwise default to month descending
+    // Apply current sorting if set, otherwise default to month descending.
+    // filterEntries() always reassigns currentFilteredEntries to a new array,
+    // so reference equality is enough to detect "filter changed".
     let sortedEntries;
-    if (currentSortColumn) {
-        sortedEntries = sortEntries(entriesToShow, currentSortColumn, currentSortDirection);
+    const cache = _sortedEntriesCache;
+    if (cache.source === entriesToShow
+        && cache.column === currentSortColumn
+        && cache.direction === currentSortDirection
+        && cache.result) {
+        sortedEntries = cache.result;
     } else {
-        sortedEntries = [...entriesToShow].sort((a, b) => b.month.localeCompare(a.month));
+        if (currentSortColumn) {
+            sortedEntries = sortEntries(entriesToShow, currentSortColumn, currentSortDirection);
+        } else {
+            sortedEntries = [...entriesToShow].sort((a, b) => b.month.localeCompare(a.month));
+        }
+        _sortedEntriesCache = {
+            source: entriesToShow,
+            column: currentSortColumn,
+            direction: currentSortDirection,
+            result: sortedEntries,
+        };
     }
 
     // Pagination: clamp currentPage so deletes/edits that shrink the list
