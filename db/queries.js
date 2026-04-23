@@ -808,6 +808,254 @@ async function cleanupExpiredPaypalOrders(maxAgeMs) {
     );
 }
 
+// ── User Categories (issue #70) ──────────────────────────────────────
+
+// The 17 default categories — slug + color match the historical hardcoded
+// frontend constants. Labels intentionally stay equal to the slug; the
+// frontend translates default rows via the `cat.<slug>` i18n keys instead
+// of trusting the DB label, so renames of defaults are blocked server-side
+// to keep that contract stable.
+const DEFAULT_CATEGORIES = [
+    { slug: 'food',          color: '#fbbf24' },
+    { slug: 'groceries',     color: '#22c55e' },
+    { slug: 'transport',     color: '#3b82f6' },
+    { slug: 'travel',        color: '#06b6d4' },
+    { slug: 'entertainment', color: '#a855f7' },
+    { slug: 'utilities',     color: '#6366f1' },
+    { slug: 'healthcare',    color: '#ef4444' },
+    { slug: 'education',     color: '#0ea5e9' },
+    { slug: 'shopping',      color: '#ec4899' },
+    { slug: 'subscription',  color: '#8b5cf6' },
+    { slug: 'housing',       color: '#f97316' },
+    { slug: 'salary',        color: '#10b981' },
+    { slug: 'freelance',     color: '#14b8a6' },
+    { slug: 'investment',    color: '#84cc16' },
+    { slug: 'transfer',      color: '#64748b' },
+    { slug: 'wedding',       color: '#f472b6' },
+    { slug: 'other',         color: '#94a3b8' },
+];
+
+const DEFAULT_CATEGORY_SLUGS = new Set(DEFAULT_CATEGORIES.map(c => c.slug));
+
+function dbRowToUserCategory(row) {
+    if (!row) return null;
+    return {
+        id:                Number(row.id),
+        userId:            Number(row.user_id),
+        slug:              row.slug,
+        label:             row.label,
+        color:             row.color,
+        isDefault:         !!row.is_default,
+        sortOrder:         row.sort_order != null ? Number(row.sort_order) : 0,
+        importedFromUserId: row.imported_from_user_id != null ? Number(row.imported_from_user_id) : null,
+    };
+}
+
+async function getUserCategories(userId) {
+    const { rows } = await pool.query(
+        `SELECT * FROM user_categories WHERE user_id = $1
+         ORDER BY sort_order ASC, slug ASC`,
+        [userId]
+    );
+    return rows.map(dbRowToUserCategory);
+}
+
+async function getUserCategorySlugs(userId) {
+    const { rows } = await pool.query(
+        `SELECT slug FROM user_categories WHERE user_id = $1`,
+        [userId]
+    );
+    return rows.map(r => r.slug);
+}
+
+// Bulk insert defaults; ON CONFLICT DO NOTHING is safe for self-heal calls.
+async function seedDefaultCategoriesForUser(userId) {
+    const values = [];
+    const params = [userId];
+    let i = 2;
+    for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
+        const c = DEFAULT_CATEGORIES[idx];
+        values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
+        params.push(c.slug, c.slug, c.color, idx);
+    }
+    await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO NOTHING`,
+        params
+    );
+}
+
+async function addUserCategory(userId, { slug, label, color, sortOrder }) {
+    const { rows } = await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ($1, $2, $3, $4, FALSE, $5)
+         RETURNING *`,
+        [userId, slug, label, color, sortOrder != null ? sortOrder : 999]
+    );
+    return dbRowToUserCategory(rows[0]);
+}
+
+// PATCH — defaults can only have color/sort_order updated; label is locked
+// because the FE translates default labels via i18n keys.
+async function updateUserCategory(userId, slug, { label, color, sortOrder }) {
+    const { rows: existingRows } = await pool.query(
+        `SELECT * FROM user_categories WHERE user_id = $1 AND slug = $2`,
+        [userId, slug]
+    );
+    if (existingRows.length === 0) return null;
+    const existing = dbRowToUserCategory(existingRows[0]);
+    const newLabel = (existing.isDefault || label == null) ? existing.label : label;
+    const newColor = color != null ? color : existing.color;
+    const newSort  = sortOrder != null ? sortOrder : existing.sortOrder;
+    const { rows } = await pool.query(
+        `UPDATE user_categories
+         SET label = $3, color = $4, sort_order = $5
+         WHERE user_id = $1 AND slug = $2
+         RETURNING *`,
+        [userId, slug, newLabel, newColor, newSort]
+    );
+    return dbRowToUserCategory(rows[0]);
+}
+
+// Hard delete — referencing entries are NOT modified (orphan render).
+async function deleteUserCategory(userId, slug) {
+    const { rowCount } = await pool.query(
+        `DELETE FROM user_categories WHERE user_id = $1 AND slug = $2`,
+        [userId, slug]
+    );
+    return rowCount > 0;
+}
+
+// Upsert the 17 default slugs to their canonical state — restoring
+// is_default=TRUE, the canonical color, label=slug, and the original
+// sort_order — even if a row for that slug already exists as a
+// non-default (e.g. partner import or AI auto-create predating the
+// default-slug guards). Truly custom (non-default) slugs are untouched.
+async function resetUserCategoriesToDefaults(userId) {
+    const values = [];
+    const params = [userId];
+    let i = 2;
+    for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
+        const c = DEFAULT_CATEGORIES[idx];
+        values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
+        params.push(c.slug, c.slug, c.color, idx);
+    }
+    await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO UPDATE SET
+             label = EXCLUDED.label,
+             color = EXCLUDED.color,
+             is_default = TRUE,
+             sort_order = EXCLUDED.sort_order,
+             imported_from_user_id = NULL`,
+        params
+    );
+    return getUserCategories(userId);
+}
+
+// Find tags used in the partner's couple-flagged entries that the user
+// doesn't already have, then bulk-insert them with the partner's color.
+// Returns the count of newly imported categories.
+async function ensurePartnerCategories(userId, partnerId, month) {
+    if (!partnerId) return 0;
+    // The default-category self-heal in GET /api/categories only runs when
+    // the user has zero rows. If we imported partner tags here first, we'd
+    // permanently block that seed. Run the seed first so the user always
+    // ends up with the defaults *plus* the partner imports.
+    const { rows: existing } = await pool.query(
+        'SELECT 1 FROM user_categories WHERE user_id = $1 LIMIT 1',
+        [userId]
+    );
+    if (existing.length === 0) {
+        await seedDefaultCategoriesForUser(userId);
+    }
+    // When the caller is fetching a specific month, only scan that month's
+    // partner entries — keeps page-level fetches cheap. Categories from
+    // other months will be imported when the user navigates to them.
+    const monthClause = month ? 'AND month = $3' : '';
+    const params = month ? [userId, partnerId, month] : [userId, partnerId];
+    const { rows } = await pool.query(
+        `WITH partner_tags AS (
+            SELECT DISTINCT UNNEST(tags) AS slug
+            FROM entries
+            WHERE user_id = $2 AND is_couple_expense = TRUE ${monthClause}
+        )
+        SELECT pt.slug, pc.label, pc.color
+        FROM partner_tags pt
+        LEFT JOIN user_categories pc
+          ON pc.user_id = $2 AND pc.slug = pt.slug
+        WHERE pt.slug IS NOT NULL
+          AND pt.slug <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM user_categories uc
+            WHERE uc.user_id = $1 AND uc.slug = pt.slug
+          )`,
+        params
+    );
+    if (rows.length === 0) return 0;
+    return _insertImportedPartnerRows(userId, partnerId, rows);
+}
+
+// Shared insert step for partner-import helpers. Filters out default
+// slugs (those must always remain is_default=TRUE rows so label
+// translation/locking and reset-defaults stay consistent — the user
+// already has the defaults seeded by the caller) and returns the
+// number of rows actually inserted.
+async function _insertImportedPartnerRows(userId, partnerId, rows) {
+    const importable = rows.filter(r => !DEFAULT_CATEGORY_SLUGS.has(r.slug));
+    if (importable.length === 0) return 0;
+    const values = [];
+    const insertParams = [userId, partnerId];
+    let i = 3;
+    for (const r of importable) {
+        const label = r.label || r.slug;
+        const color = r.color || '#94a3b8';
+        values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
+        insertParams.push(r.slug, label, color);
+    }
+    const { rows: insertedRows } = await pool.query(
+        `INSERT INTO user_categories
+         (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO NOTHING
+         RETURNING slug`,
+        insertParams
+    );
+    return insertedRows.length;
+}
+async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
+    if (!partnerId || !Array.isArray(slugs) || slugs.length === 0) return 0;
+    const cleaned = [...new Set(
+        slugs.filter(s => typeof s === 'string' && s.trim() !== '').map(s => s.trim())
+    )];
+    if (cleaned.length === 0) return 0;
+    const { rows: existing } = await pool.query(
+        'SELECT 1 FROM user_categories WHERE user_id = $1 LIMIT 1',
+        [userId]
+    );
+    if (existing.length === 0) {
+        await seedDefaultCategoriesForUser(userId);
+    }
+    const { rows } = await pool.query(
+        `WITH partner_tags AS (
+            SELECT UNNEST($3::text[]) AS slug
+        )
+        SELECT pt.slug, pc.label, pc.color
+        FROM partner_tags pt
+        LEFT JOIN user_categories pc
+          ON pc.user_id = $2 AND pc.slug = pt.slug
+        WHERE NOT EXISTS (
+            SELECT 1 FROM user_categories uc
+            WHERE uc.user_id = $1 AND uc.slug = pt.slug
+          )`,
+        [userId, partnerId, cleaned]
+    );
+    if (rows.length === 0) return 0;
+    return _insertImportedPartnerRows(userId, partnerId, rows);
+}
+
 module.exports = {
     // Users
     findUserByUsername,
@@ -852,5 +1100,18 @@ module.exports = {
     findPaypalOrder,
     completePaypalOrder,
     updatePaypalOrderStatus,
-    cleanupExpiredPaypalOrders
+    cleanupExpiredPaypalOrders,
+
+    // User Categories (issue #70)
+    DEFAULT_CATEGORIES,
+    DEFAULT_CATEGORY_SLUGS,
+    getUserCategories,
+    getUserCategorySlugs,
+    seedDefaultCategoriesForUser,
+    addUserCategory,
+    updateUserCategory,
+    deleteUserCategory,
+    resetUserCategoriesToDefaults,
+    ensurePartnerCategories,
+    importPartnerCategoriesFromTags,
 };

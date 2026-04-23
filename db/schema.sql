@@ -42,6 +42,23 @@ CREATE TABLE IF NOT EXISTS entries (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── User Categories ──────────────────────────────────────────────────
+-- Per-user category list: defaults are seeded for each user at first
+-- load and labelled via i18n; user-created categories carry a verbatim
+-- label. Imported partner categories track the source via imported_from_user_id.
+CREATE TABLE IF NOT EXISTS user_categories (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slug            TEXT NOT NULL,
+    label           TEXT NOT NULL,
+    color           TEXT NOT NULL,
+    is_default      BOOLEAN NOT NULL DEFAULT FALSE,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    imported_from_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, slug)
+);
+
 -- ── Invite Codes ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS invite_codes (
     code       TEXT PRIMARY KEY,
@@ -77,6 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_users_partner_id        ON users(partner_id);
 CREATE INDEX IF NOT EXISTS idx_entries_is_couple_expense ON entries(is_couple_expense);
 CREATE INDEX IF NOT EXISTS idx_entries_user_couple_month ON entries(user_id, is_couple_expense, month);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_used_by    ON invite_codes(used_by);
+CREATE INDEX IF NOT EXISTS idx_user_categories_user_id ON user_categories(user_id);
 
 -- ── Idempotent column additions for existing deployments ─────────────
 ALTER TABLE users ADD COLUMN IF NOT EXISTS web_search_enabled BOOLEAN NOT NULL DEFAULT FALSE;

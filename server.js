@@ -2094,8 +2094,13 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     }
 
     if (viewMode === 'combined' && validPartner) {
+        // Auto-import partner-only category slugs before returning entries so
+        // the FE can render filter chips/charts immediately on first paint.
+        // Errors are non-fatal — categories self-heal on the next call.
+        try { await db.ensurePartnerCategories(req.user.id, validPartner.id, month); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
         userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'myshare' && validPartner) {
+        try { await db.ensurePartnerCategories(req.user.id, validPartner.id, month); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
         userEntries = await db.getMyShareEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'myshare') {
         // Without a valid partner there are no couple entries to halve, so
@@ -2114,7 +2119,15 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
 
 // Entry field validation constants
 const VALID_ENTRY_TYPES = ['income', 'expense'];
-const VALID_TAGS = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+// Tags are now per-user category slugs (issue #70). Validate format only —
+// per-user category membership is enforced by the category-management UI;
+// raw API callers can submit any well-formed slug. Unknown slugs render as
+// orphans on the frontend (neutral color + raw label).
+// Single source of truth for the slug contract — see CATEGORY_SLUG_REGEX
+// alias below. Defined here because the entry-write paths reference it
+// before the categories endpoints block.
+const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const ENTRY_TAG_REGEX = SLUG_REGEX;
 const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Add new entry
@@ -2147,7 +2160,7 @@ app.post('/api/entries', requireAuth, asyncHandler(async (req, res) => {
     }
 
     const sanitizedTags = Array.isArray(tags)
-        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => ENTRY_TAG_REGEX.test(t))
         : [];
 
     // Validate partner relationship before allowing couple expense
@@ -2291,7 +2304,7 @@ app.put('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     }
 
     const sanitizedTags = Array.isArray(tags)
-        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => VALID_TAGS.includes(t))
+        ? tags.map(t => String(t).toLowerCase().trim()).filter(t => ENTRY_TAG_REGEX.test(t))
         : [];
 
     // Validate partner relationship before allowing couple expense
@@ -2325,6 +2338,117 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     }
 
     res.json({ message: 'Entry deleted successfully' });
+}));
+
+// ============ USER CATEGORIES (issue #70) ============
+
+// Per-user, per-category constraints. Slugs are short URL-safe ids; labels
+// are user-facing names; colors are normalized 6-digit hex.
+const CATEGORY_SLUG_REGEX = SLUG_REGEX;
+const CATEGORY_LABEL_MAX = 60;
+const CATEGORY_HEX_REGEX = /^#[0-9a-f]{6}$/;
+
+function normalizeCategoryHex(input) {
+    if (typeof input !== 'string') return null;
+    const v = input.trim().toLowerCase();
+    return CATEGORY_HEX_REGEX.test(v) ? v : null;
+}
+
+// Self-healing read: seeds the 17 defaults the first time a user has no
+// rows. This avoids sprinkling seed calls across every createUser path
+// (admin auto-create, register endpoint, registerWithInviteCode, etc.).
+async function getCategoriesForUserSelfHeal(userId) {
+    let cats = await db.getUserCategories(userId);
+    if (cats.length === 0) {
+        await db.seedDefaultCategoriesForUser(userId);
+        cats = await db.getUserCategories(userId);
+    }
+    return cats;
+}
+
+app.get('/api/categories', requireAuth, asyncHandler(async (req, res) => {
+    const cats = await getCategoriesForUserSelfHeal(req.user.id);
+    res.json(cats);
+}));
+
+app.post('/api/categories', requireAuth, asyncHandler(async (req, res) => {
+    const { slug, label, color } = req.body || {};
+    const normSlug = typeof slug === 'string' ? slug.trim().toLowerCase() : '';
+    const normLabel = typeof label === 'string' ? label.trim() : '';
+    const normColor = normalizeCategoryHex(color);
+    if (!CATEGORY_SLUG_REGEX.test(normSlug)) {
+        return res.status(400).json({ message: 'Invalid slug. Use lowercase letters, digits, and dashes (max 30 chars).' });
+    }
+    if (!normLabel || normLabel.length > CATEGORY_LABEL_MAX) {
+        return res.status(400).json({ message: `Label is required and must be ${CATEGORY_LABEL_MAX} characters or less.` });
+    }
+    if (!normColor) {
+        return res.status(400).json({ message: 'Color must be a 6-digit hex (e.g. #22c55e).' });
+    }
+    // Default slugs are reserved — they must always exist as is_default=TRUE
+    // canonical rows so label translation/locking and reset-defaults stay
+    // consistent. Direct that flow through reset-defaults instead.
+    if (db.DEFAULT_CATEGORY_SLUGS.has(normSlug)) {
+        return res.status(409).json({ message: 'That slug is reserved for a default category. Use Restore Defaults to bring it back.' });
+    }
+    // Ensure defaults exist (so a brand-new account adding a custom category
+    // first still gets the seeded defaults afterward via GET).
+    await getCategoriesForUserSelfHeal(req.user.id);
+    try {
+        const created = await db.addUserCategory(req.user.id, { slug: normSlug, label: normLabel, color: normColor });
+        res.status(201).json(created);
+    } catch (e) {
+        if (e && e.code === '23505') {
+            return res.status(409).json({ message: 'A category with that slug already exists.' });
+        }
+        throw e;
+    }
+}));
+
+app.patch('/api/categories/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slug = String(req.params.slug || '').trim().toLowerCase();
+    if (!CATEGORY_SLUG_REGEX.test(slug)) {
+        return res.status(400).json({ message: 'Invalid slug.' });
+    }
+    const patch = {};
+    if (req.body && typeof req.body.label === 'string') {
+        const normLabel = req.body.label.trim();
+        if (!normLabel || normLabel.length > CATEGORY_LABEL_MAX) {
+            return res.status(400).json({ message: `Label must be 1-${CATEGORY_LABEL_MAX} characters.` });
+        }
+        patch.label = normLabel;
+    }
+    if (req.body && req.body.color != null) {
+        const c = normalizeCategoryHex(req.body.color);
+        if (!c) return res.status(400).json({ message: 'Color must be a 6-digit hex (e.g. #22c55e).' });
+        patch.color = c;
+    }
+    if (req.body && req.body.sortOrder != null) {
+        const s = Number(req.body.sortOrder);
+        if (!Number.isFinite(s)) return res.status(400).json({ message: 'sortOrder must be a number.' });
+        patch.sortOrder = Math.trunc(s);
+    }
+    if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ message: 'No editable fields supplied.' });
+    }
+    const updated = await db.updateUserCategory(req.user.id, slug, patch);
+    if (!updated) return res.status(404).json({ message: 'Category not found.' });
+    res.json(updated);
+}));
+
+app.delete('/api/categories/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slug = String(req.params.slug || '').trim().toLowerCase();
+    if (!CATEGORY_SLUG_REGEX.test(slug)) {
+        return res.status(400).json({ message: 'Invalid slug.' });
+    }
+    const ok = await db.deleteUserCategory(req.user.id, slug);
+    if (!ok) return res.status(404).json({ message: 'Category not found.' });
+    res.json({ message: 'Category deleted.' });
+}));
+
+app.post('/api/categories/reset-defaults', requireAuth, asyncHandler(async (req, res) => {
+    const cats = await db.resetUserCategoriesToDefaults(req.user.id);
+    res.json(cats);
 }));
 
 // ============ ADMIN ENDPOINTS ============
@@ -2818,7 +2942,7 @@ const chatToolDeclarations = [
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
-                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags. Use any slug from the user\'s category list. If the user already has initialized categories, up to 3 unknown well-formed slugs may be auto-created per call (capped to avoid noise); if the user has no categories yet, auto-creation is skipped so default categories can be seeded first.' },
                 isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense.' }
             },
             required: ['entryId']
@@ -2963,7 +3087,7 @@ const openaiToolDeclarations = [
                     amount: { type: 'number', description: 'New amount for the entry (positive number, max 10000000).' },
                     type: { type: 'string', enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                     month: { type: 'string', description: 'New month in YYYY-MM format.' },
-                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags. Use any slug from the user\'s category list. Unknown well-formed slugs may be auto-created up to 3 per call only when the user already has categories; if the user has no categories yet, auto-creation is skipped so default categories can be seeded first.' },
                     isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense.' }
                 },
                 required: ['entryId']
@@ -3283,8 +3407,23 @@ async function loadChatEntries(userId, partnerId) {
     const own = await db.getEntriesByUser(userId);
     const ownDecorated = own.map(e => ({ ...e, owner: 'me' }));
     if (!partnerId) return ownDecorated;
-    const partnerCouple = (await db.getPartnerCoupleEntries(partnerId))
-        .map(e => ({ ...e, owner: 'partner' }));
+    // Fetch partner couple entries first; derive distinct tags from the
+    // result so we don't pay for an extra full-history `entries` scan
+    // inside ensurePartnerCategories on every chat request.
+    const partnerCoupleRaw = await db.getPartnerCoupleEntries(partnerId);
+    const partnerCategoryTags = [...new Set(
+        partnerCoupleRaw.flatMap(e => Array.isArray(e.tags) ? e.tags : [])
+            .filter(tag => typeof tag === 'string' && tag.trim() !== '')
+    )];
+    // Auto-import partner-only category slugs so AI tool results that
+    // reference them have matching entries in the user's category list
+    // (e.g. for chip palette consistency on subsequent UI loads).
+    try {
+        await db.importPartnerCategoriesFromTags(userId, partnerId, partnerCategoryTags);
+    } catch (e) {
+        console.error('importPartnerCategoriesFromTags (chat) failed:', e);
+    }
+    const partnerCouple = partnerCoupleRaw.map(e => ({ ...e, owner: 'partner' }));
     // Sort merged set by id so any downstream `.slice(limit)` is
     // deterministic and doesn't bias toward the user's rows just
     // because they were loaded first.
@@ -3594,15 +3733,50 @@ async function validateEditArgs(userId, args) {
     }
 
     let rejectedTags = [];
+    let autoCreatedTags = [];
     if (args.tags != null) {
         if (!Array.isArray(args.tags)) return { error: 'Tags must be an array of strings.' };
-        const rawTags = args.tags.map(t => String(t).toLowerCase().trim());
-        const sanitizedTags = rawTags.filter(t => VALID_TAGS.includes(t));
-        rejectedTags = rawTags.filter(t => !VALID_TAGS.includes(t));
-        if (rejectedTags.length > 0 && sanitizedTags.length === 0) {
-            return { error: `None of the provided tags are valid. Valid tags are: ${VALID_TAGS.join(', ')}` };
+        const rawTags = args.tags.map(t => String(t).toLowerCase().trim()).filter(Boolean);
+        const wellFormed = rawTags.filter(t => ENTRY_TAG_REGEX.test(t));
+        rejectedTags = rawTags.filter(t => !ENTRY_TAG_REGEX.test(t));
+        if (rejectedTags.length > 0 && wellFormed.length === 0) {
+            return { error: `None of the provided tags are valid slugs (lowercase letters, digits, dashes, max 30 chars).` };
         }
-        updates.tags = sanitizedTags;
+        // Auto-create unknown tags as new user categories — interactive
+        // single-edit only, capped to avoid runaway noise. Bulk paths
+        // (PDF/import) use the entry POST endpoint which does not auto-create.
+        //
+        // Important: only auto-create when the user already has at least
+        // one category row. The default-category self-heal in
+        // GET /api/categories only seeds when the table is empty, so
+        // creating the first row here would permanently prevent the
+        // default seed from ever running for this user.
+        const userCats = await db.getUserCategorySlugs(userId);
+        const known = new Set(userCats);
+        if (userCats.length > 0) {
+            const AUTOCREATE_CAP = 3;
+            const toCreate = [];
+            for (const t of wellFormed) {
+                if (known.has(t)) continue;
+                // Default-category slugs are reserved — they can only exist
+                // as canonical is_default=TRUE rows (restored via reset-defaults).
+                // If the user previously deleted one, skip auto-create here so
+                // it shows up as an orphan tag the user can explicitly restore,
+                // rather than getting silently re-created as a non-default row
+                // that would corrupt label translation/locking.
+                if (db.DEFAULT_CATEGORY_SLUGS.has(t)) continue;
+                if (toCreate.length >= AUTOCREATE_CAP) break;
+                toCreate.push(t);
+                known.add(t);
+            }
+            for (const slug of toCreate) {
+                try {
+                    await db.addUserCategory(userId, { slug, label: slug, color: '#94a3b8' });
+                    autoCreatedTags.push(slug);
+                } catch (_) { /* already exists race — ignore */ }
+            }
+        }
+        updates.tags = wellFormed;
     }
 
     if (args.isCoupleExpense != null) {
@@ -3613,7 +3787,7 @@ async function validateEditArgs(userId, args) {
         return { error: 'No valid fields to update. Provide at least one of: description, amount, type, month, tags, isCoupleExpense.' };
     }
 
-    return { entry, updates, rejectedTags };
+    return { entry, updates, rejectedTags, autoCreatedTags };
 }
 
 /**
@@ -3631,7 +3805,7 @@ async function toolEditEntry(userId, args) {
     const validation = await validateEditArgs(userId, args);
     if (validation.error) return validation;
 
-    const { entry, updates, rejectedTags } = validation;
+    const { entry, updates, rejectedTags, autoCreatedTags } = validation;
     const entryId = entry.id;
 
     // Save pre-edit snapshot so the user can undo this edit.
@@ -3662,7 +3836,11 @@ async function toolEditEntry(userId, args) {
         }
     };
     if (rejectedTags.length > 0) {
-        result.warning = `The following tags were not recognized and were ignored: ${rejectedTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`;
+        result.warning = `The following tags were not well-formed slugs and were ignored: ${rejectedTags.join(', ')}.`;
+    }
+    if (autoCreatedTags && autoCreatedTags.length > 0) {
+        const note = `Created ${autoCreatedTags.length} new categor${autoCreatedTags.length === 1 ? 'y' : 'ies'} for unknown tag(s): ${autoCreatedTags.join(', ')}.`;
+        result.warning = result.warning ? `${result.warning} ${note}` : note;
     }
     return result;
 }

@@ -2242,6 +2242,64 @@
                 font-size: 0.72rem;
             }
         }
+        /* Manage Categories (issue #70) */
+        .cat-chips-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+        .link-btn {
+            background: none;
+            border: none;
+            color: var(--color-accent-primary);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0;
+            text-decoration: underline;
+        }
+        .link-btn:hover { opacity: 0.8; }
+        #categoryListBody td {
+            padding: 0.4rem 0.5rem;
+            border-bottom: 1px solid var(--color-border);
+            vertical-align: middle;
+        }
+        #categoryListBody td input[type="text"],
+        #categoryListBody td input[type="color"] {
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            padding: 0.25rem 0.5rem;
+            font-size: 0.85rem;
+            color: var(--color-text-primary);
+        }
+        #categoryListBody td input[type="color"] {
+            width: 36px;
+            height: 28px;
+            padding: 0;
+            cursor: pointer;
+        }
+        .cat-row-default-badge {
+            font-size: 0.7rem;
+            color: var(--color-text-secondary);
+            margin-left: 0.25rem;
+        }
+        .cat-row-imported-badge {
+            font-size: 0.7rem;
+            color: var(--color-accent-primary);
+            margin-left: 0.25rem;
+        }
+        .cat-delete-btn {
+            background: transparent;
+            border: 1px solid var(--color-border);
+            color: var(--color-accent-danger);
+            border-radius: var(--radius-sm);
+            padding: 0.2rem 0.6rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .cat-delete-btn:hover { background: rgba(239, 68, 68, 0.1); }
     </style>
 </head>
 <body>
@@ -2412,7 +2470,51 @@
                     </div>
                 </div>
             </div>
-            <!-- Admin Panel Modal -->
+            <!-- Manage Categories Modal (issue #70) -->
+            <div id="manageCategoriesModal" class="modal" style="display:none;">
+                <div class="modal-content" style="max-width: 640px;">
+                    <span class="close" id="closeManageCategoriesModal" role="button" tabindex="0" aria-label="Close" data-i18n-aria-label="chat.close">&times;</span>
+                    <h2 data-i18n="category.modalTitle">Manage Categories</h2>
+                    <p style="color: var(--color-text-secondary); font-size: 0.85rem; margin-bottom: 1rem;" data-i18n="category.modalIntro">Add, recolor, or remove the categories you use to tag entries.</p>
+
+                    <div id="categoryListContainer" style="border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.75rem; max-height: 360px; overflow-y: auto;">
+                        <table style="width:100%; font-size: 0.9rem;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;" data-i18n="category.color">Color</th>
+                                    <th style="text-align:left;" data-i18n="category.label">Label</th>
+                                    <th style="text-align:left;" data-i18n="category.slug">Slug</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="categoryListBody"></tbody>
+                        </table>
+                    </div>
+
+                    <h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.5rem;" data-i18n="category.addTitle">Add a category</h3>
+                    <div class="admin-form-row">
+                        <div class="form-group">
+                            <label for="newCategorySlug" data-i18n="category.slug">Slug</label>
+                            <input type="text" id="newCategorySlug" maxlength="30" pattern="[a-z0-9][a-z0-9-]{0,29}" placeholder="e.g. fitness" />
+                        </div>
+                        <div class="form-group">
+                            <label for="newCategoryLabel" data-i18n="category.label">Label</label>
+                            <input type="text" id="newCategoryLabel" maxlength="60" placeholder="Fitness" />
+                        </div>
+                        <div class="form-group">
+                            <label for="newCategoryColor" data-i18n="category.color">Color</label>
+                            <input type="color" id="newCategoryColor" value="#94a3b8" />
+                        </div>
+                        <button type="button" id="addCategoryBtn" class="add-entry-btn" data-i18n="category.add">Add</button>
+                    </div>
+                    <div id="categoryFormError" role="alert" style="color: var(--color-accent-danger); font-size: 0.85rem; min-height: 1.2em; margin-top: 0.5rem;"></div>
+
+                    <div style="display:flex; justify-content: space-between; align-items: center; margin-top: 1.25rem;">
+                        <button type="button" id="resetCategoriesBtn" class="link-btn" data-i18n="category.restoreDefaults">Restore defaults</button>
+                    </div>
+                </div>
+            </div>
+            <!-- end Manage Categories Modal -->
             <div id="adminModal" class="modal admin-modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close" id="closeAdminModal">&times;</span>
@@ -2585,7 +2687,10 @@
                             </select>
                         </div>
                         <div class="form-group form-group-categories">
-                            <label data-i18n="dash.category">Category</label>
+                            <div class="cat-chips-header">
+                                <label data-i18n="dash.category">Category</label>
+                                <button type="button" id="manageCategoriesBtn" class="link-btn" data-i18n="category.manage">Manage</button>
+                            </div>
                             <div id="categoryChips" class="category-chips" role="group" data-i18n-aria-label="dash.category" aria-label="Categories"></div>
                             <!-- Hidden native select kept for backwards-compat / testing; populated from chips -->
                             <select id="categoryFilter" multiple hidden aria-hidden="true" tabindex="-1">
