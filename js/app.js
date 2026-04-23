@@ -20,30 +20,56 @@ function setButtonLoading(btn, isLoading) {
 // always visually consistent. Intentionally neutral-named because the list
 // includes both expense-style tags (food, housing, ...) and income-style
 // tags (salary, freelance, investment, transfer).
-const ENTRY_CATEGORIES = ['food', 'groceries', 'transport', 'travel', 'entertainment',
-    'utilities', 'healthcare', 'education', 'shopping', 'subscription',
-    'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+// User categories (issue #70) — fetched from /api/categories on startup
+// and refetched after partner-view loads (server-side ensurePartnerCategories
+// may have auto-imported partner-only slugs). Each entry: {slug, label,
+// color, isDefault, sortOrder, importedFromUserId}.
+//
+// The hardcoded ENTRY_CATEGORIES + CATEGORY_COLORS constants of v2.5.x are
+// replaced by this runtime list. categoryColor() and categoryLabel() perform
+// lookups, falling back to a neutral color and the raw slug for orphan tags
+// (entries referencing a category the user has since deleted).
+let userCategories = [];
+let _userCategoriesBySlug = new Map();
+const ORPHAN_CATEGORY_COLOR = '#94a3b8';
 
-const CATEGORY_COLORS = {
-    food:         '#fbbf24',
-    groceries:    '#22c55e',
-    transport:    '#3b82f6',
-    travel:       '#06b6d4',
-    entertainment:'#a855f7',
-    utilities:    '#6366f1',
-    healthcare:   '#ef4444',
-    education:    '#0ea5e9',
-    shopping:     '#ec4899',
-    subscription: '#8b5cf6',
-    housing:      '#f97316',
-    salary:       '#10b981',
-    freelance:    '#14b8a6',
-    investment:   '#84cc16',
-    transfer:     '#64748b',
-    wedding:      '#f472b6',
-    other:        '#94a3b8'
-};
-function categoryColor(cat) { return CATEGORY_COLORS[cat] || CATEGORY_COLORS.other; }
+function setUserCategories(list) {
+    userCategories = Array.isArray(list) ? list : [];
+    _userCategoriesBySlug = new Map(userCategories.map(c => [c.slug, c]));
+}
+
+function categoryColor(slug) {
+    const c = _userCategoriesBySlug.get(slug);
+    return c ? c.color : ORPHAN_CATEGORY_COLOR;
+}
+
+function categoryLabel(slug) {
+    const c = _userCategoriesBySlug.get(slug);
+    if (!c) return slug; // orphan — render raw slug
+    if (c.isDefault) return t('cat.' + slug);
+    return c.label;
+}
+
+function categorySlugList() {
+    return userCategories.map(c => c.slug);
+}
+
+// Race-protected fetch for /api/categories. Mirrors loadEntries' seq guard.
+let _userCategoriesSeq = 0;
+async function loadUserCategories() {
+    const seq = ++_userCategoriesSeq;
+    try {
+        const res = await csrfFetch('/api/categories');
+        if (seq !== _userCategoriesSeq) return userCategories;
+        if (!res.ok) return userCategories;
+        const list = await res.json();
+        if (seq !== _userCategoriesSeq) return userCategories;
+        setUserCategories(list);
+    } catch (e) {
+        console.error('loadUserCategories failed:', e);
+    }
+    return userCategories;
+}
 
 let entries = [];
 let monthlyBalanceChart = null;
@@ -425,20 +451,11 @@ function initializeCharts() {
     _chartThemeRef = colors;
     categoryChart = buildCategoryChart(categoryCtx, currentCategoryChartType, colors);
 
-    // Stacked bar chart for entry categories by month — uses unified palette
-    const stackedDatasets = ENTRY_CATEGORIES.map((category) => {
-        const color = categoryColor(category);
-        return {
-            label: t('cat.' + category),
-            _category: category,
-            data: [],
-            backgroundColor: color + 'cc',
-            borderColor: color,
-            borderWidth: 1,
-            borderRadius: 3,
-            hoverBackgroundColor: color
-        };
-    });
+    // Stacked bar chart for entry categories by month. Datasets are rebuilt
+    // dynamically on every updateCharts() call from the user's current
+    // category list (plus any orphan slugs in the filtered data), so adding
+    // / removing categories at runtime updates this chart automatically.
+    const stackedDatasets = [];
 
     categoryStackedChart = new Chart(categoryStackedCtx, {
         type: 'bar',
@@ -685,7 +702,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     const sortedTags = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
     const sortedCategoryKeys = sortedTags.map(([tag]) => tag);
     const sortedColors = sortedCategoryKeys.map(categoryColor);
-    categoryChart.data.labels = sortedTags.map(([tag]) => t('cat.' + tag));
+    categoryChart.data.labels = sortedTags.map(([tag]) => categoryLabel(tag));
     const categoryValues = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
     categoryChart.data.datasets[0].data = categoryValues;
     categoryChart.data.datasets[0].backgroundColor = sortedColors.map(c => c + 'cc');
@@ -693,50 +710,68 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     categoryChart.data.datasets[0].hoverBackgroundColor = sortedColors;
     categoryChart.update();
 
-    // Update stacked category chart - expenses by category per month
-    // Build a map: { month: { category: totalAmount } }
+    // Update stacked category chart — expenses by category per month.
+    // Categories axis = user's current category list ∪ orphan slugs found
+    // in the filtered data. Orphans get the neutral fallback color.
+    const userSlugs = categorySlugList();
+    const orphanSlugs = new Set();
+    entriesToShow
+        .filter(e => e.type === 'expense')
+        .forEach(entry => {
+            const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
+            entryTags.forEach(tag => {
+                if (!_userCategoriesBySlug.has(tag)) orphanSlugs.add(tag);
+            });
+        });
+    const stackedCategories = [...userSlugs, ...Array.from(orphanSlugs).sort()];
+
     const categoryMonthlyData = {};
     months.forEach(month => {
         categoryMonthlyData[month] = {};
-        ENTRY_CATEGORIES.forEach(cat => {
-            categoryMonthlyData[month][cat] = 0;
-        });
+        stackedCategories.forEach(cat => { categoryMonthlyData[month][cat] = 0; });
     });
 
-    // Aggregate expense entries by month and category
+    // Aggregate expense entries by month and category — preserve raw tag
+    // (including orphans) so deleted-then-recreated categories render
+    // correctly without bucketing into 'other'.
     entriesToShow
         .filter(e => e.type === 'expense')
         .forEach(entry => {
             const month = entry.month;
             if (!categoryMonthlyData[month]) return;
-
             const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
             const perTagAmount = parseFloat(entry.amount) / entryTags.length;
-
             entryTags.forEach(tag => {
-                const normalizedTag = ENTRY_CATEGORIES.includes(tag) ? tag : 'other';
-                categoryMonthlyData[month][normalizedTag] += perTagAmount;
+                if (categoryMonthlyData[month][tag] != null) {
+                    categoryMonthlyData[month][tag] += perTagAmount;
+                }
             });
         });
 
-    // Update chart labels (months)
     categoryStackedChart.data.labels = months;
 
-    // Determine which categories have any data
-    const categoriesWithData = ENTRY_CATEGORIES.filter(category => {
-        return months.some(month => categoryMonthlyData[month][category] > 0);
-    });
+    const categoriesWithData = stackedCategories.filter(category =>
+        months.some(month => categoryMonthlyData[month][category] > 0)
+    );
 
-    // Update each dataset using its own `_category` tag (set at init) so we
-    // don't depend on dataset order matching ENTRY_CATEGORIES.
-    categoryStackedChart.data.datasets.forEach((dataset) => {
-        const category = dataset._category;
-        dataset.data = months.map(month => {
-            const value = categoryMonthlyData[month]?.[category] || 0;
-            return Math.round(value * 100) / 100;
-        });
-        // Hide categories with no data from legend
-        dataset.hidden = !categoriesWithData.includes(category);
+    // Rebuild datasets from scratch on every update so adding/removing
+    // categories at runtime stays in sync without re-creating the chart.
+    categoryStackedChart.data.datasets = stackedCategories.map(category => {
+        const color = categoryColor(category);
+        return {
+            label: categoryLabel(category),
+            _category: category,
+            data: months.map(month => {
+                const value = categoryMonthlyData[month]?.[category] || 0;
+                return Math.round(value * 100) / 100;
+            }),
+            backgroundColor: color + 'cc',
+            borderColor: color,
+            borderWidth: 1,
+            borderRadius: 3,
+            hoverBackgroundColor: color,
+            hidden: !categoriesWithData.includes(category),
+        };
     });
 
     categoryStackedChart.update();
@@ -809,8 +844,12 @@ function sanitizeFilterState(raw) {
     if (typeof raw.end === 'string' && (raw.end === '' || MONTH_RE.test(raw.end))) out.end = raw.end;
     if (typeof raw.type === 'string' && VALID_FILTER_TYPES.has(raw.type)) out.type = raw.type;
     if (Array.isArray(raw.categories)) {
-        const known = new Set(ENTRY_CATEGORIES);
-        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && known.has(c)))];
+        // Accept any well-formed slug — categories the user has since
+        // deleted will simply not match anything (they show as orphans
+        // in entries). Strict whitelist would silently drop chips on
+        // category rename / re-add cycles.
+        const slugRegex = /^[a-z0-9][a-z0-9-]{0,29}$/;
+        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && slugRegex.test(c)))];
     }
     if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
         out.quickRange = raw.quickRange || null;
@@ -854,12 +893,19 @@ function renderCategoryChips() {
     const container = document.getElementById('categoryChips');
     if (!container) return;
     container.innerHTML = '';
-    ENTRY_CATEGORIES.forEach(cat => {
+    userCategories.forEach(catRow => {
+        const cat = catRow.slug;
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'cat-chip';
         chip.dataset.cat = cat;
-        chip.textContent = t('cat.' + cat);
+        chip.textContent = categoryLabel(cat);
+        if (catRow.importedFromUserId != null) {
+            // Decorative tooltip; partner-imported categories are still
+            // independent local copies (not affected by partner deletes).
+            const importedTip = (typeof t === 'function' && t('category.imported')) || 'Imported from partner';
+            chip.title = importedTip;
+        }
         const color = categoryColor(cat);
         chip.style.setProperty('--chip-color', color);
         chip.style.setProperty('--chip-color-bg', hexWithAlpha(color, 0.18));
@@ -891,6 +937,19 @@ function hexWithAlpha(hex, alpha) {
 function syncHiddenCategorySelect() {
     const select = document.getElementById('categoryFilter');
     if (!select) return;
+    // Rebuild option list from runtime user categories so the hidden
+    // <select> stays in sync as categories are added/removed.
+    const desired = userCategories.map(c => c.slug);
+    const existing = Array.from(select.options).map(o => o.value);
+    if (desired.length !== existing.length || desired.some((s, i) => s !== existing[i])) {
+        select.innerHTML = '';
+        userCategories.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.slug;
+            opt.textContent = categoryLabel(c.slug);
+            select.appendChild(opt);
+        });
+    }
     Array.from(select.options).forEach(opt => {
         opt.selected = filterState.categories.includes(opt.value);
     });
@@ -983,7 +1042,7 @@ function renderActiveFiltersBar() {
         }});
     }
     filterState.categories.forEach(cat => {
-        chips.push({ label: t('cat.' + cat), onRemove: () => {
+        chips.push({ label: categoryLabel(cat), onRemove: () => {
             filterState.categories = filterState.categories.filter(c => c !== cat);
             renderCategoryChips(); syncHiddenCategorySelect(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
         }});
@@ -1159,7 +1218,12 @@ function displayEntries(entriesToShow) {
         const row = document.createElement('tr');
         const escapedDescription = escapeHtml(entry.description);
         const tags = (entry.tags || []).map(tag =>
-            `<span class="tag tag-${escapeHtml(tag)}">${escapeHtml(t('cat.' + tag))}</span>`
+            (() => {
+                const _col = categoryColor(tag);
+                const _bg = hexWithAlpha(_col, 0.15);
+                const _bd = hexWithAlpha(_col, 0.3);
+                return `<span class="tag tag-${escapeHtml(tag)}" style="background:${_bg};color:${_col};border-color:${_bd}">${escapeHtml(categoryLabel(tag))}</span>`;
+            })()
         ).join(' ');
         const coupleBadge = entry.isCoupleExpense ? `<span class="couple-badge">${t('dash.couple')}</span>` : '';
         const inMyShare = currentViewMode === 'myshare';
@@ -1390,12 +1454,230 @@ closeBulkUploadModalBtn.addEventListener('click', () => {
     bulkUploadModal.style.display = 'none';
 });
 
-// Category options for dropdowns
-const categoryOptions = ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities', 'healthcare', 'education', 'shopping', 'subscription', 'housing', 'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'];
+// ============ Manage Categories modal (issue #70) ============
+const manageCategoriesModal = document.getElementById('manageCategoriesModal');
+const manageCategoriesBtn = document.getElementById('manageCategoriesBtn');
+const closeManageCategoriesModalBtn = document.getElementById('closeManageCategoriesModal');
+const categoryListBody = document.getElementById('categoryListBody');
+const newCategorySlugInput = document.getElementById('newCategorySlug');
+const newCategoryLabelInput = document.getElementById('newCategoryLabel');
+const newCategoryColorInput = document.getElementById('newCategoryColor');
+const addCategoryBtn = document.getElementById('addCategoryBtn');
+const resetCategoriesBtn = document.getElementById('resetCategoriesBtn');
+const categoryFormError = document.getElementById('categoryFormError');
+
+const SLUG_REGEX_FE = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const HEX_REGEX_FE = /^#[0-9a-fA-F]{6}$/;
+
+function setCatFormError(msg) {
+    if (categoryFormError) categoryFormError.textContent = msg || '';
+}
+
+function renderCategoryManageList() {
+    if (!categoryListBody) return;
+    categoryListBody.innerHTML = '';
+    if (userCategories.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="text-align:center; color: var(--color-text-secondary); padding: 1rem;">${escapeHtml(t('category.empty') || 'No categories yet.')}</td>`;
+        categoryListBody.appendChild(tr);
+        return;
+    }
+    userCategories.forEach(cat => {
+        const tr = document.createElement('tr');
+        const colorCell = document.createElement('td');
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = cat.color;
+        colorInput.addEventListener('change', async () => {
+            const v = colorInput.value;
+            if (!HEX_REGEX_FE.test(v)) return;
+            try {
+                const res = await csrfFetch('/api/categories/' + encodeURIComponent(cat.slug), {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ color: v.toLowerCase() })
+                });
+                if (res.ok) {
+                    await loadUserCategories();
+                    renderCategoryManageList();
+                    renderCategoryChips();
+                    if (typeof updateCharts === 'function') filterEntries({ resetPage: false });
+                }
+            } catch (e) { console.error(e); }
+        });
+        colorCell.appendChild(colorInput);
+        tr.appendChild(colorCell);
+
+        const labelCell = document.createElement('td');
+        if (cat.isDefault) {
+            labelCell.textContent = categoryLabel(cat.slug);
+            const tag = document.createElement('span');
+            tag.className = 'cat-row-default-badge';
+            tag.textContent = '(' + (t('category.defaultBadge') || 'default') + ')';
+            labelCell.appendChild(tag);
+        } else {
+            const labelInput = document.createElement('input');
+            labelInput.type = 'text';
+            labelInput.value = cat.label;
+            labelInput.maxLength = 60;
+            labelInput.addEventListener('change', async () => {
+                const v = labelInput.value.trim();
+                if (!v) { labelInput.value = cat.label; return; }
+                try {
+                    const res = await csrfFetch('/api/categories/' + encodeURIComponent(cat.slug), {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label: v })
+                    });
+                    if (res.ok) {
+                        await loadUserCategories();
+                        renderCategoryManageList();
+                        renderCategoryChips();
+                        filterEntries({ resetPage: false });
+                    }
+                } catch (e) { console.error(e); }
+            });
+            labelCell.appendChild(labelInput);
+            if (cat.importedFromUserId != null) {
+                const imp = document.createElement('span');
+                imp.className = 'cat-row-imported-badge';
+                imp.textContent = '(' + (t('category.imported') || 'imported') + ')';
+                imp.title = t('category.importedTooltip') || 'Imported from your partner';
+                labelCell.appendChild(imp);
+            }
+        }
+        tr.appendChild(labelCell);
+
+        const slugCell = document.createElement('td');
+        slugCell.textContent = cat.slug;
+        slugCell.style.fontFamily = 'monospace';
+        slugCell.style.color = 'var(--color-text-secondary)';
+        tr.appendChild(slugCell);
+
+        const actionsCell = document.createElement('td');
+        actionsCell.style.textAlign = 'right';
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'cat-delete-btn';
+        delBtn.textContent = t('common.delete') || 'Delete';
+        delBtn.addEventListener('click', async () => {
+            const confirmMsg = (t('category.deleteConfirm') || 'Delete this category? Existing entries keep the tag but render as orphans.').replace('{slug}', cat.slug);
+            if (!confirm(confirmMsg)) return;
+            try {
+                const res = await csrfFetch('/api/categories/' + encodeURIComponent(cat.slug), { method: 'DELETE' });
+                if (res.ok) {
+                    await loadUserCategories();
+                    renderCategoryManageList();
+                    renderCategoryChips();
+                    syncHiddenCategorySelect();
+                    filterEntries({ resetPage: false });
+                }
+            } catch (e) { console.error(e); }
+        });
+        actionsCell.appendChild(delBtn);
+        tr.appendChild(actionsCell);
+
+        categoryListBody.appendChild(tr);
+    });
+}
+
+function openManageCategoriesModal() {
+    setCatFormError('');
+    if (newCategorySlugInput) newCategorySlugInput.value = '';
+    if (newCategoryLabelInput) newCategoryLabelInput.value = '';
+    if (newCategoryColorInput) newCategoryColorInput.value = '#94a3b8';
+    renderCategoryManageList();
+    if (manageCategoriesModal) manageCategoriesModal.style.display = 'block';
+}
+
+if (manageCategoriesBtn) {
+    manageCategoriesBtn.addEventListener('click', openManageCategoriesModal);
+}
+if (closeManageCategoriesModalBtn) {
+    closeManageCategoriesModalBtn.addEventListener('click', () => {
+        if (manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+    });
+}
+if (manageCategoriesModal) {
+    manageCategoriesModal.addEventListener('click', (e) => {
+        if (e.target === manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+    });
+}
+
+if (addCategoryBtn) {
+    addCategoryBtn.addEventListener('click', async () => {
+        setCatFormError('');
+        const slug = (newCategorySlugInput.value || '').trim().toLowerCase();
+        const label = (newCategoryLabelInput.value || '').trim();
+        const color = (newCategoryColorInput.value || '#94a3b8').toLowerCase();
+        if (!SLUG_REGEX_FE.test(slug)) {
+            setCatFormError(t('category.invalidSlug') || 'Slug must be lowercase letters/digits/hyphens, starting with a letter or digit.');
+            return;
+        }
+        if (!label) {
+            setCatFormError(t('category.labelRequired') || 'Label is required.');
+            return;
+        }
+        if (!HEX_REGEX_FE.test(color)) {
+            setCatFormError(t('category.invalidColor') || 'Color must be a 6-digit hex value.');
+            return;
+        }
+        if (_userCategoriesBySlug.has(slug)) {
+            setCatFormError(t('category.duplicateSlug') || 'A category with that slug already exists.');
+            return;
+        }
+        try {
+            const res = await csrfFetch('/api/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slug, label, color })
+            });
+            if (!res.ok) {
+                let msg = t('category.addFailed') || 'Failed to add category.';
+                try { const body = await res.json(); if (body && (body.message || body.error)) msg = body.message || body.error; } catch {}
+                setCatFormError(msg);
+                return;
+            }
+            await loadUserCategories();
+            renderCategoryManageList();
+            renderCategoryChips();
+            syncHiddenCategorySelect();
+            filterEntries({ resetPage: false });
+            newCategorySlugInput.value = '';
+            newCategoryLabelInput.value = '';
+        } catch (e) {
+            console.error(e);
+            setCatFormError(t('category.addFailed') || 'Failed to add category.');
+        }
+    });
+}
+
+if (resetCategoriesBtn) {
+    resetCategoriesBtn.addEventListener('click', async () => {
+        if (!confirm(t('category.resetConfirm') || 'Restore the default categories? Your custom categories will be kept.')) return;
+        try {
+            const res = await csrfFetch('/api/categories/reset-defaults', { method: 'POST' });
+            if (res.ok) {
+                await loadUserCategories();
+                renderCategoryManageList();
+                renderCategoryChips();
+                syncHiddenCategorySelect();
+                filterEntries({ resetPage: false });
+            }
+        } catch (e) { console.error(e); }
+    });
+}
+// ============ end Manage Categories modal ============
 
 function generateCategorySelect(selectedTag, index) {
-    const options = categoryOptions.map(cat =>
-        `<option value="${cat}"${cat === selectedTag ? ' selected' : ''}>${t('cat.' + cat)}</option>`
+    // Source the option list from the user's current category list. If the
+    // selected tag isn't in the list (orphan / partner-only tag from the
+    // PDF parser), include it as an extra option so the user can keep it.
+    const slugs = categorySlugList();
+    const opts = [...slugs];
+    if (selectedTag && !opts.includes(selectedTag)) opts.push(selectedTag);
+    const options = opts.map(cat =>
+        `<option value="${escapeHtml(cat)}"${cat === selectedTag ? ' selected' : ''}>${escapeHtml(categoryLabel(cat))}</option>`
     ).join('');
     return `<select class="preview-select category-select" data-index="${index}">${options}</select>`;
 }
@@ -1794,7 +2076,7 @@ async function resolveBulkDuplicates(candidates) {
             <div><strong>${t('bulk.dup.fieldType')}:</strong> ${escapeHtml(typeLabel)}</div>
             <div><strong>${t('bulk.dup.fieldAmount')}:</strong> ${escapeHtml(fmtAmount(e.amount))}</div>
             <div><strong>${t('bulk.dup.fieldDescription')}:</strong> ${escapeHtml(e.description || '')}</div>
-            <div><strong>${t('bulk.dup.fieldCategory')}:</strong> ${escapeHtml(t('cat.' + tag))}</div>
+            <div><strong>${t('bulk.dup.fieldCategory')}:</strong> ${escapeHtml(categoryLabel(tag))}</div>
             <div><strong>${t('bulk.dup.fieldCouple')}:</strong> ${escapeHtml(couple)}</div>
         `;
     };
@@ -3636,6 +3918,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
                 updateUIForPartner();
+                // Categories are user-scoped (issue #70). Fetch them now so
+                // the chips, charts, and select dropdowns can render with
+                // the correct palette + labels. Self-heals via the GET
+                // endpoint if the user has no rows yet.
+                await loadUserCategories();
                 // Now that we know the user id, reload filters under their
                 // key (they were loaded under 'anon' at DOMContentLoaded).
                 // Always reset — falling back to defaults when the user has
@@ -3748,6 +4035,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 entries = await response.json();
                 if (seq !== loadEntriesSeq) return;
+                // In partner views the server may have auto-imported
+                // partner-only categories via ensurePartnerCategories;
+                // refresh the local list so chips/charts/dropdowns
+                // pick them up. Fire-and-forget — the chart datasets
+                // are rebuilt from raw entry tags either way.
+                if (currentViewMode !== 'individual') {
+                    loadUserCategories().then(() => {
+                        renderCategoryChips();
+                        syncHiddenCategorySelect();
+                        // Re-apply filters/charts with the freshly known palette.
+                        filterEntries({ resetPage: false });
+                    });
+                }
                 // Re-apply any active filters so the UI stays consistent
                 filterEntries(opts);
             }
