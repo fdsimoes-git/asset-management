@@ -945,13 +945,22 @@ function syncHiddenCategorySelect() {
     // <select> stays in sync as categories are added/removed.
     const desired = userCategories.map(c => c.slug);
     const existing = Array.from(select.options).map(o => o.value);
-    if (desired.length !== existing.length || desired.some((s, i) => s !== existing[i])) {
+    const slugListChanged = desired.length !== existing.length || desired.some((s, i) => s !== existing[i]);
+    if (slugListChanged) {
         select.innerHTML = '';
         userCategories.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.slug;
             opt.textContent = categoryLabel(c.slug);
             select.appendChild(opt);
+        });
+    } else {
+        // Slug list unchanged — but labels can still drift (rename, language
+        // switch affecting default labels, imported badge changes). Refresh
+        // each option's textContent so the hidden select stays consistent.
+        Array.from(select.options).forEach(opt => {
+            const fresh = categoryLabel(opt.value);
+            if (opt.textContent !== fresh) opt.textContent = fresh;
         });
     }
     Array.from(select.options).forEach(opt => {
@@ -4066,6 +4075,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // are rebuilt from raw entry tags either way.
                 if (currentViewMode !== 'individual') {
                     loadUserCategories().then(() => {
+                        // Bail out if a newer loadEntries() started or if the
+                        // user switched to the individual view in the
+                        // meantime — running this would re-render against
+                        // stale state and cause flicker.
+                        if (seq !== loadEntriesSeq) return;
+                        if (currentViewMode === 'individual') return;
                         renderCategoryChips();
                         syncHiddenCategorySelect();
                         // Re-apply filters/charts with the freshly known palette.
