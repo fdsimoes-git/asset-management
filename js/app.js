@@ -903,7 +903,7 @@ function renderCategoryChips() {
         if (catRow.importedFromUserId != null) {
             // Decorative tooltip; partner-imported categories are still
             // independent local copies (not affected by partner deletes).
-            const importedTip = (typeof t === 'function' && t('category.imported')) || 'Imported from partner';
+            const importedTip = (typeof t === 'function' && t('category.importedTooltip')) || 'Imported from partner';
             chip.title = importedTip;
         }
         const color = categoryColor(cat);

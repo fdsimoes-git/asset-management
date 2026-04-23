@@ -934,13 +934,18 @@ async function resetUserCategoriesToDefaults(userId) {
 // Find tags used in the partner's couple-flagged entries that the user
 // doesn't already have, then bulk-insert them with the partner's color.
 // Returns the count of newly imported categories.
-async function ensurePartnerCategories(userId, partnerId) {
+async function ensurePartnerCategories(userId, partnerId, month) {
     if (!partnerId) return 0;
+    // When the caller is fetching a specific month, only scan that month's
+    // partner entries — keeps page-level fetches cheap. Categories from
+    // other months will be imported when the user navigates to them.
+    const monthClause = month ? 'AND month = $3' : '';
+    const params = month ? [userId, partnerId, month] : [userId, partnerId];
     const { rows } = await pool.query(
         `WITH partner_tags AS (
             SELECT DISTINCT UNNEST(tags) AS slug
             FROM entries
-            WHERE user_id = $2 AND is_couple_expense = TRUE
+            WHERE user_id = $2 AND is_couple_expense = TRUE ${monthClause}
         )
         SELECT pt.slug, pc.label, pc.color
         FROM partner_tags pt
@@ -952,24 +957,24 @@ async function ensurePartnerCategories(userId, partnerId) {
             SELECT 1 FROM user_categories uc
             WHERE uc.user_id = $1 AND uc.slug = pt.slug
           )`,
-        [userId, partnerId]
+        params
     );
     if (rows.length === 0) return 0;
     const values = [];
-    const params = [userId, partnerId];
+    const insertParams = [userId, partnerId];
     let i = 3;
     for (const r of rows) {
         const label = r.label || r.slug;
         const color = r.color || '#94a3b8';
         values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
-        params.push(r.slug, label, color);
+        insertParams.push(r.slug, label, color);
     }
     await pool.query(
         `INSERT INTO user_categories
          (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
          VALUES ${values.join(', ')}
          ON CONFLICT (user_id, slug) DO NOTHING`,
-        params
+        insertParams
     );
     return rows.length;
 }

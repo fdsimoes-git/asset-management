@@ -2097,10 +2097,10 @@ app.get('/api/entries', requireAuth, asyncHandler(async (req, res) => {
         // Auto-import partner-only category slugs before returning entries so
         // the FE can render filter chips/charts immediately on first paint.
         // Errors are non-fatal — categories self-heal on the next call.
-        try { await db.ensurePartnerCategories(req.user.id, validPartner.id); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
+        try { await db.ensurePartnerCategories(req.user.id, validPartner.id, month); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
         userEntries = await db.getCoupleEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'myshare' && validPartner) {
-        try { await db.ensurePartnerCategories(req.user.id, validPartner.id); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
+        try { await db.ensurePartnerCategories(req.user.id, validPartner.id, month); } catch (e) { console.error('ensurePartnerCategories failed:', e); }
         userEntries = await db.getMyShareEntries(req.user.id, validPartner.id, month);
     } else if (viewMode === 'myshare') {
         // Without a valid partner there are no couple entries to halve, so
@@ -2123,7 +2123,11 @@ const VALID_ENTRY_TYPES = ['income', 'expense'];
 // per-user category membership is enforced by the category-management UI;
 // raw API callers can submit any well-formed slug. Unknown slugs render as
 // orphans on the frontend (neutral color + raw label).
-const ENTRY_TAG_REGEX = /^[a-z0-9][a-z0-9-]{0,29}$/;
+// Single source of truth for the slug contract — see CATEGORY_SLUG_REGEX
+// alias below. Defined here because the entry-write paths reference it
+// before the categories endpoints block.
+const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const ENTRY_TAG_REGEX = SLUG_REGEX;
 const MONTH_FORMAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 // Add new entry
@@ -2340,7 +2344,7 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
 
 // Per-user, per-category constraints. Slugs are short URL-safe ids; labels
 // are user-facing names; colors are normalized 6-digit hex.
-const CATEGORY_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const CATEGORY_SLUG_REGEX = SLUG_REGEX;
 const CATEGORY_LABEL_MAX = 60;
 const CATEGORY_HEX_REGEX = /^#[0-9a-f]{6}$/;
 
@@ -3724,18 +3728,26 @@ async function validateEditArgs(userId, args) {
         // Auto-create unknown tags as new user categories — interactive
         // single-edit only, capped to avoid runaway noise. Bulk paths
         // (PDF/import) use the entry POST endpoint which does not auto-create.
+        //
+        // Important: only auto-create when the user already has at least
+        // one category row. The default-category self-heal in
+        // GET /api/categories only seeds when the table is empty, so
+        // creating the first row here would permanently prevent the
+        // default seed from ever running for this user.
         const userCats = await db.getUserCategorySlugs(userId);
         const known = new Set(userCats);
-        const AUTOCREATE_CAP = 3;
-        const toCreate = [];
-        for (const t of wellFormed) {
-            if (!known.has(t) && toCreate.length < AUTOCREATE_CAP) toCreate.push(t);
-        }
-        for (const slug of toCreate) {
-            try {
-                await db.addUserCategory(userId, { slug, label: slug, color: '#94a3b8' });
-                autoCreatedTags.push(slug);
-            } catch (_) { /* already exists race — ignore */ }
+        if (userCats.length > 0) {
+            const AUTOCREATE_CAP = 3;
+            const toCreate = [];
+            for (const t of wellFormed) {
+                if (!known.has(t) && toCreate.length < AUTOCREATE_CAP) toCreate.push(t);
+            }
+            for (const slug of toCreate) {
+                try {
+                    await db.addUserCategory(userId, { slug, label: slug, color: '#94a3b8' });
+                    autoCreatedTags.push(slug);
+                } catch (_) { /* already exists race — ignore */ }
+            }
         }
         updates.tags = wellFormed;
     }
