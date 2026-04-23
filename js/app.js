@@ -4132,7 +4132,7 @@ document.addEventListener('DOMContentLoaded', () => {
         users.forEach(user => {
             const row = document.createElement('tr');
             const partnerDisplay = user.partnerUsername
-                ? `<span class="partner-badge">${user.partnerUsername}</span>`
+                ? `<span class="partner-badge">${escapeHtml(user.partnerUsername)}</span>`
                 : '-';
             const emailDisplay = user.hasEmail
                 ? '<span style="color: var(--color-success);">&#10003;</span>'
@@ -4140,9 +4140,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const twoFADisplay = user.has2FA
                 ? '<span style="color: var(--color-success);">&#10003;</span>'
                 : '<span style="color: var(--color-text-muted);">-</span>';
+            // user.role is a server-side enum ('admin' | 'user') so the
+            // class suffix is safe; we still escape user.username defensively
+            // in case the username regex is ever loosened or a row is
+            // inserted via a path that bypasses validation.
             row.innerHTML = `
                 <td>${user.id}</td>
-                <td>${user.username}</td>
+                <td>${escapeHtml(user.username)}</td>
                 <td><span class="role-badge role-${user.role}">${user.role === 'admin' ? t('admin.roleAdmin') : t('admin.roleUser')}</span></td>
                 <td>${emailDisplay}</td>
                 <td>${twoFADisplay}</td>
@@ -4295,8 +4299,8 @@ document.addEventListener('DOMContentLoaded', () => {
         couples.forEach(couple => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${couple.user1.username}</td>
-                <td>${couple.user2.username}</td>
+                <td>${escapeHtml(couple.user1.username)}</td>
+                <td>${escapeHtml(couple.user2.username)}</td>
                 <td>${new Date(couple.linkedAt).toLocaleDateString()}</td>
                 <td>
                     <button class="delete-btn" onclick="unlinkCouple(this, ${couple.user1.id})">${t('admin.unlink')}</button>
@@ -4320,9 +4324,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!select1 || !select2) return;
 
                 [select1, select2].forEach(select => {
-                    select.innerHTML = `<option value="">${t('admin.selectUser')}</option>`;
+                    // Build options via DOM construction (textContent) instead
+                    // of innerHTML += string concat, to keep usernames safe
+                    // even if validation invariants ever shift.
+                    select.innerHTML = '';
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = t('admin.selectUser');
+                    select.appendChild(placeholder);
                     unlinkedUsers.forEach(user => {
-                        select.innerHTML += `<option value="${user.id}">${user.username}</option>`;
+                        const opt = document.createElement('option');
+                        opt.value = String(user.id);
+                        opt.textContent = user.username;
+                        select.appendChild(opt);
                     });
                 });
             }
