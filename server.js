@@ -3174,13 +3174,13 @@ const SNAPSHOT_MAX_SIZE = 1000;
 
 const pendingEdits = new Map(); // keyed by userId, array of pending edits
 const pendingDeletes = new Map(); // keyed by userId, array of pending deletes
-const PENDING_EDIT_TTL_MS = 5 * 60 * 1000; // 5 min expiry (also reused for deletes)
+const PENDING_ACTION_TTL_MS = 5 * 60 * 1000; // 5 min expiry — applies to both pending edits and pending deletes
 
 // Periodically remove expired pending edits/deletes to prevent memory leaks
 setInterval(() => {
     const now = Date.now();
     for (const [userId, edits] of pendingEdits.entries()) {
-        const active = edits.filter(e => now - e.createdAt <= PENDING_EDIT_TTL_MS);
+        const active = edits.filter(e => now - e.createdAt <= PENDING_ACTION_TTL_MS);
         if (active.length === 0) {
             pendingEdits.delete(userId);
         } else if (active.length !== edits.length) {
@@ -3188,7 +3188,7 @@ setInterval(() => {
         }
     }
     for (const [userId, dels] of pendingDeletes.entries()) {
-        const active = dels.filter(d => now - d.createdAt <= PENDING_EDIT_TTL_MS);
+        const active = dels.filter(d => now - d.createdAt <= PENDING_ACTION_TTL_MS);
         if (active.length === 0) {
             pendingDeletes.delete(userId);
         } else if (active.length !== dels.length) {
@@ -4600,7 +4600,7 @@ app.post('/api/ai/confirm-edit', requireAuth, editActionLimiter, asyncHandler(as
     const pending = allPending[idx];
 
     // Check TTL
-    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
+    if (Date.now() - pending.createdAt > PENDING_ACTION_TTL_MS) {
         allPending.splice(idx, 1);
         if (allPending.length === 0) pendingEdits.delete(userId);
         return res.status(410).json({ error: 'expired' });
@@ -4665,7 +4665,7 @@ app.post('/api/ai/confirm-delete', requireAuth, editActionLimiter, asyncHandler(
     const pending = allPending[idx];
 
     // Check TTL
-    if (Date.now() - pending.createdAt > PENDING_EDIT_TTL_MS) {
+    if (Date.now() - pending.createdAt > PENDING_ACTION_TTL_MS) {
         allPending.splice(idx, 1);
         if (allPending.length === 0) pendingDeletes.delete(userId);
         return res.status(410).json({ error: 'expired' });
