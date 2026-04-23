@@ -2936,7 +2936,7 @@ const chatToolDeclarations = [
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
-                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags. Use any slug from the user\'s category list (or any well-formed slug — unknown ones may be auto-created up to 3 per call, capped to avoid noise).' },
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags. Use any slug from the user\'s category list. If the user already has initialized categories, up to 3 unknown well-formed slugs may be auto-created per call (capped to avoid noise); if the user has no categories yet, auto-creation is skipped so default categories can be seeded first.' },
                 isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense.' }
             },
             required: ['entryId']
@@ -3081,7 +3081,7 @@ const openaiToolDeclarations = [
                     amount: { type: 'number', description: 'New amount for the entry (positive number, max 10000000).' },
                     type: { type: 'string', enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                     month: { type: 'string', description: 'New month in YYYY-MM format.' },
-                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags. Use any slug from the user\'s category list (or any well-formed slug — unknown ones may be auto-created up to 3 per call, capped to avoid noise).' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags. Use any slug from the user\'s category list. Unknown well-formed slugs may be auto-created up to 3 per call only when the user already has categories; if the user has no categories yet, auto-creation is skipped so default categories can be seeded first.' },
                     isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense.' }
                 },
                 required: ['entryId']
