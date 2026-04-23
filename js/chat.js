@@ -576,11 +576,29 @@
         confirmBtn.addEventListener('click', async function () {
             confirmBtn.disabled = true;
             cancelBtn.disabled = true;
+
+            // Mirror bulk-edit UX: show per-item progress with aria-live so
+            // large batches don't appear frozen while we POST sequentially.
+            let progressEl = null;
+            if (isBulk) {
+                progressEl = document.createElement('div');
+                progressEl.className = 'chat-confirm-progress';
+                progressEl.setAttribute('aria-live', 'polite');
+                progressEl.setAttribute('role', 'status');
+                progressEl.setAttribute('aria-atomic', 'true');
+                progressEl.textContent = t('chat.bulkDeleteProgress', { current: 1, total: pendingDeletes.length });
+                card.appendChild(progressEl);
+            }
+
             try {
                 let succeeded = 0;
                 let failed = 0;
                 let expired = false;
-                for (const pd of pendingDeletes) {
+                for (let i = 0; i < pendingDeletes.length; i++) {
+                    const pd = pendingDeletes[i];
+                    if (progressEl) {
+                        progressEl.textContent = t('chat.bulkDeleteProgress', { current: i + 1, total: pendingDeletes.length });
+                    }
                     const res = await csrfFetch('/api/ai/confirm-delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

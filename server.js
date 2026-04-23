@@ -3817,6 +3817,8 @@ function summarizeToolResult(toolName, result) {
             return 'compared';
         case 'editEntry':
             return result.pending ? 'awaiting confirmation' : 'updated';
+        case 'deleteEntry':
+            return result.pending ? 'awaiting confirmation' : 'deleted';
         case 'undoLastEdit':
             return 'restored';
         default:
