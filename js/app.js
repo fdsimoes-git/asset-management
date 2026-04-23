@@ -2130,8 +2130,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                // Reload entries from server to ensure view mode filtering is applied correctly
-                await loadEntries();
+                // Reload entries from server so view-mode filtering stays correct,
+                // but preserve the user's current page (displayEntries() clamps
+                // if the edit somehow shrinks the visible set).
+                await loadEntries({ resetPage: false });
                 document.getElementById('editEntryModal').style.display = 'none';
             } else {
                 alert(t('entry.alertUpdateFailed'));
@@ -2207,6 +2209,16 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (action === 'next') currentPage++;
             else return;
             displayEntries(currentFilteredEntries);
+            // Re-render replaces the buttons, so restore focus to the matching
+            // new button to keep keyboard users in place. If that button is
+            // now disabled (we hit a boundary), fall back to the opposite one.
+            const fresh = paginationEl.querySelector(`[data-page-action="${action}"]`);
+            if (fresh && !fresh.disabled) {
+                fresh.focus();
+            } else {
+                const other = paginationEl.querySelector(`[data-page-action="${action === 'prev' ? 'next' : 'prev'}"]`);
+                if (other) other.focus();
+            }
             // Scroll the table into view so users see the new rows. Honor
             // prefers-reduced-motion to avoid jumpy animation for those users.
             const table = document.getElementById('entriesTable');
@@ -3704,8 +3716,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // before the user clicks Combined) can never overwrite the latest view.
     let loadEntriesSeq = 0;
 
-    // Load entries from server with viewMode
-    async function loadEntries() {
+    // Load entries from server with viewMode.
+    // opts.resetPage (default true) is forwarded to filterEntries() so that
+    // edit-triggered reloads can preserve the user's current page.
+    async function loadEntries(opts) {
         const seq = ++loadEntriesSeq;
         try {
             setViewLoading(true);
@@ -3716,7 +3730,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 entries = await response.json();
                 if (seq !== loadEntriesSeq) return;
                 // Re-apply any active filters so the UI stays consistent
-                filterEntries();
+                filterEntries(opts);
             }
         } catch (error) {
             console.error('Error loading entries:', error);
