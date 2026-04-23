@@ -63,6 +63,10 @@ let currentUser = null;
 let currentSortColumn = null;
 let currentSortDirection = 'asc';
 
+// Pagination state for the entries table (issue #69)
+const ENTRIES_PAGE_SIZE = 30;
+let currentPage = 1;
+
 // Couple feature state
 let currentViewMode = 'individual';
 let hasPartner = false;
@@ -1018,7 +1022,12 @@ function updateFilterResultsCount(filtered) {
 }
 
 // Filter entries based on selected criteria
-function filterEntries() {
+function filterEntries(opts) {
+    // Filter changes reset to page 1 by default; entry mutations (delete)
+    // pass { resetPage: false } so we just clamp inside displayEntries() and
+    // keep the user near the row they just touched.
+    const resetPage = !opts || opts.resetPage !== false;
+    if (resetPage) currentPage = 1;
     const monthFilterStart = filterState.start;
     const monthFilterEnd = filterState.end;
     const typeFilter = filterState.type;
@@ -1106,19 +1115,47 @@ function updateSortIndicators() {
 }
 
 // Display entries in the table
+// Caches the last sort result keyed by source-array identity + sort settings,
+// so paginating a large list doesn't re-sort O(n log n) on every Prev/Next.
+let _sortedEntriesCache = { source: null, column: null, direction: null, result: null };
 function displayEntries(entriesToShow) {
     const tbody = document.getElementById('entriesBody');
     tbody.innerHTML = '';
 
-    // Apply current sorting if set, otherwise default to month descending
+    // Apply current sorting if set, otherwise default to month descending.
+    // filterEntries() always reassigns currentFilteredEntries to a new array,
+    // so reference equality is enough to detect "filter changed".
     let sortedEntries;
-    if (currentSortColumn) {
-        sortedEntries = sortEntries(entriesToShow, currentSortColumn, currentSortDirection);
+    const cache = _sortedEntriesCache;
+    if (cache.source === entriesToShow
+        && cache.column === currentSortColumn
+        && cache.direction === currentSortDirection
+        && cache.result) {
+        sortedEntries = cache.result;
     } else {
-        sortedEntries = [...entriesToShow].sort((a, b) => b.month.localeCompare(a.month));
+        if (currentSortColumn) {
+            sortedEntries = sortEntries(entriesToShow, currentSortColumn, currentSortDirection);
+        } else {
+            sortedEntries = [...entriesToShow].sort((a, b) => b.month.localeCompare(a.month));
+        }
+        _sortedEntriesCache = {
+            source: entriesToShow,
+            column: currentSortColumn,
+            direction: currentSortDirection,
+            result: sortedEntries,
+        };
     }
 
-    sortedEntries.forEach(entry => {
+    // Pagination: clamp currentPage so deletes/edits that shrink the list
+    // never leave us on a page that no longer exists.
+    const totalEntries = sortedEntries.length;
+    const totalPages = Math.max(1, Math.ceil(totalEntries / ENTRIES_PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const startIdx = (currentPage - 1) * ENTRIES_PAGE_SIZE;
+    const pageEntries = sortedEntries.slice(startIdx, startIdx + ENTRIES_PAGE_SIZE);
+
+    pageEntries.forEach(entry => {
         const row = document.createElement('tr');
         const escapedDescription = escapeHtml(entry.description);
         const tags = (entry.tags || []).map(tag =>
@@ -1159,6 +1196,37 @@ function displayEntries(entriesToShow) {
 
     // Update sort indicators
     updateSortIndicators();
+    // Render pagination control (hidden when ≤ 1 page)
+    renderEntriesPagination(totalEntries, totalPages);
+}
+
+// Render pagination controls below the entries table.
+// Hidden entirely when there's nothing to paginate.
+function renderEntriesPagination(totalEntries, totalPages) {
+    const container = document.getElementById('entriesPagination');
+    if (!container) return;
+    if (totalEntries <= ENTRIES_PAGE_SIZE) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+    }
+    container.hidden = false;
+    const from = (currentPage - 1) * ENTRIES_PAGE_SIZE + 1;
+    const to = Math.min(currentPage * ENTRIES_PAGE_SIZE, totalEntries);
+    const showing = t('pagination.showing', { from, to, total: totalEntries });
+    const pageOf = t('pagination.pageOf', { current: currentPage, total: totalPages });
+    const prevLabel = t('pagination.previous');
+    const nextLabel = t('pagination.next');
+    const prevDisabled = currentPage <= 1 ? 'disabled' : '';
+    const nextDisabled = currentPage >= totalPages ? 'disabled' : '';
+    container.innerHTML = `
+        <span class="entries-pagination-info" aria-live="polite">${escapeHtml(showing)}</span>
+        <div class="entries-pagination-controls">
+            <button type="button" class="entries-pagination-btn" data-page-action="prev" ${prevDisabled} aria-label="${escapeHtml(prevLabel)}">${escapeHtml(prevLabel)}</button>
+            <span class="entries-pagination-indicator">${escapeHtml(pageOf)}</span>
+            <button type="button" class="entries-pagination-btn" data-page-action="next" ${nextDisabled} aria-label="${escapeHtml(nextLabel)}">${escapeHtml(nextLabel)}</button>
+        </div>
+    `;
 }
 
 // Update summary statistics
@@ -2015,8 +2083,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (response.ok) {
                         // Remove entry from the local array *without* full page reload
                         entries = entries.filter(entry => entry.id !== id);
-                        // Re-apply current filters to update the display
-                        filterEntries();
+                        // Re-apply current filters to update the display.
+                        // Preserve the current page — displayEntries() clamps
+                        // if the deletion emptied the last page.
+                        filterEntries({ resetPage: false });
                     } else {
                         console.error('Error deleting entry on server:', response.statusText);
                         alert(t('entry.alertDeleteFailed'));
@@ -2079,8 +2149,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response.ok) {
-                // Reload entries from server to ensure view mode filtering is applied correctly
-                await loadEntries();
+                // Reload entries from server so view-mode filtering stays correct,
+                // but preserve the user's current page (displayEntries() clamps
+                // if the edit somehow shrinks the visible set).
+                await loadEntries({ resetPage: false });
                 document.getElementById('editEntryModal').style.display = 'none';
             } else {
                 alert(t('entry.alertUpdateFailed'));
@@ -2114,7 +2186,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderActiveFiltersBar();
         // Reset currentFilteredEntries to all entries
         currentFilteredEntries = entries;
-        // Reset filters should show ALL entries again
+        // Reset filters should show ALL entries again, starting from page 1
+        currentPage = 1;
         displayEntries(entries);
         updateSummary(entries);
         updateCharts(entries, true);
@@ -2136,9 +2209,44 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Re-display entries with new sorting using currently filtered entries
+            // Reset to page 1 — sorting reorders the result set so the user
+            // expects to start from the top.
+            currentPage = 1;
             displayEntries(currentFilteredEntries);
         });
     });
+
+    // Pagination button handler (event-delegated so re-renders don't leak
+    // listeners; container is rebuilt on every displayEntries call).
+    const paginationEl = document.getElementById('entriesPagination');
+    if (paginationEl) {
+        paginationEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-page-action]');
+            if (!btn || btn.disabled) return;
+            const action = btn.dataset.pageAction;
+            if (action === 'prev' && currentPage > 1) currentPage--;
+            else if (action === 'next') currentPage++;
+            else return;
+            displayEntries(currentFilteredEntries);
+            // Re-render replaces the buttons, so restore focus to the matching
+            // new button to keep keyboard users in place. If that button is
+            // now disabled (we hit a boundary), fall back to the opposite one.
+            const fresh = paginationEl.querySelector(`[data-page-action="${action}"]`);
+            if (fresh && !fresh.disabled) {
+                fresh.focus();
+            } else {
+                const other = paginationEl.querySelector(`[data-page-action="${action === 'prev' ? 'next' : 'prev'}"]`);
+                if (other) other.focus();
+            }
+            // Scroll the table into view so users see the new rows. Honor
+            // prefers-reduced-motion to avoid jumpy animation for those users.
+            const table = document.getElementById('entriesTable');
+            if (table) {
+                const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                table.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+            }
+        });
+    }
 
     // Add New Entry button opens modal
     document.getElementById('addEntryBtn').addEventListener('click', openModal);
@@ -3611,6 +3719,11 @@ document.addEventListener('DOMContentLoaded', () => {
         currentFilteredEntries = [];
         const tbody = document.getElementById('entriesBody');
         if (tbody) tbody.innerHTML = '';
+        // Hide stale pagination controls during the reload so prev/next can't
+        // be clicked against a now-empty list. renderEntriesPagination()
+        // restores them once filterEntries() runs with the new data.
+        const paginationEl = document.getElementById('entriesPagination');
+        if (paginationEl) { paginationEl.hidden = true; paginationEl.innerHTML = ''; }
         updateSummary([]);
         setViewLoading(true);
 
@@ -3622,8 +3735,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // before the user clicks Combined) can never overwrite the latest view.
     let loadEntriesSeq = 0;
 
-    // Load entries from server with viewMode
-    async function loadEntries() {
+    // Load entries from server with viewMode.
+    // opts.resetPage (default true) is forwarded to filterEntries() so that
+    // edit-triggered reloads can preserve the user's current page.
+    async function loadEntries(opts) {
         const seq = ++loadEntriesSeq;
         try {
             setViewLoading(true);
@@ -3634,7 +3749,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 entries = await response.json();
                 if (seq !== loadEntriesSeq) return;
                 // Re-apply any active filters so the UI stays consistent
-                filterEntries();
+                filterEntries(opts);
             }
         } catch (error) {
             console.error('Error loading entries:', error);
