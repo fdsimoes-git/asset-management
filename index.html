@@ -763,6 +763,49 @@
             border: 1px solid var(--color-border);
             position: relative;
         }
+        .entries-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 0.85rem;
+            padding: 0.5rem 0.25rem;
+            color: var(--color-text-secondary);
+            font-size: 0.85rem;
+            flex-wrap: wrap;
+        }
+        .entries-pagination[hidden] { display: none; }
+        .entries-pagination-info {
+            color: var(--color-text-secondary);
+        }
+        .entries-pagination-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .entries-pagination-btn {
+            background: var(--color-surface, #1e293b);
+            color: var(--color-text, #e2e8f0);
+            border: 1px solid var(--color-border, #334155);
+            border-radius: var(--radius-md, 0.4rem);
+            padding: 0.35rem 0.75rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+        }
+        .entries-pagination-btn:hover:not(:disabled) {
+            background: var(--color-surface-hover, #334155);
+            border-color: var(--color-accent, #f59e0b);
+        }
+        .entries-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .entries-pagination-indicator {
+            min-width: 6rem;
+            text-align: center;
+            color: var(--color-text, #e2e8f0);
+        }
         .table-loading-overlay {
             position: absolute;
             inset: 0;
@@ -2666,6 +2709,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="entriesPagination" class="entries-pagination" hidden role="navigation" data-i18n-aria-label="pagination.navLabel" aria-label="Entries pagination"></div>
             </section>
         </main>
     </div>

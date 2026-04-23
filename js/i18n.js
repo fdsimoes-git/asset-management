@@ -28,6 +28,11 @@ const translations = {
     'common.created': 'Created',
     'common.role': 'Role',
     'common.partner': 'Partner',
+    'pagination.previous': 'Previous',
+    'pagination.next': 'Next',
+    'pagination.pageOf': 'Page {current} of {total}',
+    'pagination.showing': 'Showing {from}–{to} of {total}',
+    'pagination.navLabel': 'Entries pagination',
 
     // ── Types ──
     'type.income': 'Income',
@@ -561,6 +566,11 @@ const translations = {
     'common.created': 'Criado',
     'common.role': 'Fun\u00e7\u00e3o',
     'common.partner': 'Parceiro(a)',
+    'pagination.previous': 'Anterior',
+    'pagination.next': 'Pr\u00f3xima',
+    'pagination.pageOf': 'P\u00e1gina {current} de {total}',
+    'pagination.showing': 'Mostrando {from}\u2013{to} de {total}',
+    'pagination.navLabel': 'Pagina\u00e7\u00e3o de entradas',
 
     // ── Types ──
     'type.income': 'Receita',
