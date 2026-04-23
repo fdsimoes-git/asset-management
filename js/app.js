@@ -71,6 +71,11 @@ async function loadUserCategories() {
     return userCategories;
 }
 
+// Single source of truth for the slug/hex contracts shared across the
+// frontend (issue #70). Mirrors server.js SLUG_REGEX / CATEGORY_HEX_REGEX.
+const SLUG_REGEX_FE = /^[a-z0-9][a-z0-9-]{0,29}$/;
+const HEX_REGEX_FE = /^#[0-9a-fA-F]{6}$/;
+
 let entries = [];
 let monthlyBalanceChart = null;
 let incomeVsExpenseChart = null;
@@ -848,8 +853,7 @@ function sanitizeFilterState(raw) {
         // deleted will simply not match anything (they show as orphans
         // in entries). Strict whitelist would silently drop chips on
         // category rename / re-add cycles.
-        const slugRegex = /^[a-z0-9][a-z0-9-]{0,29}$/;
-        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && slugRegex.test(c)))];
+        out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && SLUG_REGEX_FE.test(c)))];
     }
     if (raw.quickRange === null || (typeof raw.quickRange === 'string' && VALID_QUICK_RANGES.has(raw.quickRange))) {
         out.quickRange = raw.quickRange || null;
@@ -1466,9 +1470,6 @@ const addCategoryBtn = document.getElementById('addCategoryBtn');
 const resetCategoriesBtn = document.getElementById('resetCategoriesBtn');
 const categoryFormError = document.getElementById('categoryFormError');
 
-const SLUG_REGEX_FE = /^[a-z0-9][a-z0-9-]{0,29}$/;
-const HEX_REGEX_FE = /^#[0-9a-fA-F]{6}$/;
-
 function setCatFormError(msg) {
     if (categoryFormError) categoryFormError.textContent = msg || '';
 }
@@ -1581,26 +1582,49 @@ function renderCategoryManageList() {
     });
 }
 
+function closeManageCategoriesModal() {
+    if (manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+}
+
 function openManageCategoriesModal() {
     setCatFormError('');
     if (newCategorySlugInput) newCategorySlugInput.value = '';
     if (newCategoryLabelInput) newCategoryLabelInput.value = '';
     if (newCategoryColorInput) newCategoryColorInput.value = '#94a3b8';
     renderCategoryManageList();
-    if (manageCategoriesModal) manageCategoriesModal.style.display = 'block';
+    if (manageCategoriesModal) {
+        manageCategoriesModal.style.display = 'block';
+        // Move keyboard focus into the modal for accessibility — slug input
+        // is the most likely first interaction.
+        if (newCategorySlugInput) {
+            requestAnimationFrame(() => { try { newCategorySlugInput.focus(); } catch (_) {} });
+        }
+    }
 }
 
 if (manageCategoriesBtn) {
     manageCategoriesBtn.addEventListener('click', openManageCategoriesModal);
 }
 if (closeManageCategoriesModalBtn) {
-    closeManageCategoriesModalBtn.addEventListener('click', () => {
-        if (manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+    closeManageCategoriesModalBtn.addEventListener('click', closeManageCategoriesModal);
+    // The close control is a <span role="button">, so keyboard users need
+    // explicit Enter/Space handling (matches the bulk-duplicate modal).
+    closeManageCategoriesModalBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            closeManageCategoriesModal();
+        }
     });
 }
 if (manageCategoriesModal) {
     manageCategoriesModal.addEventListener('click', (e) => {
-        if (e.target === manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+        if (e.target === manageCategoriesModal) closeManageCategoriesModal();
+    });
+    // Escape-to-close while the modal is visible.
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && manageCategoriesModal.style.display !== 'none' && manageCategoriesModal.style.display !== '') {
+            closeManageCategoriesModal();
+        }
     });
 }
 

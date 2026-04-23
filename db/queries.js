@@ -936,6 +936,17 @@ async function resetUserCategoriesToDefaults(userId) {
 // Returns the count of newly imported categories.
 async function ensurePartnerCategories(userId, partnerId, month) {
     if (!partnerId) return 0;
+    // The default-category self-heal in GET /api/categories only runs when
+    // the user has zero rows. If we imported partner tags here first, we'd
+    // permanently block that seed. Run the seed first so the user always
+    // ends up with the defaults *plus* the partner imports.
+    const { rows: existing } = await pool.query(
+        'SELECT 1 FROM user_categories WHERE user_id = $1 LIMIT 1',
+        [userId]
+    );
+    if (existing.length === 0) {
+        await seedDefaultCategoriesForUser(userId);
+    }
     // When the caller is fetching a specific month, only scan that month's
     // partner entries — keeps page-level fetches cheap. Categories from
     // other months will be imported when the user navigates to them.
