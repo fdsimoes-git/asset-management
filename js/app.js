@@ -1511,6 +1511,7 @@ function renderCategoryManageList() {
                     await loadUserCategories();
                     renderCategoryManageList();
                     renderCategoryChips();
+                    syncHiddenCategorySelect();
                     filterEntries({ resetPage: false });
                 }
             } catch (e) { console.error(e); }
@@ -1543,6 +1544,7 @@ function renderCategoryManageList() {
                         await loadUserCategories();
                         renderCategoryManageList();
                         renderCategoryChips();
+                        syncHiddenCategorySelect();
                         filterEntries({ resetPage: false });
                     }
                 } catch (e) { console.error(e); }

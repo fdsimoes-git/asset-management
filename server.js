@@ -2936,7 +2936,7 @@ const chatToolDeclarations = [
                 amount: { type: Type.NUMBER, description: 'New amount for the entry (positive number, max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                 month: { type: Type.STRING, description: 'New month in YYYY-MM format.' },
-                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'New category tags. Use any slug from the user\'s category list (or any well-formed slug — unknown ones may be auto-created up to 3 per call, capped to avoid noise).' },
                 isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense.' }
             },
             required: ['entryId']
@@ -3081,7 +3081,7 @@ const openaiToolDeclarations = [
                     amount: { type: 'number', description: 'New amount for the entry (positive number, max 10000000).' },
                     type: { type: 'string', enum: ['income', 'expense'], description: 'New type: "income" or "expense".' },
                     month: { type: 'string', description: 'New month in YYYY-MM format.' },
-                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags (e.g. ["food", "groceries"]).' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'New category tags. Use any slug from the user\'s category list (or any well-formed slug — unknown ones may be auto-created up to 3 per call, capped to avoid noise).' },
                     isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense.' }
                 },
                 required: ['entryId']
@@ -3401,12 +3401,23 @@ async function loadChatEntries(userId, partnerId) {
     const own = await db.getEntriesByUser(userId);
     const ownDecorated = own.map(e => ({ ...e, owner: 'me' }));
     if (!partnerId) return ownDecorated;
+    // Fetch partner couple entries first; derive distinct tags from the
+    // result so we don't pay for an extra full-history `entries` scan
+    // inside ensurePartnerCategories on every chat request.
+    const partnerCoupleRaw = await db.getPartnerCoupleEntries(partnerId);
+    const partnerCategoryTags = [...new Set(
+        partnerCoupleRaw.flatMap(e => Array.isArray(e.tags) ? e.tags : [])
+            .filter(tag => typeof tag === 'string' && tag.trim() !== '')
+    )];
     // Auto-import partner-only category slugs so AI tool results that
     // reference them have matching entries in the user's category list
     // (e.g. for chip palette consistency on subsequent UI loads).
-    try { await db.ensurePartnerCategories(userId, partnerId); } catch (e) { console.error('ensurePartnerCategories (chat) failed:', e); }
-    const partnerCouple = (await db.getPartnerCoupleEntries(partnerId))
-        .map(e => ({ ...e, owner: 'partner' }));
+    try {
+        await db.importPartnerCategoriesFromTags(userId, partnerId, partnerCategoryTags);
+    } catch (e) {
+        console.error('importPartnerCategoriesFromTags (chat) failed:', e);
+    }
+    const partnerCouple = partnerCoupleRaw.map(e => ({ ...e, owner: 'partner' }));
     // Sort merged set by id so any downstream `.slice(limit)` is
     // deterministic and doesn't bias toward the user's rows just
     // because they were loaded first.

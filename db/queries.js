@@ -991,6 +991,58 @@ async function ensurePartnerCategories(userId, partnerId, month) {
     return insertedRows.length;
 }
 
+// Variant that takes a precomputed list of partner slugs (e.g. distilled
+// from partner entry rows already fetched by the caller). Avoids the
+// `entries` scan in ensurePartnerCategories — useful from the AI chat
+// path where partner couple entries are already loaded for the model.
+async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
+    if (!partnerId || !Array.isArray(slugs) || slugs.length === 0) return 0;
+    const cleaned = [...new Set(
+        slugs.filter(s => typeof s === 'string' && s.trim() !== '').map(s => s.trim())
+    )];
+    if (cleaned.length === 0) return 0;
+    const { rows: existing } = await pool.query(
+        'SELECT 1 FROM user_categories WHERE user_id = $1 LIMIT 1',
+        [userId]
+    );
+    if (existing.length === 0) {
+        await seedDefaultCategoriesForUser(userId);
+    }
+    const { rows } = await pool.query(
+        `WITH partner_tags AS (
+            SELECT UNNEST($3::text[]) AS slug
+        )
+        SELECT pt.slug, pc.label, pc.color
+        FROM partner_tags pt
+        LEFT JOIN user_categories pc
+          ON pc.user_id = $2 AND pc.slug = pt.slug
+        WHERE NOT EXISTS (
+            SELECT 1 FROM user_categories uc
+            WHERE uc.user_id = $1 AND uc.slug = pt.slug
+          )`,
+        [userId, partnerId, cleaned]
+    );
+    if (rows.length === 0) return 0;
+    const values = [];
+    const insertParams = [userId, partnerId];
+    let i = 3;
+    for (const r of rows) {
+        const label = r.label || r.slug;
+        const color = r.color || '#94a3b8';
+        values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
+        insertParams.push(r.slug, label, color);
+    }
+    const { rows: insertedRows } = await pool.query(
+        `INSERT INTO user_categories
+         (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO NOTHING
+         RETURNING slug`,
+        insertParams
+    );
+    return insertedRows.length;
+}
+
 module.exports = {
     // Users
     findUserByUsername,
@@ -1047,4 +1099,5 @@ module.exports = {
     deleteUserCategory,
     resetUserCategoriesToDefaults,
     ensurePartnerCategories,
+    importPartnerCategoriesFromTags,
 };
