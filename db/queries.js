@@ -808,6 +808,172 @@ async function cleanupExpiredPaypalOrders(maxAgeMs) {
     );
 }
 
+// ── User Categories (issue #70) ──────────────────────────────────────
+
+// The 17 default categories — slug + color match the historical hardcoded
+// frontend constants. Labels intentionally stay equal to the slug; the
+// frontend translates default rows via the `cat.<slug>` i18n keys instead
+// of trusting the DB label, so renames of defaults are blocked server-side
+// to keep that contract stable.
+const DEFAULT_CATEGORIES = [
+    { slug: 'food',          color: '#fbbf24' },
+    { slug: 'groceries',     color: '#22c55e' },
+    { slug: 'transport',     color: '#3b82f6' },
+    { slug: 'travel',        color: '#06b6d4' },
+    { slug: 'entertainment', color: '#a855f7' },
+    { slug: 'utilities',     color: '#6366f1' },
+    { slug: 'healthcare',    color: '#ef4444' },
+    { slug: 'education',     color: '#0ea5e9' },
+    { slug: 'shopping',      color: '#ec4899' },
+    { slug: 'subscription',  color: '#8b5cf6' },
+    { slug: 'housing',       color: '#f97316' },
+    { slug: 'salary',        color: '#10b981' },
+    { slug: 'freelance',     color: '#14b8a6' },
+    { slug: 'investment',    color: '#84cc16' },
+    { slug: 'transfer',      color: '#64748b' },
+    { slug: 'wedding',       color: '#f472b6' },
+    { slug: 'other',         color: '#94a3b8' },
+];
+
+function dbRowToUserCategory(row) {
+    if (!row) return null;
+    return {
+        id:                Number(row.id),
+        userId:            Number(row.user_id),
+        slug:              row.slug,
+        label:             row.label,
+        color:             row.color,
+        isDefault:         !!row.is_default,
+        sortOrder:         row.sort_order != null ? Number(row.sort_order) : 0,
+        importedFromUserId: row.imported_from_user_id != null ? Number(row.imported_from_user_id) : null,
+    };
+}
+
+async function getUserCategories(userId) {
+    const { rows } = await pool.query(
+        `SELECT * FROM user_categories WHERE user_id = $1
+         ORDER BY sort_order ASC, slug ASC`,
+        [userId]
+    );
+    return rows.map(dbRowToUserCategory);
+}
+
+async function getUserCategorySlugs(userId) {
+    const { rows } = await pool.query(
+        `SELECT slug FROM user_categories WHERE user_id = $1`,
+        [userId]
+    );
+    return rows.map(r => r.slug);
+}
+
+// Bulk insert defaults; ON CONFLICT DO NOTHING is safe for self-heal calls.
+async function seedDefaultCategoriesForUser(userId) {
+    const values = [];
+    const params = [userId];
+    let i = 2;
+    for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
+        const c = DEFAULT_CATEGORIES[idx];
+        values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
+        params.push(c.slug, c.slug, c.color, idx);
+    }
+    await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO NOTHING`,
+        params
+    );
+}
+
+async function addUserCategory(userId, { slug, label, color, sortOrder }) {
+    const { rows } = await pool.query(
+        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+         VALUES ($1, $2, $3, $4, FALSE, $5)
+         RETURNING *`,
+        [userId, slug, label, color, sortOrder != null ? sortOrder : 999]
+    );
+    return dbRowToUserCategory(rows[0]);
+}
+
+// PATCH — defaults can only have color/sort_order updated; label is locked
+// because the FE translates default labels via i18n keys.
+async function updateUserCategory(userId, slug, { label, color, sortOrder }) {
+    const { rows: existingRows } = await pool.query(
+        `SELECT * FROM user_categories WHERE user_id = $1 AND slug = $2`,
+        [userId, slug]
+    );
+    if (existingRows.length === 0) return null;
+    const existing = dbRowToUserCategory(existingRows[0]);
+    const newLabel = (existing.isDefault || label == null) ? existing.label : label;
+    const newColor = color != null ? color : existing.color;
+    const newSort  = sortOrder != null ? sortOrder : existing.sortOrder;
+    const { rows } = await pool.query(
+        `UPDATE user_categories
+         SET label = $3, color = $4, sort_order = $5
+         WHERE user_id = $1 AND slug = $2
+         RETURNING *`,
+        [userId, slug, newLabel, newColor, newSort]
+    );
+    return dbRowToUserCategory(rows[0]);
+}
+
+// Hard delete — referencing entries are NOT modified (orphan render).
+async function deleteUserCategory(userId, slug) {
+    const { rowCount } = await pool.query(
+        `DELETE FROM user_categories WHERE user_id = $1 AND slug = $2`,
+        [userId, slug]
+    );
+    return rowCount > 0;
+}
+
+// Re-seed any default slugs the user is missing (does not touch user-created).
+async function resetUserCategoriesToDefaults(userId) {
+    await seedDefaultCategoriesForUser(userId);
+    return getUserCategories(userId);
+}
+
+// Find tags used in the partner's couple-flagged entries that the user
+// doesn't already have, then bulk-insert them with the partner's color.
+// Returns the count of newly imported categories.
+async function ensurePartnerCategories(userId, partnerId) {
+    if (!partnerId) return 0;
+    const { rows } = await pool.query(
+        `WITH partner_tags AS (
+            SELECT DISTINCT UNNEST(tags) AS slug
+            FROM entries
+            WHERE user_id = $2 AND is_couple_expense = TRUE
+        )
+        SELECT pt.slug, pc.label, pc.color
+        FROM partner_tags pt
+        LEFT JOIN user_categories pc
+          ON pc.user_id = $2 AND pc.slug = pt.slug
+        WHERE pt.slug IS NOT NULL
+          AND pt.slug <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM user_categories uc
+            WHERE uc.user_id = $1 AND uc.slug = pt.slug
+          )`,
+        [userId, partnerId]
+    );
+    if (rows.length === 0) return 0;
+    const values = [];
+    const params = [userId, partnerId];
+    let i = 3;
+    for (const r of rows) {
+        const label = r.label || r.slug;
+        const color = r.color || '#94a3b8';
+        values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
+        params.push(r.slug, label, color);
+    }
+    await pool.query(
+        `INSERT INTO user_categories
+         (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
+         VALUES ${values.join(', ')}
+         ON CONFLICT (user_id, slug) DO NOTHING`,
+        params
+    );
+    return rows.length;
+}
+
 module.exports = {
     // Users
     findUserByUsername,
@@ -852,5 +1018,16 @@ module.exports = {
     findPaypalOrder,
     completePaypalOrder,
     updatePaypalOrderStatus,
-    cleanupExpiredPaypalOrders
+    cleanupExpiredPaypalOrders,
+
+    // User Categories (issue #70)
+    DEFAULT_CATEGORIES,
+    getUserCategories,
+    getUserCategorySlugs,
+    seedDefaultCategoriesForUser,
+    addUserCategory,
+    updateUserCategory,
+    deleteUserCategory,
+    resetUserCategoriesToDefaults,
+    ensurePartnerCategories,
 };
