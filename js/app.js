@@ -1502,7 +1502,7 @@ function renderCategoryManageList() {
                     await loadUserCategories();
                     renderCategoryManageList();
                     renderCategoryChips();
-                    if (typeof updateCharts === 'function') filterEntries({ resetPage: false });
+                    filterEntries({ resetPage: false });
                 }
             } catch (e) { console.error(e); }
         });

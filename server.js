@@ -3740,7 +3740,10 @@ async function validateEditArgs(userId, args) {
             const AUTOCREATE_CAP = 3;
             const toCreate = [];
             for (const t of wellFormed) {
-                if (!known.has(t) && toCreate.length < AUTOCREATE_CAP) toCreate.push(t);
+                if (known.has(t)) continue;
+                if (toCreate.length >= AUTOCREATE_CAP) break;
+                toCreate.push(t);
+                known.add(t);
             }
             for (const slug of toCreate) {
                 try {

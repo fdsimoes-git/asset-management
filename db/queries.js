@@ -980,14 +980,15 @@ async function ensurePartnerCategories(userId, partnerId, month) {
         values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
         insertParams.push(r.slug, label, color);
     }
-    await pool.query(
+    const { rows: insertedRows } = await pool.query(
         `INSERT INTO user_categories
          (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
          VALUES ${values.join(', ')}
-         ON CONFLICT (user_id, slug) DO NOTHING`,
+         ON CONFLICT (user_id, slug) DO NOTHING
+         RETURNING slug`,
         insertParams
     );
-    return rows.length;
+    return insertedRows.length;
 }
 
 module.exports = {
