@@ -8,6 +8,18 @@
 
 A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor. Supports four AI providers: Google Gemini, OpenAI, Anthropic Claude (API key **or** Claude Code OAuth subscription), and GitHub Copilot (OAuth subscription).
 
+## 💖 Support this project
+
+If Asset Manager saves you time, please consider supporting development:
+
+[![Sponsor monthly](https://img.shields.io/badge/PayPal-Subscribe%20monthly-0070ba?logo=paypal&logoColor=white&style=for-the-badge)](https://www.paypal.com/webapps/billing/plans/subscribe?plan_id=P-9FK55993FG2877321NHV26GQ)
+[![One-time donation](https://img.shields.io/badge/PayPal-One--time%20donation-003087?logo=paypal&logoColor=white&style=for-the-badge)](https://www.paypal.com/ncp/payment/MV7WU2MHKP3P4)
+
+- 🔁 **Monthly subscription** — recurring support keeps the project sustainable.
+- ☕ **One-time donation** — fund a feature, a beer, or a coffee.
+
+All sponsors are listed in the [release notes](https://github.com/fdsimoes-git/asset-management/releases) (opt-in).
+
 ## Features
 
 ### Core Functionality
