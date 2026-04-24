@@ -5143,10 +5143,13 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         // Sanitize partner/user-controlled labels before embedding in the
         // prompt: collapse ASCII *and* Unicode line separators (incl.
         // U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR), tabs,
-        // backticks, and commas to spaces so a crafted label can't break
-        // the line-based list structure or inject extra instructions.
-        // Slugs are already constrained by CATEGORY_SLUG_REGEX.
-        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t\v\f\u2028\u2029`,]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
+        // backticks, commas, and parentheses to spaces. Parens are
+        // stripped because the line format is `slug (Label)` — a label
+        // containing `)` could otherwise close the wrapper early and
+        // append free text on the same line, blurring the "token before
+        // the opening parenthesis" rule. Slugs are already constrained
+        // by CATEGORY_SLUG_REGEX and need no escaping.
+        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t\v\f\u2028\u2029`,()]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
         // One category per line, formatted as `slug (Label)` with no
         // leading bullet — the prompt rule below tells the model to use
         // exactly the token before the opening parenthesis, and we
@@ -5351,6 +5354,24 @@ ${text}`;
                 // orphan tag the user didn't ask for. Gemini already
                 // enforces this via the responseSchema enum; this is the
                 // safety net for OpenAI/Anthropic/Copilot.
+                //
+                // Before declaring drift, try cheap recovery first:
+                //   - strip common leading list markers ('-', '*', '•', '>'),
+                //     leading whitespace, and quotes/backticks
+                //   - take the first slug-shaped token (matches the
+                //     CATEGORY_SLUG_REGEX shape) so 'food (Food)' or
+                //     'food,' or 'food.' all recover to 'food'
+                // This avoids losing a correct categorization to a purely
+                // formatting-level artifact.
+                if (tags.length > 0 && !allowedSlugSet.has(tags[0])) {
+                    const cleaned = tags[0]
+                        .replace(/^[\s\-*•>"'`]+/, '')   // leading markers / quotes
+                        .replace(/[\s,.;:!?"'`]+$/, ''); // trailing punctuation
+                    const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9_-]{0,30})/);
+                    if (firstSlugLike && allowedSlugSet.has(firstSlugLike[0])) {
+                        tags = [firstSlugLike[0]];
+                    }
+                }
                 if (tags.length === 0 || !allowedSlugSet.has(tags[0])) {
                     tags = [fallbackSlug];
                 }
