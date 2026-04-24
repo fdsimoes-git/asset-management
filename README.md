@@ -98,7 +98,7 @@ All sponsors are listed in the [release notes](https://github.com/fdsimoes-git/a
 
 ## Requirements
 
-- **Node.js** 18.x or higher
+- **Node.js** 18.18+, 20.9+, or 22+ (required by `connect-pg-simple`)
 - **npm** (Node Package Manager)
 - **PostgreSQL** 14+ (localhost, scram-sha-256 auth recommended)
 - **Modern web browser** with JavaScript enabled
