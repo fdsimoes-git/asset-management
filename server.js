@@ -5129,15 +5129,27 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
             }
         }
         if (pdfPartnerId) {
-            try { await db.ensurePartnerCategories(req.user.id, pdfPartnerId); }
+            // Scope the partner-tag scan to the current month (matches the
+            // call-site pattern used by GET /api/entries) so we don't scan
+            // years of partner couple entries during an interactive PDF
+            // upload. Older-month partner-only slugs auto-import lazily as
+            // the user navigates to those months in the dashboard, and the
+            // preview-table dropdown still lists every category the caller
+            // already has, so manual override is unaffected.
+            try { await db.ensurePartnerCategories(req.user.id, pdfPartnerId, currentMonth); }
             catch (e) { console.error('process-pdf: ensurePartnerCategories failed:', e.message); }
         }
         const pdfUserCategories = await getCategoriesForUserSelfHeal(req.user.id);
-        // slug (Label) — gives the model the human-readable label for
-        // disambiguation while still requiring it to emit the slug.
+        // Sanitize partner/user-controlled labels before embedding in the
+        // prompt: collapse newlines/tabs/backticks/commas to spaces so a
+        // crafted label can't break the list structure or inject extra
+        // instructions. Slugs are already constrained by CATEGORY_SLUG_REGEX.
+        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t`,]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
+        // One category per line — robust against any remaining label oddities
+        // and easy for the model to parse as a list of allowed slugs.
         const categoryListForPrompt = pdfUserCategories
-            .map(c => `${c.slug} (${c.label})`)
-            .join(', ');
+            .map(c => `  - ${c.slug} (${sanitizeLabel(c.label)})`)
+            .join('\n');
 
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
@@ -5148,7 +5160,8 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
-- tag must be exactly one of the slugs (the value before the parenthesis) from this list: ${categoryListForPrompt}
+- tag must be exactly one of the slugs (the value before the parenthesis) from this list — never invent a new slug, never use the label, never use a slug not in this list:
+${categoryListForPrompt}
 - Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
 DOCUMENT:
@@ -5241,10 +5254,12 @@ ${text}`;
                                 },
                                 tag: {
                                     type: Type.STRING,
-                                    enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
-                                           'healthcare', 'education', 'shopping', 'subscription', 'housing',
-                                           'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
-                                    description: 'Category tag for the transaction'
+                                    // Issue #87: enum mirrors the per-user category list
+                                    // built above (defaults + customs + imported partner
+                                    // slugs), so Gemini's structured output can return any
+                                    // slug the caller actually has — not just the 17 defaults.
+                                    enum: pdfUserCategories.map(c => c.slug),
+                                    description: 'Category tag for the transaction (must be one of the user\'s category slugs)'
                                 },
                                 type: {
                                     type: Type.STRING,
