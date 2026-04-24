@@ -202,17 +202,13 @@ The classic providers (Gemini, OpenAI, Anthropic API key) accept a standard API 
 
 ### Anthropic — Claude Code OAuth token
 
-If you already pay for a [Claude.ai Pro or Max subscription](https://www.anthropic.com/pricing), you can use that subscription instead of an API key. The token is the same one Anthropic's official `claude-code` CLI stores after `claude login`:
+If you already pay for a [Claude.ai Pro or Max subscription](https://www.anthropic.com/pricing), you can use that subscription instead of an API key. Use Anthropic's official `claude-code` CLI to generate the supported `sk-ant-oat01-…` token via `claude setup-token`:
 
 1. Install the CLI: `npm install -g @anthropic-ai/claude-code`
-2. Run `claude login` and complete the browser flow.
-3. Find the resulting token (starts with `sk-ant-oat01-…`):
-   ```bash
-   # macOS
-   security find-generic-password -s 'Claude Code-credentials' -w | jq -r '.claudeAiOauth.accessToken'
-   ```
-   Or read it directly from the CLI's credential store (location varies per OS — see `claude --help`).
-4. Paste it into Settings → AI provider → **Claude Code OAuth token**.
+2. Run `claude setup-token` and complete the flow — it prints the OAuth token directly to the terminal.
+3. Paste it into Settings → AI provider → **Claude Code OAuth token**.
+
+> **Note**: only `sk-ant-oat01-…` tokens (from `claude setup-token`) are accepted as OAuth tokens. A regular `sk-ant-api…` API key belongs in the Anthropic API key field instead.
 
 The server sends `anthropic-beta: oauth-2025-04-20` on every Anthropic request when an OAuth token is detected, which is what makes the subscription accept it as a credential.
 
@@ -315,10 +311,11 @@ Available expense/income categories:
 ## Data Storage
 
 - **Database**: PostgreSQL with parameterized queries (no string interpolation)
-- **Tables**: `users`, `entries`, `invite_codes`, `paypal_orders`
-- **Field Encryption**: Sensitive fields (email, API keys, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
-- **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, claude_oauth_token, github_copilot_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, partner_id, partner_linked_at, is_active, created_at, updated_at }`
+- **Tables**: `users`, `entries`, `user_categories`, `invite_codes`, `paypal_orders`
+- **Field Encryption**: Sensitive fields (email, API keys, OAuth tokens, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
+- **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, claude_oauth_token, github_copilot_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, web_search_enabled, partner_id, partner_linked_at, is_active, created_at, updated_at }`
 - **Entry Model**: `{ id, user_id, month, type, amount, description, tags, is_couple_expense }`
+- **User Category Model**: `{ id, user_id, slug, label, is_default, is_active, sort_order, created_at, updated_at }` — per-user category list, capped at 100 per user, seeded with 17 defaults on first access
 
 ## Technical Details
 
