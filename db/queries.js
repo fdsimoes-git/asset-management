@@ -839,9 +839,8 @@ const DEFAULT_CATEGORY_SLUGS = new Set(DEFAULT_CATEGORIES.map(c => c.slug));
 
 // Maximum number of category rows allowed per user. Enforced across
 // every code path that can create a row (POST /api/categories, AI
-// editEntry auto-create, partner import). Defaults are included in
-// the count — but resetUserCategoriesToDefaults can never push a
-// user over the cap because it only upserts the 17 canonical slugs.
+// editEntry auto-create, partner import, restore-defaults). Defaults
+// are included in the count.
 const MAX_CATEGORIES_PER_USER = 100;
 
 async function countUserCategories(userId) {
@@ -932,7 +931,6 @@ async function addUserCategoryAtomicWithCap(userId, { slug, label, color, sortOr
             [userId]
         );
         if (countRows[0].n >= MAX_CATEGORIES_PER_USER) {
-            await client.query('ROLLBACK');
             const e = new Error(`User ${userId} is at the per-user category cap (${MAX_CATEGORIES_PER_USER}).`);
             e.code = CATEGORY_CAP_ERROR_CODE;
             throw e;
@@ -989,27 +987,66 @@ async function deleteUserCategory(userId, slug) {
 // sort_order — even if a row for that slug already exists as a
 // non-default (e.g. partner import or AI auto-create predating the
 // default-slug guards). Truly custom (non-default) slugs are untouched.
+//
+// Cap-aware: the upsert only ever *creates* rows for default slugs the
+// user is missing (a deleted default), so its row-count delta equals the
+// number of missing defaults. We compute headroom under the same per-user
+// advisory lock used by the other creation paths and reject with a typed
+// CATEGORY_CAP_ERROR_CODE when restoring would exceed the cap. Defaults
+// already present (which is the steady-state for most users) are pure
+// updates and never blocked.
 async function resetUserCategoriesToDefaults(userId) {
-    const values = [];
-    const params = [userId];
-    let i = 2;
-    for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
-        const c = DEFAULT_CATEGORIES[idx];
-        values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
-        params.push(c.slug, c.slug, c.color, idx);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1)', [userId]);
+        const { rows: presentRows } = await client.query(
+            `SELECT slug FROM user_categories WHERE user_id = $1 AND slug = ANY($2::text[])`,
+            [userId, DEFAULT_CATEGORIES.map(c => c.slug)]
+        );
+        const present = new Set(presentRows.map(r => r.slug));
+        const missingCount = DEFAULT_CATEGORIES.length - present.size;
+        if (missingCount > 0) {
+            const { rows: countRows } = await client.query(
+                'SELECT COUNT(*)::int AS n FROM user_categories WHERE user_id = $1',
+                [userId]
+            );
+            const headroom = Math.max(0, MAX_CATEGORIES_PER_USER - countRows[0].n);
+            if (missingCount > headroom) {
+                const e = new Error(`User ${userId} cannot restore ${missingCount} default(s); only ${headroom} slot(s) available under the ${MAX_CATEGORIES_PER_USER}-category cap.`);
+                e.code = CATEGORY_CAP_ERROR_CODE;
+                e.missingCount = missingCount;
+                e.headroom = headroom;
+                throw e;
+            }
+        }
+        const values = [];
+        const params = [userId];
+        let i = 2;
+        for (let idx = 0; idx < DEFAULT_CATEGORIES.length; idx++) {
+            const c = DEFAULT_CATEGORIES[idx];
+            values.push(`($1, $${i++}, $${i++}, $${i++}, TRUE, $${i++})`);
+            params.push(c.slug, c.slug, c.color, idx);
+        }
+        await client.query(
+            `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+             VALUES ${values.join(', ')}
+             ON CONFLICT (user_id, slug) DO UPDATE SET
+                 label = EXCLUDED.label,
+                 color = EXCLUDED.color,
+                 is_default = TRUE,
+                 sort_order = EXCLUDED.sort_order,
+                 imported_from_user_id = NULL`,
+            params
+        );
+        await client.query('COMMIT');
+        return getUserCategories(userId);
+    } catch (e) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        throw e;
+    } finally {
+        client.release();
     }
-    await pool.query(
-        `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
-         VALUES ${values.join(', ')}
-         ON CONFLICT (user_id, slug) DO UPDATE SET
-             label = EXCLUDED.label,
-             color = EXCLUDED.color,
-             is_default = TRUE,
-             sort_order = EXCLUDED.sort_order,
-             imported_from_user_id = NULL`,
-        params
-    );
-    return getUserCategories(userId);
 }
 
 // Find tags used in the partner's couple-flagged entries that the user

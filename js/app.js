@@ -1506,10 +1506,10 @@ function updateCategoryCapState() {
     if (newCategoryLabelInput) newCategoryLabelInput.disabled = atCap;
     if (newCategoryColorInput) newCategoryColorInput.disabled = atCap;
     if (atCap) {
-        const tpl = t('category.capReached') || '{used} / {max} categories used. Delete one to add another.';
-        categoryCapNote.textContent = tpl
-            .replace('{used}', String(used))
-            .replace('{max}', String(MAX_CATEGORIES_PER_USER_FE));
+        categoryCapNote.textContent = t('category.capReached', {
+            used: String(used),
+            max: String(MAX_CATEGORIES_PER_USER_FE)
+        });
         categoryCapNote.hidden = false;
     } else {
         categoryCapNote.textContent = '';
@@ -1741,6 +1741,16 @@ if (resetCategoriesBtn) {
                 renderCategoryChips();
                 syncHiddenCategorySelect();
                 filterEntries({ resetPage: false });
+            } else if (res.status === 409) {
+                // Restoring would push the user past the cap (deleted defaults
+                // can't fit). Surface the server's message in the same inline
+                // error area used by Add, and refresh local state so the cap
+                // note reflects current usage.
+                let msg = t('category.resetFailed') || 'Could not restore defaults.';
+                try { const body = await res.json(); if (body && body.message) msg = body.message; } catch {}
+                await loadUserCategories();
+                renderCategoryManageList();
+                setCatFormError(msg);
             }
         } catch (e) { console.error(e); }
     });

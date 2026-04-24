@@ -2453,8 +2453,17 @@ app.delete('/api/categories/:slug', requireAuth, asyncHandler(async (req, res) =
 }));
 
 app.post('/api/categories/reset-defaults', requireAuth, asyncHandler(async (req, res) => {
-    const cats = await db.resetUserCategoriesToDefaults(req.user.id);
-    res.json(cats);
+    try {
+        const cats = await db.resetUserCategoriesToDefaults(req.user.id);
+        res.json(cats);
+    } catch (e) {
+        if (e && e.code === db.CATEGORY_CAP_ERROR_CODE) {
+            return res.status(409).json({
+                message: `Restoring defaults would exceed the per-user category limit of ${db.MAX_CATEGORIES_PER_USER}. Delete ${e.missingCount - e.headroom} more category(ies) first.`
+            });
+        }
+        throw e;
+    }
 }));
 
 // ============ ADMIN ENDPOINTS ============
