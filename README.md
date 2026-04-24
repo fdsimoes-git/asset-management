@@ -19,7 +19,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Advanced Filtering**: Filter entries by date range, transaction type, and categories
 - **Sortable Columns**: Click table headers to sort by any column
 - **Data Management**: Edit and delete existing entries
-- **Encrypted Storage**: Sensitive fields (emails, API keys, TOTP secrets) encrypted with AES-256-CBC
+- **Encrypted Storage**: Sensitive fields (emails, API keys, OAuth tokens, TOTP secrets) encrypted with AES-256-CBC
 
 ### Multi-User System
 - **Public Registration**: New users can create accounts
