@@ -1098,11 +1098,11 @@ async function ensurePartnerCategories(userId, partnerId, month) {
 // already has the defaults seeded by the caller) and returns the
 // number of rows actually inserted.
 async function _insertImportedPartnerRows(userId, partnerId, rows) {
-    const importable = rows.filter(r => !DEFAULT_CATEGORY_SLUGS.has(r.slug));
-    if (importable.length === 0) return 0;
+    const candidates = rows.filter(r => !DEFAULT_CATEGORY_SLUGS.has(r.slug));
+    if (candidates.length === 0) return 0;
     // Sort deterministically before truncation so two near-cap callers
     // (e.g. simultaneous month switches) always pick the same subset.
-    importable.sort((a, b) => a.slug.localeCompare(b.slug));
+    candidates.sort((a, b) => a.slug.localeCompare(b.slug));
     // Wrap count + insert in a transaction with a per-user advisory lock
     // so concurrent POST /api/categories / AI auto-create / partner
     // imports cannot collectively push the user past MAX_CATEGORIES_PER_USER.
@@ -1110,6 +1110,23 @@ async function _insertImportedPartnerRows(userId, partnerId, rows) {
     try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock($1)', [userId]);
+        // Re-filter against current DB state inside the lock. The caller
+        // computed `rows` outside the lock, so by now another importer
+        // / POST / AI call may have inserted some of the candidate
+        // slugs. Without this re-check, a naive slice(0, headroom)
+        // could include already-present slugs (no-ops via ON CONFLICT)
+        // while skipping later still-missing slugs that would have fit.
+        const { rows: existingRows } = await client.query(
+            `SELECT slug FROM user_categories
+             WHERE user_id = $1 AND slug = ANY($2::text[])`,
+            [userId, candidates.map(r => r.slug)]
+        );
+        const existingSet = new Set(existingRows.map(r => r.slug));
+        const importable = candidates.filter(r => !existingSet.has(r.slug));
+        if (importable.length === 0) {
+            await client.query('ROLLBACK');
+            return 0;
+        }
         const { rows: countRows } = await client.query(
             'SELECT COUNT(*)::int AS n FROM user_categories WHERE user_id = $1',
             [userId]
