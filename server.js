@@ -2,6 +2,7 @@
 const config = require('./config');
 const express = require('express');
 const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const https = require('https');
@@ -9,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('./db/queries');
-const { testConnection: testDbConnection } = require('./db/pool');
+const { pool: dbPool, testConnection: testDbConnection } = require('./db/pool');
 const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
@@ -945,7 +946,16 @@ app.use('/js', express.static(path.join(__dirname, 'js'), {
 app.set('trust proxy', 1);
 
 // Session configuration
+// Persistent Postgres-backed session store. Keeps sessions across restarts and
+// removes the express-session MemoryStore production warning. The `session`
+// table is auto-created on first boot via createTableIfMissing.
 app.use(session({
+    store: new PgSession({
+        pool: dbPool,
+        tableName: 'session',
+        createTableIfMissing: true,
+        pruneSessionInterval: 60 * 15 // seconds; expired-row cleanup
+    }),
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,

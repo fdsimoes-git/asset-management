@@ -99,4 +99,18 @@ CREATE INDEX IF NOT EXISTS idx_user_categories_user_id ON user_categories(user_i
 -- ── Idempotent column additions for existing deployments ─────────────
 ALTER TABLE users ADD COLUMN IF NOT EXISTS web_search_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- ── Session store (connect-pg-simple) ────────────────────────────────
+-- Mirrors node_modules/connect-pg-simple/table.sql verbatim. The store also
+-- creates this table at runtime via createTableIfMissing as a safety net,
+-- but defining it here means fresh installs get it via psql -f schema.sql
+-- and operators with locked-down DB roles can pre-create it explicitly.
+CREATE TABLE IF NOT EXISTS "session" (
+    "sid"    varchar      NOT NULL COLLATE "default",
+    "sess"   json         NOT NULL,
+    "expire" timestamp(6) NOT NULL,
+    CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+);
+
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+
 COMMIT;
