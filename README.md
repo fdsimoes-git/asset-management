@@ -198,11 +198,11 @@ Admins can access the Admin Panel to:
 
 Each user can configure credentials for one or more AI providers in **Settings → AI Provider** in the web UI. The server falls back to the matching `*_API_KEY` / `*_TOKEN` environment variable when a user has no per-user credential.
 
-The classic providers (Gemini, OpenAI, Anthropic API key) accept a standard API key copy-pasted from the provider's console. The two **OAuth-based** options below let users wire up an existing Claude.ai or GitHub Copilot subscription instead of paying for separate API usage.
+The classic providers (Gemini, OpenAI, Anthropic API key) accept a standard API key copy-pasted from the provider's console. The two **OAuth-based** options below let users wire up an existing Claude Code or GitHub Copilot subscription instead of paying for separate API usage.
 
 ### Anthropic — Claude Code OAuth token
 
-If you already pay for a [Claude.ai Pro or Max subscription](https://www.anthropic.com/pricing), you can use that subscription instead of an API key. Use Anthropic's official `claude-code` CLI to generate the supported `sk-ant-oat01-…` token via `claude setup-token`:
+If you already have a [Claude Code subscription](https://www.anthropic.com/pricing), you can use that subscription instead of an API key. Use Anthropic's official `claude-code` CLI to generate the supported `sk-ant-oat01-…` token via `claude setup-token`:
 
 1. Install the CLI: `npm install -g @anthropic-ai/claude-code`
 2. Run `claude setup-token` and complete the flow — it prints the OAuth token directly to the terminal.
