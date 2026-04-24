@@ -284,55 +284,119 @@ function buildAnthropicSystemPrompt({ authToken }, systemPrompt) {
 
 // ── GitHub Copilot client ───────────────────────────────────────────
 //
-// GitHub Copilot exposes an OpenAI-compatible chat completions API at
-// `https://api.githubcopilot.com`, but it requires:
+// GitHub Copilot exposes an OpenAI-compatible chat completions API behind a
+// per-account "proxy-ep" host (e.g. proxy.individual.githubcopilot.com,
+// proxy.business.githubcopilot.com). Every call requires:
 //   1. A short-lived (~30 min) Copilot session token, obtained by exchanging
-//      the user's long-lived GitHub OAuth token (gho_/ghu_/ghp_/github_pat_...) at
-//      `GET https://api.github.com/copilot_internal/v2/token`.
-//   2. A specific set of headers identifying the integration (Editor-Version,
-//      Editor-Plugin-Version, Copilot-Integration-Id, etc.).
+//      the user's long-lived GitHub OAuth token (gho_/ghu_/ghp_/github_pat_…)
+//      via `GET https://api.github.com/copilot_internal/v2/token`.
+//   2. A specific set of headers impersonating the official VS Code Copilot
+//      Chat extension. The Copilot edge gates on `Editor-Version`,
+//      `User-Agent`, and (per-request) `X-Initiator` + `Openai-Intent`. If
+//      any of these don't match a recognized editor signature the call
+//      typically fails with a misleading 401 / empty response. (See #77.)
 // All Copilot API usage is billed against the user's GitHub Copilot
 // subscription. References (reverse-engineered, no public docs):
+//   - github.com/openclaw/openclaw/blob/main/src/agents/copilot-dynamic-headers.ts
+//   - github.com/openclaw/openclaw/blob/main/src/agents/github-copilot-token.ts
 //   - github.com/ericc-ch/copilot-api/src/lib/api-config.ts
 //   - github.com/farion1231/cc-switch/src-tauri/src/proxy/providers/copilot_auth.rs
-const COPILOT_TOKEN_EXCHANGE_URL = 'https://api.github.com/copilot_internal/v2/token';
-const COPILOT_API_BASE_URL       = 'https://api.githubcopilot.com';
-const COPILOT_EDITOR_VERSION     = `AssetManager/${APP_VERSION}`;
-const COPILOT_PLUGIN_VERSION     = 'asset-management/0.1.0';
-const COPILOT_USER_AGENT         = `AssetManager/${APP_VERSION}`;
-const COPILOT_INTEGRATION_ID     = 'vscode-chat';
+const COPILOT_TOKEN_EXCHANGE_URL    = 'https://api.github.com/copilot_internal/v2/token';
+// Fallback only — the real per-account base URL is derived from the
+// `proxy-ep=…` segment embedded in the exchanged session token (see
+// deriveCopilotApiBaseUrlFromToken). Hardcoding `api.githubcopilot.com`
+// (the previous value) does not work for Copilot Individual users whose
+// proxy is `proxy.individual.githubcopilot.com`.
+const DEFAULT_COPILOT_API_BASE_URL  = 'https://api.individual.githubcopilot.com';
+// Track these against upstream openclaw/copilot-dynamic-headers.ts. They
+// must look like a real, recent VS Code + Copilot Chat install — Copilot
+// rejects unknown editor signatures.
+const COPILOT_EDITOR_VERSION        = 'vscode/1.96.2';
+const COPILOT_USER_AGENT            = 'GitHubCopilotChat/0.26.7';
+const COPILOT_GITHUB_API_VERSION    = '2025-04-01';
 // Refresh the cached session token this many seconds before its real expiry
 // to avoid races where the request fires just as it expires.
-const COPILOT_TOKEN_SKEW_SECONDS = 60;
+const COPILOT_TOKEN_SKEW_SECONDS    = 60;
 
 // In-memory cache of exchanged Copilot session tokens, keyed by a hash of the
 // long-lived OAuth token (so env-token and per-user tokens never collide and
 // nothing about the OAuth token itself is logged).
 //   key:   sha256(oauthToken).slice(0,32)
-//   value: { sessionToken: string, expiresAt: number /* unix seconds */ }
+//   value: { sessionToken: string, expiresAt: number /* unix seconds */,
+//            baseUrl: string /* per-account API endpoint */ }
 const copilotSessionCache = new Map();
 
 function copilotCacheKey(oauthToken) {
     return crypto.createHash('sha256').update(oauthToken).digest('hex').slice(0, 32);
 }
 
+// Parse the `proxy-ep=…` segment out of a Copilot session token (which is a
+// semicolon-delimited set of key/value pairs, NOT an opaque bearer string)
+// and convert proxy.* → api.* for the chat completions base URL. Returns
+// { baseUrl, reason } where reason is null on success or a short tag
+// (`no_token` | `missing_proxy_ep` | `invalid_proxy_url` | `unexpected_host`)
+// when we fall back. Mirrors openclaw's deriveCopilotApiBaseUrlFromToken plus a
+// host-suffix sanity check so a hypothetical malformed token can't make
+// us issue requests against an unrelated host.
+function deriveCopilotApiBaseUrlFromToken(sessionToken) {
+    if (typeof sessionToken !== 'string') return { baseUrl: null, reason: 'no_token' };
+    const m = sessionToken.match(/(?:^|;)\s*proxy-ep=([^;\s]+)/i);
+    const proxyEp = m && m[1] ? m[1].trim() : '';
+    if (!proxyEp) return { baseUrl: null, reason: 'missing_proxy_ep' };
+    const urlText = /^https?:\/\//i.test(proxyEp) ? proxyEp : `https://${proxyEp}`;
+    let host;
+    try {
+        const u = new URL(urlText);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return { baseUrl: null, reason: 'invalid_proxy_url' };
+        host = u.hostname.toLowerCase();
+    } catch { return { baseUrl: null, reason: 'invalid_proxy_url' }; }
+    if (!host) return { baseUrl: null, reason: 'invalid_proxy_url' };
+    const apiHost = host.replace(/^proxy\./i, 'api.');
+    // Defense in depth: only accept Copilot hosts. A malformed/exotic token
+    // shouldn't be able to point us at api.evil.example.
+    if (!/\.githubcopilot\.com$/i.test(apiHost)) {
+        return { baseUrl: null, reason: 'unexpected_host' };
+    }
+    return { baseUrl: `https://${apiHost}`, reason: null };
+}
+
 function copilotExchangeHeaders(oauthToken) {
     return {
-        'Authorization':         `token ${oauthToken}`,
+        // Openclaw uses `Bearer` (the modern OAuth scheme); GitHub's
+        // /copilot_internal/v2/token endpoint accepts both `token` and
+        // `Bearer` historically, but staying in lockstep with openclaw
+        // future-proofs us if Copilot ever tightens.
+        'Authorization':         `Bearer ${oauthToken}`,
         'Accept':                'application/json',
         'User-Agent':            COPILOT_USER_AGENT,
         'Editor-Version':        COPILOT_EDITOR_VERSION,
-        'Editor-Plugin-Version': COPILOT_PLUGIN_VERSION,
+        'X-Github-Api-Version':  COPILOT_GITHUB_API_VERSION,
     };
 }
 
+// Static headers attached to every Copilot API client (defaultHeaders on
+// the OpenAI SDK). Per-request dynamic headers (X-Initiator, Openai-Intent)
+// are added at each call site via copilotDynamicHeaders().
 function copilotApiHeaders() {
     return {
         'Editor-Version':         COPILOT_EDITOR_VERSION,
-        'Editor-Plugin-Version':  COPILOT_PLUGIN_VERSION,
         'User-Agent':             COPILOT_USER_AGENT,
-        'Copilot-Integration-Id': COPILOT_INTEGRATION_ID,
-        'OpenAI-Intent':          'conversation-panel',
+    };
+}
+
+// Build the per-request headers Copilot expects on each chat completions
+// call. `messages` is the OpenAI-shape message array we're about to send.
+// X-Initiator is `agent` if the most recent message is anything other than
+// a user turn (e.g. a tool result mid-loop) — Copilot uses this to attribute
+// usage between interactive vs background calls. `Openai-Intent` advertises
+// the call type so Copilot routes to the right billing bucket. Mirrors
+// openclaw's buildCopilotDynamicHeaders.
+function copilotDynamicHeaders(messages) {
+    const last = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
+    const initiator = last && last.role && last.role !== 'user' ? 'agent' : 'user';
+    return {
+        'X-Initiator':   initiator,
+        'Openai-Intent': 'conversation-edits',
     };
 }
 
@@ -373,7 +437,7 @@ async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {})
     if (!forceRefresh) {
         const cached = copilotSessionCache.get(cacheKey);
         if (cached && cached.expiresAt - COPILOT_TOKEN_SKEW_SECONDS > nowSec) {
-            return cached.sessionToken;
+            return { sessionToken: cached.sessionToken, baseUrl: cached.baseUrl };
         }
     } else {
         copilotSessionCache.delete(cacheKey);
@@ -424,25 +488,44 @@ async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {})
         expiresAt = nowSec + 25 * 60; // conservative 25 min fallback
     }
 
+    // Derive the per-account API base URL from the `proxy-ep=…` segment
+    // embedded in the session token. Copilot routes by account tier
+    // (Individual / Business / Enterprise) and serving the wrong host
+    // typically returns 401 on every chat completion. Fall back to the
+    // Individual host when the segment is missing — better than the old
+    // hardcoded `api.githubcopilot.com` which is flat-out wrong for most
+    // accounts. Log the fallback reason so deploys can spot tier mismatches.
+    const derived = deriveCopilotApiBaseUrlFromToken(sessionToken);
+    const baseUrl = derived.baseUrl || DEFAULT_COPILOT_API_BASE_URL;
+    const isFirstFetch = !copilotSessionCache.has(cacheKey);
+    if (isFirstFetch) {
+        if (derived.baseUrl) {
+            console.log(`Copilot token exchanged for cache key ${cacheKey.slice(0, 8)}…; baseUrl=${baseUrl}`);
+        } else {
+            console.log(`Copilot token exchanged for cache key ${cacheKey.slice(0, 8)}…; using fallback baseUrl=${baseUrl} (reason: ${derived.reason})`);
+        }
+    }
+
     // Cap cache size at 200 entries to avoid unbounded growth. Only evict
     // when adding a new key — refreshes of an existing cacheKey overwrite
     // in place and don't grow the map, so they shouldn't displace another
     // user's cached session token.
-    if (!copilotSessionCache.has(cacheKey) && copilotSessionCache.size >= 200) {
+    if (isFirstFetch && copilotSessionCache.size >= 200) {
         const oldestKey = copilotSessionCache.keys().next().value;
         copilotSessionCache.delete(oldestKey);
     }
-    copilotSessionCache.set(cacheKey, { sessionToken, expiresAt });
-    return sessionToken;
+    copilotSessionCache.set(cacheKey, { sessionToken, expiresAt, baseUrl });
+    return { sessionToken, baseUrl };
 }
 
 /**
  * Build an OpenAI SDK client pointed at the GitHub Copilot endpoint, using a
  * freshly-resolved (and cached) session token as the bearer credential.
  *
- * Returns { client, oauthToken, sessionToken } so callers can re-build the
- * client after a forced refresh on 401.  Throws if no OAuth token is
- * configured, or if the token exchange fails.
+ * Returns { client, oauthToken, sessionToken, baseUrl } so callers can
+ * re-build the client after a forced refresh on 401.  `baseUrl` is the
+ * per-account Copilot API host derived from the session token.  Throws if
+ * no OAuth token is configured, or if the token exchange fails.
  */
 async function createCopilotClient(user, { forceRefresh = false } = {}) {
     const oauthToken = resolveCopilotOauthToken(user);
@@ -451,13 +534,13 @@ async function createCopilotClient(user, { forceRefresh = false } = {}) {
         e.code = 'no_copilot_token';
         throw e;
     }
-    const sessionToken = await getCopilotSessionToken(oauthToken, { forceRefresh });
+    const { sessionToken, baseUrl } = await getCopilotSessionToken(oauthToken, { forceRefresh });
     const client = new OpenAI({
         apiKey:   sessionToken,
-        baseURL:  COPILOT_API_BASE_URL,
+        baseURL:  baseUrl,
         defaultHeaders: copilotApiHeaders()
     });
-    return { client, oauthToken, sessionToken };
+    return { client, oauthToken, sessionToken, baseUrl };
 }
 
 /**
@@ -4394,7 +4477,7 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
                         tools: openaiToolDeclarations,
                         tool_choice: 'auto',
                         temperature: 0.7
-                    })
+                    }, { headers: copilotDynamicHeaders(currentMessages) })
                 );
 
                 const choice = response.choices[0];
@@ -5092,7 +5175,7 @@ ${text}`;
                         messages: copilotMessages,
                         response_format: { type: 'json_object' },
                         temperature: 0.2
-                    })
+                    }, { headers: copilotDynamicHeaders(copilotMessages) })
                 );
                 aiResponse = response.choices[0]?.message?.content || '{}';
             } catch (copilotError) {
