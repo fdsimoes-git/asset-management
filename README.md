@@ -315,7 +315,7 @@ Available expense/income categories:
 - **Field Encryption**: Sensitive fields (email, API keys, OAuth tokens, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
 - **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, claude_oauth_token, github_copilot_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, web_search_enabled, partner_id, partner_linked_at, is_active, created_at, updated_at }`
 - **Entry Model**: `{ id, user_id, month, type, amount, description, tags, is_couple_expense }`
-- **User Category Model**: `{ id, user_id, slug, label, is_default, is_active, sort_order, created_at, updated_at }` — per-user category list, capped at 100 per user, seeded with 17 defaults on first access
+- **User Category Model**: `{ id, user_id, slug, label, color, is_default, sort_order, imported_from_user_id, created_at }` — per-user category list, capped at 100 per user, seeded with 17 defaults on first access
 
 ## Technical Details
 
