@@ -5108,6 +5108,62 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
+        // Build the per-user category list the AI is allowed to choose from.
+        // (1) Resolve the (mutually-confirmed) partner so we can pull their
+        //     couple-flagged tags into this user's list — same auto-import
+        //     path used by GET /api/entries — otherwise the prompt would
+        //     coerce a partner-only custom slug to a default.
+        // (2) getCategoriesForUserSelfHeal() seeds the 17 defaults on a
+        //     brand-new account, then returns defaults + customs + freshly
+        //     imported partner slugs.
+        // Issue #87 — never hard-code DEFAULT_CATEGORIES here.
+        let pdfPartnerId = null;
+        if (req.user.partnerId) {
+            try {
+                const partner = await db.findUserById(req.user.partnerId);
+                if (partner && partner.isActive && partner.partnerId === req.user.id) {
+                    pdfPartnerId = partner.id;
+                }
+            } catch (e) {
+                console.error('process-pdf: partner lookup failed:', e.message);
+            }
+        }
+        if (pdfPartnerId) {
+            // Scope the partner-tag scan to the current month (matches the
+            // call-site pattern used by GET /api/entries) so we don't scan
+            // years of partner couple entries during an interactive PDF
+            // upload. Older-month partner-only slugs auto-import lazily as
+            // the user navigates to those months in the dashboard, and the
+            // preview-table dropdown still lists every category the caller
+            // already has, so manual override is unaffected.
+            try { await db.ensurePartnerCategories(req.user.id, pdfPartnerId, currentMonth); }
+            catch (e) { console.error('process-pdf: ensurePartnerCategories failed:', e.message); }
+        }
+        const pdfUserCategories = await getCategoriesForUserSelfHeal(req.user.id);
+        // Sanitize partner/user-controlled labels before embedding in the
+        // prompt: collapse ASCII *and* Unicode line separators (incl.
+        // U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR), tabs,
+        // backticks, commas, and parentheses to spaces. Parens are
+        // stripped because the line format is `slug (Label)` — a label
+        // containing `)` could otherwise close the wrapper early and
+        // append free text on the same line, blurring the "token before
+        // the opening parenthesis" rule. Slugs are already constrained
+        // by CATEGORY_SLUG_REGEX and need no escaping.
+        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t\v\f\u2028\u2029`,()]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
+        // One category per line, formatted as `slug (Label)` with no
+        // leading bullet — the prompt rule below tells the model to use
+        // exactly the token before the opening parenthesis, and we
+        // post-validate the returned tag against the slug set anyway.
+        const categoryListForPrompt = pdfUserCategories
+            .map(c => `${c.slug} (${sanitizeLabel(c.label)})`)
+            .join('\n');
+        const allowedSlugSet = new Set(pdfUserCategories.map(c => c.slug));
+        // Fallback used when a non-Gemini provider returns a slug that is
+        // not in the caller's set. 'other' is always a default seeded by
+        // getCategoriesForUserSelfHeal, but we still defensively pick the
+        // first user slug if for some reason it isn't present.
+        const fallbackSlug = allowedSlugSet.has('other') ? 'other' : pdfUserCategories[0]?.slug || 'other';
+
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
 
@@ -5117,7 +5173,8 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
-- tag must be one of: food, groceries, transport, travel, entertainment, utilities, healthcare, education, shopping, subscription, housing, salary, freelance, investment, transfer, wedding, other
+- The "tag" field MUST be exactly one of the slugs listed below — copy the slug verbatim (the token before the opening parenthesis on each line). Never invent a new slug, never include the parentheses, never use the human label, and never emit a slug that is not in this exact list:
+${categoryListForPrompt}
 - Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
 DOCUMENT:
@@ -5210,10 +5267,12 @@ ${text}`;
                                 },
                                 tag: {
                                     type: Type.STRING,
-                                    enum: ['food', 'groceries', 'transport', 'travel', 'entertainment', 'utilities',
-                                           'healthcare', 'education', 'shopping', 'subscription', 'housing',
-                                           'salary', 'freelance', 'investment', 'transfer', 'wedding', 'other'],
-                                    description: 'Category tag for the transaction'
+                                    // Issue #87: enum mirrors the per-user category list
+                                    // built above (defaults + customs + imported partner
+                                    // slugs), so Gemini's structured output can return any
+                                    // slug the caller actually has — not just the 17 defaults.
+                                    enum: pdfUserCategories.map(c => c.slug),
+                                    description: 'Category tag for the transaction (must be one of the user\'s category slugs)'
                                 },
                                 type: {
                                     type: Type.STRING,
@@ -5286,6 +5345,35 @@ ${text}`;
                     tags = [entry.tag.toLowerCase().trim()];
                 } else if (Array.isArray(entry.tags)) {
                     tags = entry.tags.slice(0, 1).map(t => String(t).toLowerCase().trim());
+                }
+                // Issue #87 follow-up: coerce any slug the AI returned that
+                // isn't in the caller's allowed set (e.g. a hallucinated
+                // tag, a leading dash from a non-schema-enforced provider,
+                // or a stale default that the user has since deleted) to
+                // a safe fallback so the preview table never shows an
+                // orphan tag the user didn't ask for. Gemini already
+                // enforces this via the responseSchema enum; this is the
+                // safety net for OpenAI/Anthropic/Copilot.
+                //
+                // Before declaring drift, try cheap recovery first:
+                //   - strip common leading list markers ('-', '*', '•', '>'),
+                //     leading whitespace, and quotes/backticks
+                //   - take the first slug-shaped token (matches the
+                //     CATEGORY_SLUG_REGEX shape) so 'food (Food)' or
+                //     'food,' or 'food.' all recover to 'food'
+                // This avoids losing a correct categorization to a purely
+                // formatting-level artifact.
+                if (tags.length > 0 && !allowedSlugSet.has(tags[0])) {
+                    const cleaned = tags[0]
+                        .replace(/^[\s\-*•>"'`]+/, '')   // leading markers / quotes
+                        .replace(/[\s,.;:!?"'`]+$/, ''); // trailing punctuation
+                    const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9-]{0,29})/);
+                    if (firstSlugLike && allowedSlugSet.has(firstSlugLike[0])) {
+                        tags = [firstSlugLike[0]];
+                    }
+                }
+                if (tags.length === 0 || !allowedSlugSet.has(tags[0])) {
+                    tags = [fallbackSlug];
                 }
 
                 // Determine type (default to expense if not specified)
