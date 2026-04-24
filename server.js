@@ -5367,7 +5367,7 @@ ${text}`;
                     const cleaned = tags[0]
                         .replace(/^[\s\-*•>"'`]+/, '')   // leading markers / quotes
                         .replace(/[\s,.;:!?"'`]+$/, ''); // trailing punctuation
-                    const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9_-]{0,30})/);
+                    const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9-]{0,29})/);
                     if (firstSlugLike && allowedSlugSet.has(firstSlugLike[0])) {
                         tags = [firstSlugLike[0]];
                     }
