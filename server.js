@@ -334,8 +334,8 @@ function copilotCacheKey(oauthToken) {
 // semicolon-delimited set of key/value pairs, NOT an opaque bearer string)
 // and convert proxy.* → api.* for the chat completions base URL. Returns
 // { baseUrl, reason } where reason is null on success or a short tag
-// (`missing_proxy_ep` | `invalid_proxy_url` | `unexpected_host`) when we
-// fall back. Mirrors openclaw's deriveCopilotApiBaseUrlFromToken plus a
+// (`no_token` | `missing_proxy_ep` | `invalid_proxy_url` | `unexpected_host`)
+// when we fall back. Mirrors openclaw's deriveCopilotApiBaseUrlFromToken plus a
 // host-suffix sanity check so a hypothetical malformed token can't make
 // us issue requests against an unrelated host.
 function deriveCopilotApiBaseUrlFromToken(sessionToken) {
@@ -522,9 +522,10 @@ async function getCopilotSessionToken(oauthToken, { forceRefresh = false } = {})
  * Build an OpenAI SDK client pointed at the GitHub Copilot endpoint, using a
  * freshly-resolved (and cached) session token as the bearer credential.
  *
- * Returns { client, oauthToken, sessionToken } so callers can re-build the
- * client after a forced refresh on 401.  Throws if no OAuth token is
- * configured, or if the token exchange fails.
+ * Returns { client, oauthToken, sessionToken, baseUrl } so callers can
+ * re-build the client after a forced refresh on 401.  `baseUrl` is the
+ * per-account Copilot API host derived from the session token.  Throws if
+ * no OAuth token is configured, or if the token exchange fails.
  */
 async function createCopilotClient(user, { forceRefresh = false } = {}) {
     const oauthToken = resolveCopilotOauthToken(user);
