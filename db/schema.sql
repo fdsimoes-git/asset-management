@@ -107,18 +107,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS web_search_enabled BOOLEAN NOT NULL D
 CREATE TABLE IF NOT EXISTS "session" (
     "sid"    varchar      NOT NULL COLLATE "default",
     "sess"   json         NOT NULL,
-    "expire" timestamp(6) NOT NULL
+    "expire" timestamp(6) NOT NULL,
+    CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
 );
-
-DO $$ BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey'
-    ) THEN
-        ALTER TABLE "session"
-            ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-            NOT DEFERRABLE INITIALLY IMMEDIATE;
-    END IF;
-END $$;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
