@@ -217,7 +217,7 @@ The server sends `anthropic-beta: oauth-2025-04-20` on every Anthropic request w
 If you have an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise), you can use it as the AI provider. The server impersonates the VS Code Copilot Chat editor identity and derives the per-account API base URL from the exchanged session token, so the token works the same way it does inside VS Code.
 
 **Easiest path** — if you already use Copilot in VS Code, the token is already on your machine:
-- macOS / Linux: read `~/.config/github-copilot/apps.json` (or `hosts.json`); the value at `["<host>"].oauth_token` is the `gho_…` string.
+- macOS / Linux: read `~/.config/github-copilot/apps.json` (or `hosts.json`); use the value at `["<host>"].oauth_token` as your token. It may have different valid GitHub token prefixes, such as `gho_…`, `ghu_…`, `ghp_…`, or `github_pat_…`.
 
 **Manual path** — use GitHub's OAuth Device Flow with the well-known VS Code Copilot Chat client ID (`Iv1.b507a08c87ecfe98`):
 
@@ -243,7 +243,7 @@ If you have an active [GitHub Copilot](https://github.com/features/copilot) subs
 
 4. **Paste the token** into Settings → AI provider → **GitHub Copilot OAuth token**.
 
-The token is long-lived but you can revoke it anytime from https://github.com/settings/connections/applications/Iv1.b507a08c87ecfe98 → "Revoke access". The server caches the short-lived (~25 min) Copilot session token derived from this OAuth token and refreshes it automatically.
+The token is long-lived but you can revoke it anytime from https://github.com/settings/connections/applications/Iv1.b507a08c87ecfe98 → "Revoke access". The server caches the short-lived (~25–30 min) Copilot session token derived from this OAuth token and refreshes it automatically.
 
 > **Treat OAuth tokens like passwords.** Anyone with your token can consume your Claude or Copilot subscription quota. Per-user tokens are encrypted at rest with AES-256-CBC.
 
