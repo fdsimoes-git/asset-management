@@ -36,6 +36,11 @@ const ORPHAN_CATEGORY_COLOR = '#94a3b8';
 function setUserCategories(list) {
     userCategories = Array.isArray(list) ? list : [];
     _userCategoriesBySlug = new Map(userCategories.map(c => [c.slug, c]));
+    // Keep the manage-modal cap state in sync with any background mutation
+    // (partner imports during loadEntries, AI auto-create, restore-defaults
+    // from another tab, etc.). updateCategoryCapState() is a no-op when
+    // the modal DOM isn't present yet, so it's cheap to call here.
+    if (typeof updateCategoryCapState === 'function') updateCategoryCapState();
 }
 
 function categoryColor(slug) {
@@ -1478,13 +1483,43 @@ const newCategoryColorInput = document.getElementById('newCategoryColor');
 const addCategoryBtn = document.getElementById('addCategoryBtn');
 const resetCategoriesBtn = document.getElementById('resetCategoriesBtn');
 const categoryFormError = document.getElementById('categoryFormError');
+const categoryCapNote = document.getElementById('categoryCapNote');
+
+// Mirrors db.MAX_CATEGORIES_PER_USER on the server. Kept in sync manually
+// — the server is the source of truth (POST /api/categories returns 409
+// regardless), so a stale FE value is degraded UX, never a security gap.
+const MAX_CATEGORIES_PER_USER_FE = 100;
 
 function setCatFormError(msg) {
     if (categoryFormError) categoryFormError.textContent = msg || '';
 }
 
+// Reflect the per-user cap in the manage modal: disable the Add button +
+// inputs when at/over cap, and show a small inline note. Called from
+// renderCategoryManageList so the state stays in sync with userCategories.
+function updateCategoryCapState() {
+    if (!addCategoryBtn || !categoryCapNote) return;
+    const used = userCategories.length;
+    const atCap = used >= MAX_CATEGORIES_PER_USER_FE;
+    addCategoryBtn.disabled = atCap;
+    if (newCategorySlugInput) newCategorySlugInput.disabled = atCap;
+    if (newCategoryLabelInput) newCategoryLabelInput.disabled = atCap;
+    if (newCategoryColorInput) newCategoryColorInput.disabled = atCap;
+    if (atCap) {
+        categoryCapNote.textContent = t('category.capReached', {
+            used: String(used),
+            max: String(MAX_CATEGORIES_PER_USER_FE)
+        });
+        categoryCapNote.hidden = false;
+    } else {
+        categoryCapNote.textContent = '';
+        categoryCapNote.hidden = true;
+    }
+}
+
 function renderCategoryManageList() {
     if (!categoryListBody) return;
+    updateCategoryCapState();
     categoryListBody.innerHTML = '';
     if (userCategories.length === 0) {
         const tr = document.createElement('tr');
@@ -1670,6 +1705,14 @@ if (addCategoryBtn) {
             if (!res.ok) {
                 let msg = t('category.addFailed') || 'Failed to add category.';
                 try { const body = await res.json(); if (body && (body.message || body.error)) msg = body.message || body.error; } catch {}
+                // Refresh local state so the cap note + button-disabled state
+                // reflect any concurrent mutation that caused the 409 (e.g.
+                // a partner import pushed us past the cap between the modal
+                // opening and the click).
+                if (res.status === 409) {
+                    await loadUserCategories();
+                    renderCategoryManageList();
+                }
                 setCatFormError(msg);
                 return;
             }
@@ -1698,6 +1741,18 @@ if (resetCategoriesBtn) {
                 renderCategoryChips();
                 syncHiddenCategorySelect();
                 filterEntries({ resetPage: false });
+            } else if (res.status === 409) {
+                // Restoring would push the user past the cap (deleted defaults
+                // can't fit). Surface the server's message in the same inline
+                // error area used by Add, and refresh local state so the cap
+                // note reflects current usage.
+                const resetFailedKey = 'category.resetFailed';
+                const resetFailedText = t(resetFailedKey);
+                let msg = resetFailedText === resetFailedKey ? 'Could not restore defaults.' : resetFailedText;
+                try { const body = await res.json(); if (body && body.message) msg = body.message; } catch {}
+                await loadUserCategories();
+                renderCategoryManageList();
+                setCatFormError(msg);
             }
         } catch (e) { console.error(e); }
     });

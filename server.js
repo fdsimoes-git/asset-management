@@ -2392,12 +2392,18 @@ app.post('/api/categories', requireAuth, asyncHandler(async (req, res) => {
         return res.status(409).json({ message: 'That slug is reserved for a default category. Use Restore Defaults to bring it back.' });
     }
     // Ensure defaults exist (so a brand-new account adding a custom category
-    // first still gets the seeded defaults afterward via GET).
+    // first still gets the seeded defaults afterward via GET). The atomic
+    // helper below also enforces the per-user cap (defaults included)
+    // inside a single transaction with a per-user advisory lock, so
+    // concurrent requests cannot collectively exceed it.
     await getCategoriesForUserSelfHeal(req.user.id);
     try {
-        const created = await db.addUserCategory(req.user.id, { slug: normSlug, label: normLabel, color: normColor });
+        const created = await db.addUserCategoryAtomicWithCap(req.user.id, { slug: normSlug, label: normLabel, color: normColor });
         res.status(201).json(created);
     } catch (e) {
+        if (e && e.code === db.CATEGORY_CAP_ERROR_CODE) {
+            return res.status(409).json({ message: `That would exceed the per-user category limit of ${db.MAX_CATEGORIES_PER_USER}. Delete an existing category to add another.` });
+        }
         if (e && e.code === '23505') {
             return res.status(409).json({ message: 'A category with that slug already exists.' });
         }
@@ -2447,8 +2453,26 @@ app.delete('/api/categories/:slug', requireAuth, asyncHandler(async (req, res) =
 }));
 
 app.post('/api/categories/reset-defaults', requireAuth, asyncHandler(async (req, res) => {
-    const cats = await db.resetUserCategoriesToDefaults(req.user.id);
-    res.json(cats);
+    try {
+        const cats = await db.resetUserCategoriesToDefaults(req.user.id);
+        res.json(cats);
+    } catch (e) {
+        if (e && e.code === db.CATEGORY_CAP_ERROR_CODE) {
+            // Prefer the typed `requiredDeletes` from the DB layer (handles
+            // the grandfathered case where currentCount > MAX). Fall back
+            // through `currentCount` derivation, then to the clamped
+            // headroom subtraction, then to a generic message.
+            const requiredDeletes = Number.isFinite(e.requiredDeletes)
+                ? e.requiredDeletes
+                : Number.isFinite(e.currentCount) && Number.isFinite(e.missingCount)
+                    ? Math.max(0, e.currentCount + e.missingCount - db.MAX_CATEGORIES_PER_USER)
+                    : Math.max(0, (e.missingCount || 0) - (e.headroom || 0));
+            return res.status(409).json({
+                message: `Restoring defaults would exceed the per-user category limit of ${db.MAX_CATEGORIES_PER_USER}. Delete ${requiredDeletes} more category(ies) first.`
+            });
+        }
+        throw e;
+    }
 }));
 
 // ============ ADMIN ENDPOINTS ============
@@ -3755,6 +3779,13 @@ async function validateEditArgs(userId, args) {
         const known = new Set(userCats);
         if (userCats.length > 0) {
             const AUTOCREATE_CAP = 3;
+            // Honor the per-user category cap: even if AUTOCREATE_CAP would
+            // allow up to 3 new rows, never push the user past the global
+            // limit. headroom is computed against the live count and the
+            // atomic helper re-checks under a per-user advisory lock so
+            // concurrent paths cannot collectively exceed the cap.
+            const headroom = Math.max(0, db.MAX_CATEGORIES_PER_USER - userCats.length);
+            const perCallCap = Math.min(AUTOCREATE_CAP, headroom);
             const toCreate = [];
             for (const t of wellFormed) {
                 if (known.has(t)) continue;
@@ -3765,15 +3796,18 @@ async function validateEditArgs(userId, args) {
                 // rather than getting silently re-created as a non-default row
                 // that would corrupt label translation/locking.
                 if (db.DEFAULT_CATEGORY_SLUGS.has(t)) continue;
-                if (toCreate.length >= AUTOCREATE_CAP) break;
+                if (toCreate.length >= perCallCap) break;
                 toCreate.push(t);
                 known.add(t);
             }
             for (const slug of toCreate) {
                 try {
-                    await db.addUserCategory(userId, { slug, label: slug, color: '#94a3b8' });
+                    await db.addUserCategoryAtomicWithCap(userId, { slug, label: slug, color: '#94a3b8' });
                     autoCreatedTags.push(slug);
-                } catch (_) { /* already exists race — ignore */ }
+                } catch (e) {
+                    if (e && e.code === db.CATEGORY_CAP_ERROR_CODE) break; // cap reached mid-loop (concurrent writer); stop creating
+                    /* already exists race or other transient error — ignore */
+                }
             }
         }
         updates.tags = wellFormed;
