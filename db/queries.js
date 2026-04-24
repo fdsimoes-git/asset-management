@@ -837,6 +837,21 @@ const DEFAULT_CATEGORIES = [
 
 const DEFAULT_CATEGORY_SLUGS = new Set(DEFAULT_CATEGORIES.map(c => c.slug));
 
+// Maximum number of category rows allowed per user. Enforced across
+// every code path that can create a row (POST /api/categories, AI
+// editEntry auto-create, partner import). Defaults are included in
+// the count — but resetUserCategoriesToDefaults can never push a
+// user over the cap because it only upserts the 17 canonical slugs.
+const MAX_CATEGORIES_PER_USER = 100;
+
+async function countUserCategories(userId) {
+    const { rows } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM user_categories WHERE user_id = $1',
+        [userId]
+    );
+    return rows[0].n;
+}
+
 function dbRowToUserCategory(row) {
     if (!row) return null;
     return {
@@ -894,6 +909,48 @@ async function addUserCategory(userId, { slug, label, color, sortOrder }) {
         [userId, slug, label, color, sortOrder != null ? sortOrder : 999]
     );
     return dbRowToUserCategory(rows[0]);
+}
+
+// Sentinel error thrown by addUserCategoryAtomicWithCap when the user is
+// at or over MAX_CATEGORIES_PER_USER. Callers (POST /api/categories,
+// AI editEntry auto-create) recognize this code to surface a 409 / break
+// out of their loop without leaking transactional details to the user.
+const CATEGORY_CAP_ERROR_CODE = 'CATEGORY_CAP_EXCEEDED';
+
+// Atomic add: takes a per-user advisory lock for the duration of the
+// transaction so concurrent POSTs / AI calls cannot both see headroom
+// and both insert (TOCTOU). The advisory lock is keyed on userId, so
+// it serializes only category writes for that single user — partner
+// writes against a different userId do not contend.
+async function addUserCategoryAtomicWithCap(userId, { slug, label, color, sortOrder }) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1)', [userId]);
+        const { rows: countRows } = await client.query(
+            'SELECT COUNT(*)::int AS n FROM user_categories WHERE user_id = $1',
+            [userId]
+        );
+        if (countRows[0].n >= MAX_CATEGORIES_PER_USER) {
+            await client.query('ROLLBACK');
+            const e = new Error(`User ${userId} is at the per-user category cap (${MAX_CATEGORIES_PER_USER}).`);
+            e.code = CATEGORY_CAP_ERROR_CODE;
+            throw e;
+        }
+        const { rows } = await client.query(
+            `INSERT INTO user_categories (user_id, slug, label, color, is_default, sort_order)
+             VALUES ($1, $2, $3, $4, FALSE, $5)
+             RETURNING *`,
+            [userId, slug, label, color, sortOrder != null ? sortOrder : 999]
+        );
+        await client.query('COMMIT');
+        return dbRowToUserCategory(rows[0]);
+    } catch (e) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        throw e;
+    } finally {
+        client.release();
+    }
 }
 
 // PATCH — defaults can only have color/sort_order updated; label is locked
@@ -1006,24 +1063,56 @@ async function ensurePartnerCategories(userId, partnerId, month) {
 async function _insertImportedPartnerRows(userId, partnerId, rows) {
     const importable = rows.filter(r => !DEFAULT_CATEGORY_SLUGS.has(r.slug));
     if (importable.length === 0) return 0;
-    const values = [];
-    const insertParams = [userId, partnerId];
-    let i = 3;
-    for (const r of importable) {
-        const label = r.label || r.slug;
-        const color = r.color || '#94a3b8';
-        values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
-        insertParams.push(r.slug, label, color);
+    // Sort deterministically before truncation so two near-cap callers
+    // (e.g. simultaneous month switches) always pick the same subset.
+    importable.sort((a, b) => a.slug.localeCompare(b.slug));
+    // Wrap count + insert in a transaction with a per-user advisory lock
+    // so concurrent POST /api/categories / AI auto-create / partner
+    // imports cannot collectively push the user past MAX_CATEGORIES_PER_USER.
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1)', [userId]);
+        const { rows: countRows } = await client.query(
+            'SELECT COUNT(*)::int AS n FROM user_categories WHERE user_id = $1',
+            [userId]
+        );
+        const headroom = Math.max(0, MAX_CATEGORIES_PER_USER - countRows[0].n);
+        if (headroom === 0) {
+            await client.query('ROLLBACK');
+            console.warn(`partner sync truncated for user ${userId}: ${importable.length} tag(s) skipped to stay under ${MAX_CATEGORIES_PER_USER}-category cap`);
+            return 0;
+        }
+        let toInsert = importable;
+        if (importable.length > headroom) {
+            console.warn(`partner sync truncated for user ${userId}: ${importable.length - headroom} of ${importable.length} tag(s) skipped to stay under ${MAX_CATEGORIES_PER_USER}-category cap`);
+            toInsert = importable.slice(0, headroom);
+        }
+        const values = [];
+        const insertParams = [userId, partnerId];
+        let i = 3;
+        for (const r of toInsert) {
+            const label = r.label || r.slug;
+            const color = r.color || '#94a3b8';
+            values.push(`($1, $${i++}, $${i++}, $${i++}, FALSE, 998, $2)`);
+            insertParams.push(r.slug, label, color);
+        }
+        const { rows: insertedRows } = await client.query(
+            `INSERT INTO user_categories
+             (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
+             VALUES ${values.join(', ')}
+             ON CONFLICT (user_id, slug) DO NOTHING
+             RETURNING slug`,
+            insertParams
+        );
+        await client.query('COMMIT');
+        return insertedRows.length;
+    } catch (e) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        throw e;
+    } finally {
+        client.release();
     }
-    const { rows: insertedRows } = await pool.query(
-        `INSERT INTO user_categories
-         (user_id, slug, label, color, is_default, sort_order, imported_from_user_id)
-         VALUES ${values.join(', ')}
-         ON CONFLICT (user_id, slug) DO NOTHING
-         RETURNING slug`,
-        insertParams
-    );
-    return insertedRows.length;
 }
 async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
     if (!partnerId || !Array.isArray(slugs) || slugs.length === 0) return 0;
@@ -1105,10 +1194,14 @@ module.exports = {
     // User Categories (issue #70)
     DEFAULT_CATEGORIES,
     DEFAULT_CATEGORY_SLUGS,
+    MAX_CATEGORIES_PER_USER,
+    CATEGORY_CAP_ERROR_CODE,
+    countUserCategories,
     getUserCategories,
     getUserCategorySlugs,
     seedDefaultCategoriesForUser,
     addUserCategory,
+    addUserCategoryAtomicWithCap,
     updateUserCategory,
     deleteUserCategory,
     resetUserCategoriesToDefaults,

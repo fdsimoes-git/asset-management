@@ -79,6 +79,7 @@ const translations = {
     'category.deleteConfirm': 'Delete this category? Existing entries keep the tag but will render as orphans.',
     'category.resetConfirm': 'Restore the default categories? Your custom categories will be kept.',
     'category.addFailed': 'Failed to add category.',
+    'category.capReached': '{used} / {max} categories used. Delete one to add another.',
 
     // ── Dashboard header ──
     'dash.addEntry': 'Add New Entry',
@@ -639,6 +640,7 @@ const translations = {
     'category.deleteConfirm': 'Excluir esta categoria? Os lançamentos existentes manterão a etiqueta como órfã.',
     'category.resetConfirm': 'Restaurar as categorias padrão? Suas categorias personalizadas serão mantidas.',
     'category.addFailed': 'Não foi possível adicionar a categoria.',
+    'category.capReached': '{used} / {max} categorias em uso. Apague uma para adicionar outra.',
 
     // ── Dashboard header ──
     'dash.addEntry': 'Nova Entrada',
