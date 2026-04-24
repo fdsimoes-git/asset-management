@@ -5108,6 +5108,37 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
+        // Build the per-user category list the AI is allowed to choose from.
+        // (1) Resolve the (mutually-confirmed) partner so we can pull their
+        //     couple-flagged tags into this user's list — same auto-import
+        //     path used by GET /api/entries — otherwise the prompt would
+        //     coerce a partner-only custom slug to a default.
+        // (2) getCategoriesForUserSelfHeal() seeds the 17 defaults on a
+        //     brand-new account, then returns defaults + customs + freshly
+        //     imported partner slugs.
+        // Issue #87 — never hard-code DEFAULT_CATEGORIES here.
+        let pdfPartnerId = null;
+        if (req.user.partnerId) {
+            try {
+                const partner = await db.findUserById(req.user.partnerId);
+                if (partner && partner.isActive && partner.partnerId === req.user.id) {
+                    pdfPartnerId = partner.id;
+                }
+            } catch (e) {
+                console.error('process-pdf: partner lookup failed:', e.message);
+            }
+        }
+        if (pdfPartnerId) {
+            try { await db.ensurePartnerCategories(req.user.id, pdfPartnerId); }
+            catch (e) { console.error('process-pdf: ensurePartnerCategories failed:', e.message); }
+        }
+        const pdfUserCategories = await getCategoriesForUserSelfHeal(req.user.id);
+        // slug (Label) — gives the model the human-readable label for
+        // disambiguation while still requiring it to emit the slug.
+        const categoryListForPrompt = pdfUserCategories
+            .map(c => `${c.slug} (${c.label})`)
+            .join(', ');
+
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
 
@@ -5117,7 +5148,7 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
-- tag must be one of: food, groceries, transport, travel, entertainment, utilities, healthcare, education, shopping, subscription, housing, salary, freelance, investment, transfer, wedding, other
+- tag must be exactly one of the slugs (the value before the parenthesis) from this list: ${categoryListForPrompt}
 - Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
 DOCUMENT:
