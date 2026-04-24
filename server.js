@@ -929,13 +929,16 @@ Object.entries(htmlPages).forEach(([route, file]) => {
     });
 });
 
-app.use(express.static(__dirname, {
+// Only the /js directory is served statically. Every HTML page is rendered
+// through an explicit route above (htmlPages), and there are no other
+// browser-served assets at the project root. Mounting express.static at
+// __dirname previously exposed server.js, config.js, db/*, package*.json
+// and node_modules/** to anonymous GET requests (CodeQL alert #5).
+app.use('/js', express.static(path.join(__dirname, 'js'), {
     maxAge: '1h',
-    setHeaders: (res, filePath) => {
-        if (path.extname(filePath).toLowerCase() === '.html') {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        }
-    }
+    dotfiles: 'deny',
+    index: false,
+    redirect: false
 }));
 
 // Trust Nginx proxy
