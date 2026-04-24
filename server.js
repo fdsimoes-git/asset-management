@@ -5141,15 +5141,25 @@ app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => 
         }
         const pdfUserCategories = await getCategoriesForUserSelfHeal(req.user.id);
         // Sanitize partner/user-controlled labels before embedding in the
-        // prompt: collapse newlines/tabs/backticks/commas to spaces so a
-        // crafted label can't break the list structure or inject extra
-        // instructions. Slugs are already constrained by CATEGORY_SLUG_REGEX.
-        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t`,]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
-        // One category per line — robust against any remaining label oddities
-        // and easy for the model to parse as a list of allowed slugs.
+        // prompt: collapse ASCII *and* Unicode line separators (incl.
+        // U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR), tabs,
+        // backticks, and commas to spaces so a crafted label can't break
+        // the line-based list structure or inject extra instructions.
+        // Slugs are already constrained by CATEGORY_SLUG_REGEX.
+        const sanitizeLabel = (s) => String(s || '').replace(/[\r\n\t\v\f\u2028\u2029`,]+/g, ' ').trim().slice(0, CATEGORY_LABEL_MAX);
+        // One category per line, formatted as `slug (Label)` with no
+        // leading bullet — the prompt rule below tells the model to use
+        // exactly the token before the opening parenthesis, and we
+        // post-validate the returned tag against the slug set anyway.
         const categoryListForPrompt = pdfUserCategories
-            .map(c => `  - ${c.slug} (${sanitizeLabel(c.label)})`)
+            .map(c => `${c.slug} (${sanitizeLabel(c.label)})`)
             .join('\n');
+        const allowedSlugSet = new Set(pdfUserCategories.map(c => c.slug));
+        // Fallback used when a non-Gemini provider returns a slug that is
+        // not in the caller's set. 'other' is always a default seeded by
+        // getCategoriesForUserSelfHeal, but we still defensively pick the
+        // first user slug if for some reason it isn't present.
+        const fallbackSlug = allowedSlugSet.has('other') ? 'other' : pdfUserCategories[0]?.slug || 'other';
 
         // Build the prompt
         const prompt = `Extract financial transactions from this document.
@@ -5160,7 +5170,7 @@ RULES:
 - Type is "expense" for purchases/bills/payments, "income" for deposits/salary/refunds
 - Skip totals and subtotals, only individual transactions
 - Choose the most appropriate category tag for each transaction
-- tag must be exactly one of the slugs (the value before the parenthesis) from this list — never invent a new slug, never use the label, never use a slug not in this list:
+- The "tag" field MUST be exactly one of the slugs listed below — copy the slug verbatim (the token before the opening parenthesis on each line). Never invent a new slug, never include the parentheses, never use the human label, and never emit a slug that is not in this exact list:
 ${categoryListForPrompt}
 - Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
 
@@ -5332,6 +5342,17 @@ ${text}`;
                     tags = [entry.tag.toLowerCase().trim()];
                 } else if (Array.isArray(entry.tags)) {
                     tags = entry.tags.slice(0, 1).map(t => String(t).toLowerCase().trim());
+                }
+                // Issue #87 follow-up: coerce any slug the AI returned that
+                // isn't in the caller's allowed set (e.g. a hallucinated
+                // tag, a leading dash from a non-schema-enforced provider,
+                // or a stale default that the user has since deleted) to
+                // a safe fallback so the preview table never shows an
+                // orphan tag the user didn't ask for. Gemini already
+                // enforces this via the responseSchema enum; this is the
+                // safety net for OpenAI/Anthropic/Copilot.
+                if (tags.length === 0 || !allowedSlugSet.has(tags[0])) {
+                    tags = [fallbackSlug];
                 }
 
                 // Determine type (default to expense if not specified)
