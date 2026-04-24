@@ -18,7 +18,7 @@ If Asset Manager saves you time, please consider supporting development:
 - 🔁 **Monthly subscription** — recurring support keeps the project sustainable.
 - ☕ **One-time donation** — fund a feature, a beer, or a coffee.
 
-All sponsors are listed in the [release notes](../../releases) (opt-in).
+All sponsors are listed in the [release notes](https://github.com/fdsimoes-git/asset-management/releases) (opt-in).
 
 ## Features
 
