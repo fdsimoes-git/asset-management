@@ -6,7 +6,7 @@
 
 # Asset Management Web Application
 
-A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor. Supports three AI providers: Google Gemini, OpenAI, and Anthropic Claude.
+A secure multi-user web-based asset management system with AI-powered expense tracking that automatically processes financial documents and provides personalized financial advice through an AI chat advisor. Supports four AI providers: Google Gemini, OpenAI, Anthropic Claude (API key **or** Claude Code OAuth subscription), and GitHub Copilot (OAuth subscription).
 
 ## Features
 
@@ -19,7 +19,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Advanced Filtering**: Filter entries by date range, transaction type, and categories
 - **Sortable Columns**: Click table headers to sort by any column
 - **Data Management**: Edit and delete existing entries
-- **Encrypted Storage**: Sensitive fields (emails, API keys, TOTP secrets) encrypted with AES-256-CBC
+- **Encrypted Storage**: Sensitive fields (emails, API keys, OAuth tokens, TOTP secrets) encrypted with AES-256-CBC
 
 ### Multi-User System
 - **Public Registration**: New users can create accounts
@@ -38,13 +38,13 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **Admin Couple Management**: Link/unlink couples from Admin Panel
 
 ### AI-Powered Processing
-- **Multi-Provider Support**: Choose between Google Gemini, OpenAI, and Anthropic Claude in Settings
+- **Multi-Provider Support**: Choose between Google Gemini, OpenAI, Anthropic Claude, or GitHub Copilot in Settings
 - **PDF Analysis**: Upload financial documents for automatic expense extraction using your selected AI provider
 - **Smart Data Extraction**: Automatically identifies amounts, dates, descriptions, and categories from PDFs
 - **Category Tagging**: AI automatically assigns expense category tags (food, transport, utilities, etc.)
 - **Bulk Import**: Process multiple expenses from a single document with preview and editing
-- **Per-User API Keys**: Each user can store their own encrypted API key per provider
-- **Key Priority Chain**: User's stored key > global env var fallback
+- **Per-User Credentials**: Each user can store their own encrypted API key (Gemini/OpenAI/Anthropic) **or** OAuth token (Claude Code subscription, GitHub Copilot subscription) per provider
+- **Key Priority Chain**: User's stored credential > global env var fallback
 - **Dynamic Model Selection**: Browse and select from available models for your chosen provider
 
 ### AI Financial Advisor
@@ -90,7 +90,7 @@ A secure multi-user web-based asset management system with AI-powered expense tr
 - **npm** (Node Package Manager)
 - **PostgreSQL** 14+ (localhost, scram-sha-256 auth recommended)
 - **Modern web browser** with JavaScript enabled
-- **AI API Key** (optional globally; users can provide their own per provider — Gemini, OpenAI, or Anthropic)
+- **AI credentials** (optional globally; users can provide their own per provider — Gemini API key, OpenAI API key, Anthropic API key or Claude Code OAuth token, or GitHub Copilot OAuth token)
 
 ## Database Setup
 
@@ -147,6 +147,8 @@ A secure multi-user web-based asset management system with AI-powered expense tr
    GEMINI_API_KEY=your-gemini-api-key            # Optional: global fallback for Gemini users
    OPENAI_API_KEY=your-openai-api-key            # Optional: global fallback for OpenAI users
    ANTHROPIC_API_KEY=your-anthropic-api-key      # Optional: global fallback for Anthropic users
+   CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...      # Optional: global fallback for Anthropic users (Claude Code subscription)
+   GITHUB_COPILOT_TOKEN=gho_...                  # Optional: global fallback for Copilot users
    UMAMI_WEBSITE_ID=your-umami-website-id        # Optional: analytics
    SMTP_HOST=smtp.gmail.com                      # Optional: enables self-service password reset
    SMTP_PORT=587                                 # Optional
@@ -191,6 +193,59 @@ Admins can access the Admin Panel to:
 - Activate/deactivate user accounts
 - Delete users (and their associated entries)
 - View user statistics, email status, and 2FA status
+
+## AI Provider Credentials
+
+Each user can configure credentials for one or more AI providers in **Settings → AI Provider** in the web UI. The server falls back to the matching `*_API_KEY` / `*_TOKEN` environment variable when a user has no per-user credential.
+
+The classic providers (Gemini, OpenAI, Anthropic API key) accept a standard API key copy-pasted from the provider's console. The two **OAuth-based** options below let users wire up an existing Claude Code or GitHub Copilot subscription instead of paying for separate API usage.
+
+### Anthropic — Claude Code OAuth token
+
+If you already have a [Claude Code subscription](https://www.anthropic.com/pricing), you can use that subscription instead of an API key. Use Anthropic's official `claude-code` CLI to generate the supported `sk-ant-oat01-…` token via `claude setup-token`:
+
+1. Install the CLI: `npm install -g @anthropic-ai/claude-code`
+2. Run `claude setup-token` and complete the flow — it prints the OAuth token directly to the terminal.
+3. Paste it into Settings → AI provider → **Claude Code OAuth token**.
+
+> **Note**: only `sk-ant-oat01-…` tokens (from `claude setup-token`) are accepted as OAuth tokens. A regular `sk-ant-api…` API key belongs in the Anthropic API key field instead.
+
+The server sends `anthropic-beta: oauth-2025-04-20` on every Anthropic request when an OAuth token is detected, which is what makes the subscription accept it as a credential.
+
+### GitHub Copilot — OAuth token
+
+If you have an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise), you can use it as the AI provider. The server impersonates the VS Code Copilot Chat editor identity and derives the per-account API base URL from the exchanged session token, so the token works the same way it does inside VS Code.
+
+**Easiest path** — if you already use Copilot in VS Code, the token is already on your machine:
+- macOS / Linux: read `~/.config/github-copilot/apps.json` (or `hosts.json`); use the value at `["<host>"].oauth_token` as your token. It may have different valid GitHub token prefixes, such as `gho_…`, `ghu_…`, `ghp_…`, or `github_pat_…`.
+
+**Manual path** — use GitHub's OAuth Device Flow with the well-known VS Code Copilot Chat client ID (`Iv1.b507a08c87ecfe98`):
+
+1. **Request a device code:**
+   ```bash
+   curl -s -X POST https://github.com/login/device/code \
+     -H "Accept: application/json" \
+     -d "client_id=Iv1.b507a08c87ecfe98&scope=read:user"
+   ```
+   You'll get back JSON containing a `user_code` (e.g. `WXYZ-1234`) and `verification_uri` (`https://github.com/login/device`).
+
+2. **Authorize in browser:** open `https://github.com/login/device`, enter the `user_code`, and approve the request on the GitHub account that owns your Copilot subscription.
+
+3. **Exchange the device code for an access token:**
+   ```bash
+   curl -s -X POST https://github.com/login/oauth/access_token \
+     -H "Accept: application/json" \
+     -d "client_id=Iv1.b507a08c87ecfe98" \
+     -d "device_code=PASTE_DEVICE_CODE_HERE" \
+     -d "grant_type=urn:ietf:params:oauth:grant-type:device_code"
+   ```
+   The response contains `access_token` — typically prefixed `gho_…` or `ghu_…`. (If you get `{"error":"authorization_pending"}`, complete step 2 first and retry.)
+
+4. **Paste the token** into Settings → AI provider → **GitHub Copilot OAuth token**.
+
+The token is long-lived but you can revoke it anytime from https://github.com/settings/connections/applications/Iv1.b507a08c87ecfe98 → "Revoke access". The server caches the short-lived (~25–30 min) Copilot session token derived from this OAuth token and refreshes it automatically.
+
+> **Treat OAuth tokens like passwords.** Anyone with your token can consume your Claude or Copilot subscription quota. Per-user tokens are encrypted at rest with AES-256-CBC.
 
 ## Network Setup (Local DNS)
 
@@ -256,10 +311,11 @@ Available expense/income categories:
 ## Data Storage
 
 - **Database**: PostgreSQL with parameterized queries (no string interpolation)
-- **Tables**: `users`, `entries`, `invite_codes`, `paypal_orders`
-- **Field Encryption**: Sensitive fields (email, API keys, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
-- **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, partner_id, partner_linked_at, is_active, created_at, updated_at }`
+- **Tables**: `users`, `entries`, `user_categories`, `invite_codes`, `paypal_orders`
+- **Field Encryption**: Sensitive fields (email, API keys, OAuth tokens, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
+- **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, claude_oauth_token, github_copilot_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, web_search_enabled, partner_id, partner_linked_at, is_active, created_at, updated_at }`
 - **Entry Model**: `{ id, user_id, month, type, amount, description, tags, is_couple_expense }`
+- **User Category Model**: `{ id, user_id, slug, label, color, is_default, sort_order, imported_from_user_id, created_at }` — per-user category list, capped at 100 per user, seeded with 17 defaults on first access
 
 ## Technical Details
 
@@ -267,7 +323,7 @@ Available expense/income categories:
 - **Backend**: Node.js with Express
 - **Frontend**: Vanilla JavaScript with Chart.js
 - **Database**: PostgreSQL with `pg` connection pool (parameterized queries)
-- **AI Integration**: Google Gemini, OpenAI, and Anthropic Claude (user-selectable)
+- **AI Integration**: Google Gemini, OpenAI, Anthropic Claude (API key or Claude Code OAuth), and GitHub Copilot OAuth (user-selectable)
 - **Security**: Helmet.js, bcrypt, express-session, otplib (TOTP 2FA), custom AES field encryption
 
 ### API Endpoints
@@ -290,7 +346,13 @@ Available expense/income categories:
 - `DELETE /api/user/openai-key` - Remove saved OpenAI API key
 - `POST /api/user/anthropic-key` - Save encrypted Anthropic API key
 - `DELETE /api/user/anthropic-key` - Remove saved Anthropic API key
-- `PUT /api/user/ai-provider` - Set AI provider (gemini, openai, or anthropic)
+- `GET /api/user/claude-oauth-token` - Get Claude Code OAuth token availability flags
+- `POST /api/user/claude-oauth-token` - Save encrypted Claude Code OAuth token
+- `DELETE /api/user/claude-oauth-token` - Remove saved Claude Code OAuth token
+- `GET /api/user/github-copilot-token` - Get GitHub Copilot OAuth token availability flags
+- `POST /api/user/github-copilot-token` - Save encrypted GitHub Copilot OAuth token
+- `DELETE /api/user/github-copilot-token` - Remove saved GitHub Copilot OAuth token
+- `PUT /api/user/ai-provider` - Set AI provider (gemini, openai, anthropic, or copilot)
 - `PUT /api/user/ai-model` - Set preferred AI model (validated against active provider)
 - `GET /api/user/2fa/status` - Get 2FA status
 - `POST /api/user/2fa/setup` - Start 2FA setup (generates QR code)
