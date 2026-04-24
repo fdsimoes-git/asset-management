@@ -1746,7 +1746,9 @@ if (resetCategoriesBtn) {
                 // can't fit). Surface the server's message in the same inline
                 // error area used by Add, and refresh local state so the cap
                 // note reflects current usage.
-                let msg = t('category.resetFailed') || 'Could not restore defaults.';
+                const resetFailedKey = 'category.resetFailed';
+                const resetFailedText = t(resetFailedKey);
+                let msg = resetFailedText === resetFailedKey ? 'Could not restore defaults.' : resetFailedText;
                 try { const body = await res.json(); if (body && body.message) msg = body.message; } catch {}
                 await loadUserCategories();
                 renderCategoryManageList();

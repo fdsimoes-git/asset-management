@@ -2458,8 +2458,17 @@ app.post('/api/categories/reset-defaults', requireAuth, asyncHandler(async (req,
         res.json(cats);
     } catch (e) {
         if (e && e.code === db.CATEGORY_CAP_ERROR_CODE) {
+            // Prefer the typed `requiredDeletes` from the DB layer (handles
+            // the grandfathered case where currentCount > MAX). Fall back
+            // through `currentCount` derivation, then to the clamped
+            // headroom subtraction, then to a generic message.
+            const requiredDeletes = Number.isFinite(e.requiredDeletes)
+                ? e.requiredDeletes
+                : Number.isFinite(e.currentCount) && Number.isFinite(e.missingCount)
+                    ? Math.max(0, e.currentCount + e.missingCount - db.MAX_CATEGORIES_PER_USER)
+                    : Math.max(0, (e.missingCount || 0) - (e.headroom || 0));
             return res.status(409).json({
-                message: `Restoring defaults would exceed the per-user category limit of ${db.MAX_CATEGORIES_PER_USER}. Delete ${e.missingCount - e.headroom} more category(ies) first.`
+                message: `Restoring defaults would exceed the per-user category limit of ${db.MAX_CATEGORIES_PER_USER}. Delete ${requiredDeletes} more category(ies) first.`
             });
         }
         throw e;
