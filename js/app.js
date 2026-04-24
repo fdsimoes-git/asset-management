@@ -112,10 +112,10 @@ let hasPartner = false;
 // with CATEGORY_COLORS regardless of sort order.
 function buildCategoryChart(ctx, type, colors) {
     const commonTooltip = {
-        backgroundColor: '#1e293b',
+        backgroundColor: colors.cardBg || '#FBF6EC',
         titleColor: colors.textPrimary,
         bodyColor: colors.textSecondary,
-        borderColor: 'rgba(148, 163, 184, 0.2)',
+        borderColor: colors.gridColor,
         borderWidth: 1,
         padding: 12,
         cornerRadius: 8
@@ -124,7 +124,7 @@ function buildCategoryChart(ctx, type, colors) {
         display: true,
         text: t('chart.expensesByCategory'),
         color: colors.textPrimary,
-        font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+        font: { size: 14, weight: '500', family: "'Instrument Serif', serif" },
         padding: { bottom: 20 }
     };
     if (type === 'doughnut') {
@@ -150,7 +150,7 @@ function buildCategoryChart(ctx, type, colors) {
                         position: 'right',
                         labels: {
                             color: colors.textSecondary,
-                            font: { size: 11, family: "'DM Sans', sans-serif" },
+                            font: { size: 11, family: "'Geist', sans-serif" },
                             boxWidth: 12,
                             padding: 8
                         }
@@ -209,7 +209,7 @@ function buildCategoryChart(ctx, type, colors) {
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'DM Sans', sans-serif" },
+                        font: { family: "'Geist', sans-serif" },
                         callback: function(value) { return '$' + value.toFixed(0); }
                     }
                 },
@@ -217,7 +217,7 @@ function buildCategoryChart(ctx, type, colors) {
                     grid: { display: false },
                     ticks: {
                         color: colors.textSecondary,
-                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
+                        font: { size: 11, weight: '500', family: "'Geist', sans-serif" }
                     }
                 }
             }
@@ -237,6 +237,36 @@ function setCategoryChartType(type) {
     }
 }
 
+// Read theme palette from CSS custom properties so chart colors track the
+// active design system (warm earthy "Clay & Sand"). Falls back to the
+// hard-coded defaults if a variable is missing — keeps Chart.js happy when
+// the page is rendered before the stylesheet has fully resolved.
+function readThemePalette() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, fallback) => {
+        const raw = cs.getPropertyValue(name);
+        return raw && raw.trim() ? raw.trim() : fallback;
+    };
+    const primary = v('--primary', '#B8593A');
+    const positive = v('--positive', '#6B8248');
+    const accent1 = v('--accent-1', '#7A8450');
+    const accent2 = v('--accent-2', '#C89A3E');
+    return {
+        textPrimary: v('--ink', '#26201A'),
+        textSecondary: v('--ink-2', '#5A4E3F'),
+        textMuted: v('--ink-3', '#8A7A65'),
+        gridColor: v('--line', '#DDD0B8'),
+        cardBg: v('--card', '#FBF6EC'),
+        accent: primary,
+        accentGlow: 'color-mix(in oklab, ' + primary + ' 22%, transparent)',
+        success: positive,
+        danger: primary,
+        olive: accent1,
+        ochre: accent2,
+        primarySoft: v('--primary-soft', '#E8BFAB'),
+    };
+}
+
 // Initialize charts
 function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
@@ -244,17 +274,7 @@ function initializeCharts() {
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
     const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
-    // Dark theme colors
-    const colors = {
-        textPrimary: '#f8fafc',
-        textSecondary: '#94a3b8',
-        textMuted: '#64748b',
-        gridColor: 'rgba(148, 163, 184, 0.1)',
-        accent: '#f59e0b',
-        accentGlow: 'rgba(245, 158, 11, 0.2)',
-        success: '#10b981',
-        danger: '#ef4444'
-    };
+    const colors = readThemePalette();
 
     // Common chart options for dark theme
     const commonOptions = {
@@ -266,21 +286,21 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'DM Sans', sans-serif"
+                        family: "'Geist', sans-serif"
                     },
                     padding: 15
                 }
             },
             tooltip: {
-                backgroundColor: '#1e293b',
+                backgroundColor: colors.cardBg || '#FBF6EC',
                 titleColor: colors.textPrimary,
                 bodyColor: colors.textSecondary,
-                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderColor: colors.gridColor,
                 borderWidth: 1,
                 padding: 12,
                 cornerRadius: 8,
-                titleFont: { family: "'DM Sans', sans-serif", weight: '600' },
-                bodyFont: { family: "'DM Sans', sans-serif" }
+                titleFont: { family: "'Geist', sans-serif", weight: '600' },
+                bodyFont: { family: "'Geist', sans-serif" }
             }
         },
         scales: {
@@ -292,7 +312,7 @@ function initializeCharts() {
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: "'Geist', sans-serif" }
                 }
             },
             x: {
@@ -304,7 +324,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: "'Geist', sans-serif" }
                 }
             }
         }
@@ -320,16 +340,16 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'DM Sans', sans-serif"
+                        family: "'Geist', sans-serif"
                     },
                     padding: 15
                 }
             },
             tooltip: {
-                backgroundColor: '#1e293b',
+                backgroundColor: colors.cardBg || '#FBF6EC',
                 titleColor: colors.textPrimary,
                 bodyColor: colors.textSecondary,
-                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderColor: colors.gridColor,
                 borderWidth: 1,
                 padding: 12,
                 cornerRadius: 8,
@@ -354,7 +374,7 @@ function initializeCharts() {
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'DM Sans', sans-serif" },
+                    font: { family: "'Geist', sans-serif" },
                     callback: function(value) {
                         return '$' + value.toFixed(0);
                     }
@@ -369,7 +389,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: "'Geist', sans-serif" }
                 }
             }
         }
@@ -387,7 +407,7 @@ function initializeCharts() {
                 tension: 0.4,
                 fill: true,
                 pointBackgroundColor: colors.accent,
-                pointBorderColor: '#0f172a',
+                pointBorderColor: colors.cardBg,
                 pointBorderWidth: 2,
                 pointRadius: 5,
                 pointHoverRadius: 7,
@@ -416,7 +436,7 @@ function initializeCharts() {
                             type: 'line',
                             yMin: 0,
                             yMax: 0,
-                            borderColor: 'rgba(148, 163, 184, 0.35)',
+                            borderColor: colors.gridColor,
                             borderWidth: 1,
                             borderDash: [4, 4]
                         }
@@ -434,8 +454,8 @@ function initializeCharts() {
                 {
                     label: t('chart.income'),
                     data: [],
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                    borderColor: colors.success,
+                    backgroundColor: colors.olive,
+                    borderColor: colors.olive,
                     borderWidth: 2,
                     borderRadius: 6,
                     hoverBackgroundColor: colors.success
@@ -443,8 +463,8 @@ function initializeCharts() {
                 {
                     label: t('chart.expenses'),
                     data: [],
-                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                    borderColor: colors.danger,
+                    backgroundColor: colors.accent,
+                    borderColor: colors.accent,
                     borderWidth: 2,
                     borderRadius: 6,
                     hoverBackgroundColor: colors.danger
@@ -481,7 +501,7 @@ function initializeCharts() {
                     position: 'bottom',
                     labels: {
                         color: colors.textSecondary,
-                        font: { size: 10, family: "'DM Sans', sans-serif" },
+                        font: { size: 10, family: "'Geist', sans-serif" },
                         boxWidth: 12,
                         padding: 10
                     }
@@ -490,7 +510,7 @@ function initializeCharts() {
                     display: true,
                     text: t('chart.expenseCatByMonth'),
                     color: colors.textPrimary,
-                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    font: { size: 14, weight: '600', family: "'Instrument Serif', serif" },
                     padding: { bottom: 15 }
                 },
                 tooltip: {
@@ -518,7 +538,7 @@ function initializeCharts() {
                         color: colors.textMuted,
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { family: "'DM Sans', sans-serif" }
+                        font: { family: "'Geist', sans-serif" }
                     }
                 },
                 y: {
@@ -527,7 +547,7 @@ function initializeCharts() {
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'DM Sans', sans-serif" },
+                        font: { family: "'Geist', sans-serif" },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -648,6 +668,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
         const avgIncome = incomeValues.reduce((a, b) => a + b, 0) / months.length;
         const avgExpense = expenseValues.reduce((a, b) => a + b, 0) / months.length;
 
+        const themePalette = readThemePalette();
         const annotations = {};
 
         if (avgIncome > 0) {
@@ -655,16 +676,16 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgIncome,
                 yMax: avgIncome,
-                borderColor: '#10b981',
+                borderColor: themePalette.olive,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgIncome', { value: avgIncome.toFixed(0) }),
                     position: 'start',
-                    backgroundColor: 'rgba(16, 185, 129, 0.85)',
-                    color: '#fff',
-                    font: { size: 11, family: "'DM Sans', sans-serif" },
+                    backgroundColor: themePalette.olive,
+                    color: themePalette.cardBg,
+                    font: { size: 11, family: "'Geist', sans-serif" },
                     padding: 4
                 }
             };
@@ -675,16 +696,16 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgExpense,
                 yMax: avgExpense,
-                borderColor: '#ef4444',
+                borderColor: themePalette.accent,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgExpenses', { value: avgExpense.toFixed(0) }),
                     position: 'end',
-                    backgroundColor: 'rgba(239, 68, 68, 0.85)',
-                    color: '#fff',
-                    font: { size: 11, family: "'DM Sans', sans-serif" },
+                    backgroundColor: themePalette.accent,
+                    color: themePalette.cardBg,
+                    font: { size: 11, family: "'Geist', sans-serif" },
                     padding: 4
                 }
             };
@@ -1327,14 +1348,163 @@ function updateSummary(entriesToShow) {
     const expensesEl = document.getElementById('totalExpenses');
     const netEl = document.getElementById('netBalance');
 
-    incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
-    incomeEl.style.color = '#10b981';
+    if (incomeEl) {
+        incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
+        incomeEl.style.color = 'var(--positive)';
+    }
+    if (expensesEl) {
+        expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
+        expensesEl.style.color = 'var(--negative)';
+    }
+    if (netEl) {
+        netEl.textContent = `$${netBalance.toFixed(2)}`;
+        netEl.style.color = netBalance >= 0 ? 'var(--ink)' : 'var(--negative)';
+    }
 
-    expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
-    expensesEl.style.color = '#ef4444';
+    // Hero / KPI row
+    updateHeroKpis(entriesToShow, { totalIncome, totalExpenses, netBalance });
+}
 
-    netEl.textContent = `$${netBalance.toFixed(2)}`;
-    netEl.style.color = netBalance >= 0 ? '#f59e0b' : '#ef4444';
+// --- Hero net-worth + KPI column ---
+// Renders the bignum net-worth figure, three KPI cards (income/expense/saving
+// rate) with sparklines, and month-over-month delta pills. The figures sum
+// the entries currently visible to the user (filters + view mode applied) so
+// they always reflect what's on screen.
+function updateHeroKpis(entriesToShow, totals) {
+    const heroInt = document.getElementById('heroNetWorthInt');
+    if (!heroInt) return; // hero row not in this page
+
+    const fmt = (n) => Math.round(Math.abs(n)).toLocaleString('en-US');
+    const fmtSigned = (n) => (n >= 0 ? '+' : '−') + '$' + fmt(n);
+
+    const netBalance = totals.netBalance;
+    heroInt.textContent = fmt(netBalance);
+
+    const heroDec = document.getElementById('heroNetWorthDec');
+    if (heroDec) {
+        const decimals = Math.abs(netBalance).toFixed(2).split('.')[1] || '00';
+        heroDec.textContent = '.' + decimals;
+    }
+
+    const heroPre = document.getElementById('heroNetWorthPre');
+    if (heroPre) heroPre.textContent = netBalance < 0 ? '−$' : '$';
+
+    // Group entries by year-month
+    const byMonth = new Map();
+    for (const e of entriesToShow) {
+        const ym = (e.month || '').slice(0, 7); // expects "YYYY-MM" or "YYYY-MM-DD"
+        if (!ym) continue;
+        if (!byMonth.has(ym)) byMonth.set(ym, { income: 0, expense: 0 });
+        const bucket = byMonth.get(ym);
+        const amt = parseFloat(e.amount) || 0;
+        if (e.type === 'income') bucket.income += amt;
+        else if (e.type === 'expense') bucket.expense += amt;
+    }
+    const months = [...byMonth.keys()].sort();
+    const last6 = months.slice(-6);
+    const incomeSeries = last6.map(m => byMonth.get(m).income);
+    const expenseSeries = last6.map(m => byMonth.get(m).expense);
+    const savingSeries = last6.map(m => {
+        const b = byMonth.get(m);
+        return b.income > 0 ? Math.round(((b.income - b.expense) / b.income) * 100) : 0;
+    });
+
+    // Period label = latest month in view
+    const heroPeriod = document.getElementById('heroPeriodLabel');
+    if (heroPeriod) {
+        const latest = months[months.length - 1];
+        if (latest) {
+            const [y, m] = latest.split('-');
+            const dt = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+            heroPeriod.textContent = dt.toLocaleString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
+        } else {
+            heroPeriod.textContent = '—';
+        }
+    }
+
+    // Net-worth MoM delta: compare the running cumulative net to the prior
+    // month's running cumulative.
+    let cumPrev = 0, cumLatest = 0;
+    let running = 0;
+    months.forEach((m, i) => {
+        const b = byMonth.get(m);
+        running += (b.income - b.expense);
+        if (i === months.length - 2) cumPrev = running;
+        if (i === months.length - 1) cumLatest = running;
+    });
+    if (months.length < 2) cumPrev = 0;
+    const heroDelta = document.getElementById('heroDelta');
+    const heroDeltaMeta = document.getElementById('heroDeltaMeta');
+    if (heroDelta) {
+        const change = cumLatest - cumPrev;
+        const pct = cumPrev !== 0 ? (change / Math.abs(cumPrev)) * 100 : 0;
+        heroDelta.textContent = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(1) + '%';
+        heroDelta.classList.toggle('up', change >= 0);
+        heroDelta.classList.toggle('down', change < 0);
+    }
+    if (heroDeltaMeta) {
+        const change = cumLatest - cumPrev;
+        heroDeltaMeta.textContent = (months.length >= 2)
+            ? `${fmtSigned(change)} VS LAST MONTH`
+            : '';
+    }
+
+    // KPI cards: current-month income / expense / saving rate, with MoM delta
+    // and a 6-point sparkline.
+    const latestM = byMonth.get(months[months.length - 1]) || { income: 0, expense: 0 };
+    const prevM = byMonth.get(months[months.length - 2]) || { income: 0, expense: 0 };
+    const setKpi = (idValue, idDelta, idSpark, value, prev, series, opts = {}) => {
+        const valEl = document.getElementById(idValue);
+        if (valEl) valEl.textContent = opts.percent ? Math.round(value).toString() : fmt(value);
+        const deltaEl = document.getElementById(idDelta);
+        if (deltaEl) {
+            if (prev === 0 || !isFinite(prev)) {
+                deltaEl.textContent = '—';
+                deltaEl.classList.remove('up', 'down');
+            } else {
+                const pct = ((value - prev) / Math.abs(prev)) * 100;
+                const isGood = opts.invert ? (value <= prev) : (value >= prev);
+                deltaEl.textContent = (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + (opts.percent ? ' pts' : '%');
+                deltaEl.classList.toggle('up', isGood);
+                deltaEl.classList.toggle('down', !isGood);
+            }
+        }
+        const sparkEl = document.getElementById(idSpark);
+        if (sparkEl) sparkEl.innerHTML = renderSparkline(series, opts.color);
+    };
+    setKpi('kpiIncomeValue', 'kpiIncomeDelta', 'kpiIncomeSpark', latestM.income, prevM.income, incomeSeries, { color: 'var(--accent-1)' });
+    setKpi('kpiExpenseValue', 'kpiExpenseDelta', 'kpiExpenseSpark', latestM.expense, prevM.expense, expenseSeries, { color: 'var(--primary)', invert: true });
+    const latestRate = latestM.income > 0 ? ((latestM.income - latestM.expense) / latestM.income) * 100 : 0;
+    const prevRate = prevM.income > 0 ? ((prevM.income - prevM.expense) / prevM.income) * 100 : 0;
+    setKpi('kpiSavingValue', 'kpiSavingDelta', 'kpiSavingSpark', latestRate, prevRate, savingSeries, { color: 'var(--accent-2)', percent: true });
+}
+
+// Pure-SVG sparkline. Mirrors the shape used by the design prototype
+// (charts.jsx Sparkline) but rendered as static HTML so we don't need a
+// React runtime.
+function renderSparkline(data, color) {
+    if (!Array.isArray(data) || data.length < 2) {
+        return '<svg viewBox="0 0 220 32" preserveAspectRatio="none" style="width:100%; height:32px;"></svg>';
+    }
+    const w = 220, h = 32;
+    const max = Math.max(...data), min = Math.min(...data);
+    const range = max - min || 1;
+    const xs = (i) => (i / (data.length - 1)) * w;
+    const ys = (v) => h - 3 - ((v - min) / range) * (h - 6);
+    const pts = data.map((v, i) => [xs(i), ys(v)]);
+    let d = `M ${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[i + 1];
+        const cx = (x0 + x1) / 2;
+        d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
+    }
+    const safeColor = color || 'var(--primary)';
+    const last = pts[pts.length - 1];
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%; height:32px;">
+        <path d="${d}" fill="none" stroke="${safeColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="${safeColor}" />
+    </svg>`;
 }
 
 // --- Couple Expense Share Widget ---
@@ -2622,6 +2792,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add New Entry button opens modal
     document.getElementById('addEntryBtn').addEventListener('click', openModal);
+
+    // Topbar CTAs delegate to the legacy header buttons so existing handlers
+    // keep working unchanged. Bulk + add are wired here; settings/admin/logout
+    // are reachable via the sidebar (and the legacy header buttons remain in
+    // the DOM but hidden, retaining their event listeners as fallbacks).
+    const topbarAdd = document.getElementById('topbarAddEntryBtn');
+    if (topbarAdd) topbarAdd.addEventListener('click', () => document.getElementById('addEntryBtn').click());
+    const topbarBulk = document.getElementById('topbarBulkBtn');
+    if (topbarBulk) topbarBulk.addEventListener('click', () => document.getElementById('openBulkUploadModal').click());
+
+    // Sidebar nav: route data-target clicks to the existing modals/sections.
+    // Items without data-target (Reports, Budgets, Goals) are aria-disabled
+    // and stay inert.
+    document.querySelectorAll('.sidebar .nav-item[data-target]').forEach(item => {
+        item.addEventListener('click', () => {
+            const target = item.getAttribute('data-target');
+            // Visual active state — only one nav-item active at a time.
+            document.querySelectorAll('.sidebar .nav-item').forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+            switch (target) {
+                case 'dashboard':
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    break;
+                case 'entries': {
+                    const sec = document.querySelector('.entries-section');
+                    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    break;
+                }
+                case 'manageCategories': {
+                    const btn = document.getElementById('manageCategoriesBtn');
+                    if (btn) btn.click();
+                    break;
+                }
+                case 'bulk':
+                    document.getElementById('openBulkUploadModal').click();
+                    break;
+                case 'settings':
+                    document.getElementById('settingsBtn').click();
+                    break;
+                case 'admin':
+                    document.getElementById('adminPanelBtn').click();
+                    break;
+                case 'logout':
+                    document.getElementById('logoutBtn').click();
+                    break;
+                case 'advisor': {
+                    const fab = document.getElementById('chatFab');
+                    if (fab) fab.click();
+                    break;
+                }
+                case 'partner':
+                    document.getElementById('settingsBtn').click();
+                    break;
+            }
+        });
+    });
     // Close modal on close button
     document.querySelector('#entryModal .close').addEventListener('click', closeModal);
     // Close modal on outside click
@@ -4008,6 +4234,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
                 updateUIForPartner();
+                applyUserToShell();
                 // Categories are user-scoped (issue #70). Fetch them now so
                 // the chips, charts, and select dropdowns can render with
                 // the correct palette + labels. Self-heals via the GET
@@ -4034,10 +4261,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update UI based on user role
     function updateUIForRole() {
         const adminBtn = document.getElementById('adminPanelBtn');
+        const sidebarAdminItem = document.getElementById('sidebarAdminItem');
         if (currentUser && currentUser.role === 'admin') {
             adminBtn.style.display = 'inline-flex';
+            if (sidebarAdminItem) sidebarAdminItem.style.display = '';
         } else {
             adminBtn.style.display = 'none';
+            if (sidebarAdminItem) sidebarAdminItem.style.display = 'none';
+        }
+    }
+
+    // Populate sidebar avatar + topbar greeting from currentUser.
+    function applyUserToShell() {
+        if (!currentUser) return;
+        const username = currentUser.username || '';
+        const initials = username
+            .split(/\s+/)
+            .filter(Boolean)
+            .map(s => s[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase() || (username.slice(0, 2).toUpperCase()) || '·';
+        const avatar = document.getElementById('sidebarAvatar');
+        if (avatar) avatar.textContent = initials;
+        const nameEl = document.getElementById('sidebarUserName');
+        if (nameEl) nameEl.textContent = username || '—';
+        const planEl = document.getElementById('sidebarUserPlan');
+        if (planEl) {
+            planEl.textContent = (currentUser.partnerId ? (typeof t === 'function' ? t('nav.couplePlan') : 'COUPLE PLAN') : (typeof t === 'function' ? t('nav.individualPlan') : 'INDIVIDUAL PLAN'));
+        }
+        const greetingEl = document.getElementById('topbarGreeting');
+        if (greetingEl) {
+            const hour = new Date().getHours();
+            const part = hour < 12 ? (typeof t === 'function' ? t('nav.morning') : 'Good morning')
+                : hour < 18 ? (typeof t === 'function' ? t('nav.afternoon') : 'Good afternoon')
+                : (typeof t === 'function' ? t('nav.evening') : 'Good evening');
+            greetingEl.textContent = `${part}, ${username || ''}`.trim() + '.';
         }
     }
 

@@ -152,10 +152,25 @@ const translations = {
     'dash.totalIncome': 'Total Income',
     'dash.totalExpenses': 'Total Expenses',
     'dash.netBalance': 'Net Balance',
+    'dash.savingRate': 'Saving Rate',
     'dash.tags': 'Tags',
     'dash.action': 'Action',
     'dash.couple': 'Couple',
     'dash.partnersEntry': "Partner's entry",
+
+    // ── Sidebar / shell ──
+    'nav.overview': 'Overview',
+    'nav.planning': 'Planning',
+    'nav.tools': 'Tools',
+    'nav.system': 'System',
+    'nav.reports': 'Reports',
+    'nav.budgets': 'Budgets',
+    'nav.goals': 'Goals',
+    'nav.individualPlan': 'INDIVIDUAL PLAN',
+    'nav.couplePlan': 'COUPLE PLAN',
+    'nav.morning': 'Good morning',
+    'nav.afternoon': 'Good afternoon',
+    'nav.evening': 'Good evening',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Add New Entry',
@@ -714,10 +729,25 @@ const translations = {
     'dash.totalIncome': 'Receita Total',
     'dash.totalExpenses': 'Despesas Totais',
     'dash.netBalance': 'Saldo L\u00edquido',
+    'dash.savingRate': 'Taxa de Poupan\u00e7a',
     'dash.tags': 'Tags',
     'dash.action': 'A\u00e7\u00e3o',
     'dash.couple': 'Casal',
     'dash.partnersEntry': 'Entrada do parceiro(a)',
+
+    // \u2500\u2500 Sidebar / shell \u2500\u2500
+    'nav.overview': 'Vis\u00e3o geral',
+    'nav.planning': 'Planejamento',
+    'nav.tools': 'Ferramentas',
+    'nav.system': 'Sistema',
+    'nav.reports': 'Relat\u00f3rios',
+    'nav.budgets': 'Or\u00e7amentos',
+    'nav.goals': 'Metas',
+    'nav.individualPlan': 'PLANO INDIVIDUAL',
+    'nav.couplePlan': 'PLANO CASAL',
+    'nav.morning': 'Bom dia',
+    'nav.afternoon': 'Boa tarde',
+    'nav.evening': 'Boa noite',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Nova Entrada',
