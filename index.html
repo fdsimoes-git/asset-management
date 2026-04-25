@@ -203,16 +203,19 @@
         }
 
         /* ---------- Sidebar ----------
-           align-self: flex-start so the sidebar is only as tall as its
-           own content (brand + nav + foot). Without this, the flex parent
-           (`.app-shell`) stretches it to full content height, leaving the
-           bg-2 column visible long after the buttons have scrolled out of
-           view. With it, the whole sidebar — background and buttons —
-           scrolls as a single unit with the rest of the page. */
+           Pinned to the viewport: position: sticky + top: 0 keeps it in
+           view as the user scrolls; align-self: flex-start (required for
+           sticky to work inside the flex parent) plus height: 100vh sizes
+           it to the screen; overflow-y: auto lets the nav scroll
+           internally if the brand + sections + foot exceed the viewport. */
         .sidebar {
             width: 232px;
             flex: none;
             align-self: flex-start;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
             background: var(--bg-2);
             border-right: 1px solid var(--line);
             padding: 22px 16px 20px;
