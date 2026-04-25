@@ -171,7 +171,10 @@
         }
 
         html, body {
-            overflow-x: hidden;
+            /* `clip` rather than `hidden`: same overflow guard but doesn't
+               make html/body a scroll container, so position: sticky on
+               the sidebar can engage against the viewport. */
+            overflow-x: clip;
         }
 
         body {
