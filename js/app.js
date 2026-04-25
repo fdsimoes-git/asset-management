@@ -247,7 +247,20 @@ function readThemePalette() {
         const raw = cs.getPropertyValue(name);
         return raw && raw.trim() ? raw.trim() : fallback;
     };
+    // Canvas (Chart.js) doesn't accept CSS color-mix() strings, so we mix the
+    // accent fill ourselves by parsing the hex token to rgba.
+    const hexToRgba = (hex, alpha) => {
+        const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || '').trim());
+        if (!m) return 'rgba(184, 89, 58, ' + alpha + ')';
+        let h = m[1];
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    };
     const primary = v('--primary', '#B8593A');
+    const negative = v('--negative', primary);
     const positive = v('--positive', '#6B8248');
     const accent1 = v('--accent-1', '#7A8450');
     const accent2 = v('--accent-2', '#C89A3E');
@@ -258,9 +271,9 @@ function readThemePalette() {
         gridColor: v('--line', '#DDD0B8'),
         cardBg: v('--card', '#FBF6EC'),
         accent: primary,
-        accentGlow: 'color-mix(in oklab, ' + primary + ' 22%, transparent)',
+        accentGlow: hexToRgba(primary, 0.22),
         success: positive,
-        danger: primary,
+        danger: negative,
         olive: accent1,
         ochre: accent2,
         primarySoft: v('--primary-soft', '#E8BFAB'),
@@ -1437,10 +1450,17 @@ function updateHeroKpis(entriesToShow, totals) {
     const heroDeltaMeta = document.getElementById('heroDeltaMeta');
     if (heroDelta) {
         const change = cumLatest - cumPrev;
-        const pct = cumPrev !== 0 ? (change / Math.abs(cumPrev)) * 100 : 0;
-        heroDelta.textContent = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(1) + '%';
-        heroDelta.classList.toggle('up', change >= 0);
-        heroDelta.classList.toggle('down', change < 0);
+        if (months.length < 2 || cumPrev === 0 || !isFinite(cumPrev)) {
+            // Percent-change off a zero baseline is undefined — show an em
+            // dash instead of a misleading "▲ 0.0%".
+            heroDelta.textContent = '—';
+            heroDelta.classList.remove('up', 'down');
+        } else {
+            const pct = (change / Math.abs(cumPrev)) * 100;
+            heroDelta.textContent = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(1) + '%';
+            heroDelta.classList.toggle('up', change >= 0);
+            heroDelta.classList.toggle('down', change < 0);
+        }
     }
     if (heroDeltaMeta) {
         const change = cumLatest - cumPrev;
