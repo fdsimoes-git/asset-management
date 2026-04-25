@@ -1416,14 +1416,16 @@ function updateHeroKpis(entriesToShow, totals) {
     const fmt = (n) => Math.round(Math.abs(n)).toLocaleString('en-US');
     const fmtSigned = (n) => (n >= 0 ? '+' : '−') + '$' + fmt(n);
 
+    // Derive the bignum integer + decimal halves from the SAME toFixed(2)
+    // result so e.g. 1234.56 renders as "$1,234.56" and not "$1,235.56"
+    // (which would happen if the integer half rounded but the decimal half
+    // kept the original .56).
     const netBalance = totals.netBalance;
-    heroInt.textContent = fmt(netBalance);
+    const [netWhole, netDecimals = '00'] = Math.abs(netBalance).toFixed(2).split('.');
+    heroInt.textContent = Number(netWhole).toLocaleString('en-US');
 
     const heroDec = document.getElementById('heroNetWorthDec');
-    if (heroDec) {
-        const decimals = Math.abs(netBalance).toFixed(2).split('.')[1] || '00';
-        heroDec.textContent = '.' + decimals;
-    }
+    if (heroDec) heroDec.textContent = '.' + netDecimals;
 
     const heroPre = document.getElementById('heroNetWorthPre');
     if (heroPre) heroPre.textContent = netBalance < 0 ? '−$' : '$';
