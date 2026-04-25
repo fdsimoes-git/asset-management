@@ -374,6 +374,18 @@ const translations = {
     'settings.webSearchInactiveProvider': 'Saved, but inactive — switch your AI provider to Anthropic (Claude) to use web search.',
     'settings.webSearchSaveError': 'Failed to save web search preference',
 
+    // ── Appearance settings ──
+    'settings.appearanceSection': 'Appearance',
+    'settings.themeLabel': 'Theme',
+    'settings.themeEarthy': 'Earthy (default)',
+    'settings.themeDark': 'Dark',
+    'settings.themeLight': 'Light',
+    'settings.typographyLabel': 'Typography',
+    'settings.typographyEditorial': 'Editorial (default)',
+    'settings.typographyModern': 'Modern',
+    'settings.typographySystem': 'System',
+    'settings.appearanceHelp': 'Saved on this device. Charts and the auth pages adopt the same look.',
+
     // ── AI Model settings ──
     'settings.aiModelLabel': 'AI Model',
     'settings.aiModelDefault': 'Default (recommended)',
@@ -958,6 +970,18 @@ const translations = {
     'settings.webSearchHelp': 'Permite que o assistente de IA pesquise estabelecimentos ou lojas desconhecidos online. Disponível apenas com Anthropic (Claude). Limite de {perTurn} buscas por mensagem e {perDay} por dia.',
     'settings.webSearchInactiveProvider': 'Salvo, mas inativo — troque seu provedor de IA para Anthropic (Claude) para usar busca na web.',
     'settings.webSearchSaveError': 'Falha ao salvar preferência de busca na web',
+
+    // ── Appearance settings ──
+    'settings.appearanceSection': 'Aparência',
+    'settings.themeLabel': 'Tema',
+    'settings.themeEarthy': 'Terroso (padrão)',
+    'settings.themeDark': 'Escuro',
+    'settings.themeLight': 'Claro',
+    'settings.typographyLabel': 'Tipografia',
+    'settings.typographyEditorial': 'Editorial (padrão)',
+    'settings.typographyModern': 'Moderna',
+    'settings.typographySystem': 'Sistema',
+    'settings.appearanceHelp': 'Salvo neste dispositivo. Gráficos e páginas de autenticação seguem o mesmo estilo.',
 
     // ── AI Model settings ──
     'settings.aiModelLabel': 'Modelo de IA',

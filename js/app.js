@@ -150,7 +150,7 @@ function buildCategoryChart(ctx, type, colors) {
                         position: 'right',
                         labels: {
                             color: colors.textSecondary,
-                            font: { size: 11, family: "'Geist', sans-serif" },
+                            font: { size: 11, family: _chartFontFamily() },
                             boxWidth: 12,
                             padding: 8
                         }
@@ -209,7 +209,7 @@ function buildCategoryChart(ctx, type, colors) {
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'Geist', sans-serif" },
+                        font: { family: _chartFontFamily() },
                         callback: function(value) { return '$' + value.toFixed(0); }
                     }
                 },
@@ -217,7 +217,7 @@ function buildCategoryChart(ctx, type, colors) {
                     grid: { display: false },
                     ticks: {
                         color: colors.textSecondary,
-                        font: { size: 11, weight: '500', family: "'Geist', sans-serif" }
+                        font: { size: 11, weight: '500', family: _chartFontFamily() }
                     }
                 }
             }
@@ -235,6 +235,28 @@ function setCategoryChartType(type) {
     if (Array.isArray(currentFilteredEntries)) {
         updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
     }
+}
+
+// Tear down and rebuild every chart so it picks up the freshly-resolved
+// CSS palette and font tokens — used after Appearance changes (theme /
+// typography). Safe to call before charts have been initialised.
+function reapplyChartTheme() {
+    [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
+        if (c) c.destroy();
+    });
+    monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
+    initializeCharts();
+    if (Array.isArray(currentFilteredEntries)) {
+        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+    }
+}
+
+// Resolves the active --sans token to a concrete font-family string for
+// Chart.js (which doesn't accept var(--…)). Called from chart configs in
+// scopes where the full palette isn't already in hand.
+function _chartFontFamily() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--sans');
+    return (v && v.trim()) || _chartFontFamily();
 }
 
 // Read theme palette from CSS custom properties so chart colors track the
@@ -264,6 +286,9 @@ function readThemePalette() {
     const positive = v('--positive', '#6B8248');
     const accent1 = v('--accent-1', '#7A8450');
     const accent2 = v('--accent-2', '#C89A3E');
+    // Chart.js wants a concrete font-family string — pull it from --sans so
+    // chart legends/ticks track the active typography preset.
+    const sansFamily = v('--sans', "'Geist', sans-serif");
     return {
         textPrimary: v('--ink', '#26201A'),
         textSecondary: v('--ink-2', '#5A4E3F'),
@@ -277,6 +302,7 @@ function readThemePalette() {
         olive: accent1,
         ochre: accent2,
         primarySoft: v('--primary-soft', '#E8BFAB'),
+        fontFamily: sansFamily,
     };
 }
 
@@ -299,7 +325,7 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'Geist', sans-serif"
+                        family: _chartFontFamily()
                     },
                     padding: 15
                 }
@@ -312,8 +338,8 @@ function initializeCharts() {
                 borderWidth: 1,
                 padding: 12,
                 cornerRadius: 8,
-                titleFont: { family: "'Geist', sans-serif", weight: '600' },
-                bodyFont: { family: "'Geist', sans-serif" }
+                titleFont: { family: _chartFontFamily(), weight: '600' },
+                bodyFont: { family: _chartFontFamily() }
             }
         },
         scales: {
@@ -325,7 +351,7 @@ function initializeCharts() {
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'Geist', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             },
             x: {
@@ -337,7 +363,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'Geist', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             }
         }
@@ -353,7 +379,7 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'Geist', sans-serif"
+                        family: _chartFontFamily()
                     },
                     padding: 15
                 }
@@ -387,7 +413,7 @@ function initializeCharts() {
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'Geist', sans-serif" },
+                    font: { family: _chartFontFamily() },
                     callback: function(value) {
                         return '$' + value.toFixed(0);
                     }
@@ -402,7 +428,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'Geist', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             }
         }
@@ -514,7 +540,7 @@ function initializeCharts() {
                     position: 'bottom',
                     labels: {
                         color: colors.textSecondary,
-                        font: { size: 10, family: "'Geist', sans-serif" },
+                        font: { size: 10, family: _chartFontFamily() },
                         boxWidth: 12,
                         padding: 10
                     }
@@ -551,7 +577,7 @@ function initializeCharts() {
                         color: colors.textMuted,
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { family: "'Geist', sans-serif" }
+                        font: { family: _chartFontFamily() }
                     }
                 },
                 y: {
@@ -560,7 +586,7 @@ function initializeCharts() {
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'Geist', sans-serif" },
+                        font: { family: _chartFontFamily() },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -698,7 +724,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                     position: 'start',
                     backgroundColor: themePalette.olive,
                     color: themePalette.cardBg,
-                    font: { size: 11, family: "'Geist', sans-serif" },
+                    font: { size: 11, family: _chartFontFamily() },
                     padding: 4
                 }
             };
@@ -718,7 +744,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                     position: 'end',
                     backgroundColor: themePalette.accent,
                     color: themePalette.cardBg,
-                    font: { size: 11, family: "'Geist', sans-serif" },
+                    font: { size: 11, family: _chartFontFamily() },
                     padding: 4
                 }
             };
@@ -3214,6 +3240,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         <small id="webSearchInactiveHint" style="display: ${(currentUser && currentUser.webSearchEnabled && currentUser.aiProvider !== 'anthropic') ? 'block' : 'none'}; margin-top: 0.35rem; color: var(--color-warning, #d97706); font-size: 0.8rem;">${t('settings.webSearchInactiveProvider')}</small>
                     </div>
                 </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.appearanceSection')}</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.themeLabel')}</span>
+                            <select id="settingsThemeSelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                                <option value="earthy">${t('settings.themeEarthy')}</option>
+                                <option value="dark">${t('settings.themeDark')}</option>
+                                <option value="light">${t('settings.themeLight')}</option>
+                            </select>
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.typographyLabel')}</span>
+                            <select id="settingsTypographySelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                                <option value="editorial">${t('settings.typographyEditorial')}</option>
+                                <option value="modern">${t('settings.typographyModern')}</option>
+                                <option value="system">${t('settings.typographySystem')}</option>
+                            </select>
+                        </label>
+                    </div>
+                    <small style="display: block; margin-top: 0.5rem; color: var(--color-text-muted); font-size: 0.8rem;">${t('settings.appearanceHelp')}</small>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -3233,6 +3282,39 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsAiProvider(overlay);
         wireSettingsAiModel(overlay);
         wireSettingsWebSearch(overlay);
+        wireSettingsAppearance(overlay);
+    }
+
+    function wireSettingsAppearance(overlay) {
+        const themeSel = overlay.querySelector('#settingsThemeSelect');
+        const typoSel = overlay.querySelector('#settingsTypographySelect');
+        if (!themeSel || !typoSel) return;
+        // Default values match the dataset attributes the early-bootstrap
+        // script applied to <html> on page load.
+        themeSel.value = document.documentElement.getAttribute('data-theme') || 'earthy';
+        typoSel.value = document.documentElement.getAttribute('data-typography') || 'editorial';
+
+        themeSel.addEventListener('change', () => {
+            const v = themeSel.value;
+            try {
+                if (v === 'earthy') localStorage.removeItem('appTheme');
+                else localStorage.setItem('appTheme', v);
+            } catch (e) {}
+            if (v === 'earthy') document.documentElement.removeAttribute('data-theme');
+            else document.documentElement.setAttribute('data-theme', v);
+            reapplyChartTheme();
+        });
+
+        typoSel.addEventListener('change', () => {
+            const v = typoSel.value;
+            try {
+                if (v === 'editorial') localStorage.removeItem('appTypography');
+                else localStorage.setItem('appTypography', v);
+            } catch (e) {}
+            if (v === 'editorial') document.documentElement.removeAttribute('data-typography');
+            else document.documentElement.setAttribute('data-typography', v);
+            reapplyChartTheme();
+        });
     }
 
     function wireSettingsEmail(overlay, emailData) {
