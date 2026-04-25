@@ -256,7 +256,7 @@ function reapplyChartTheme() {
 // scopes where the full palette isn't already in hand.
 function _chartFontFamily() {
     const v = getComputedStyle(document.documentElement).getPropertyValue('--sans');
-    return (v && v.trim()) || _chartFontFamily();
+    return (v && v.trim()) || "Geist, ui-sans-serif, system-ui, sans-serif";
 }
 
 // Read theme palette from CSS custom properties so chart colors track the
@@ -1510,9 +1510,12 @@ function updateHeroKpis(entriesToShow, totals) {
                 deltaEl.textContent = '—';
                 deltaEl.classList.remove('up', 'down');
             } else {
-                const pct = ((value - prev) / Math.abs(prev)) * 100;
+                // For percent-valued KPIs (e.g. saving rate) the delta is a
+                // point change, not a percent-of-percent. Showing the latter
+                // would label e.g. 10% → 20% as "+100.0 pts" instead of +10.
+                const delta = opts.percent ? (value - prev) : (((value - prev) / Math.abs(prev)) * 100);
                 const isGood = opts.invert ? (value <= prev) : (value >= prev);
-                deltaEl.textContent = (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + (opts.percent ? ' pts' : '%');
+                deltaEl.textContent = (delta >= 0 ? '+' : '−') + Math.abs(delta).toFixed(1) + (opts.percent ? ' pts' : '%');
                 deltaEl.classList.toggle('up', isGood);
                 deltaEl.classList.toggle('down', !isGood);
             }
