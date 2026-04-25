@@ -124,7 +124,7 @@ function buildCategoryChart(ctx, type, colors) {
         display: true,
         text: t('chart.expensesByCategory'),
         color: colors.textPrimary,
-        font: { size: 14, weight: '500', family: "'Instrument Serif', serif" },
+        font: { size: 14, weight: '500', family: _chartSerifFamily() },
         padding: { bottom: 20 }
     };
     if (type === 'doughnut') {
@@ -257,6 +257,13 @@ function reapplyChartTheme() {
 function _chartFontFamily() {
     const v = getComputedStyle(document.documentElement).getPropertyValue('--sans');
     return (v && v.trim()) || "Geist, ui-sans-serif, system-ui, sans-serif";
+}
+
+// Serif counterpart for chart titles — tracks --serif so editorial vs.
+// modern vs. system typography presets reach the chart titles too.
+function _chartSerifFamily() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--serif');
+    return (v && v.trim()) || "'Instrument Serif', Georgia, serif";
 }
 
 // Read theme palette from CSS custom properties so chart colors track the
@@ -549,7 +556,7 @@ function initializeCharts() {
                     display: true,
                     text: t('chart.expenseCatByMonth'),
                     color: colors.textPrimary,
-                    font: { size: 14, weight: '600', family: "'Instrument Serif', serif" },
+                    font: { size: 14, weight: '600', family: _chartSerifFamily() },
                     padding: { bottom: 15 }
                 },
                 tooltip: {
@@ -1457,7 +1464,10 @@ function updateHeroKpis(entriesToShow, totals) {
         if (latest) {
             const [y, m] = latest.split('-');
             const dt = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-            heroPeriod.textContent = dt.toLocaleString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
+            // Match the app's selected language rather than the browser locale,
+            // so a Portuguese UI shows "ABRIL DE 2026" instead of "APRIL 2026".
+            const locale = (typeof getLang === 'function' && getLang() === 'pt') ? 'pt-BR' : 'en-US';
+            heroPeriod.textContent = dt.toLocaleString(locale, { month: 'long', year: 'numeric' }).toUpperCase();
         } else {
             heroPeriod.textContent = '—';
         }
@@ -1493,7 +1503,7 @@ function updateHeroKpis(entriesToShow, totals) {
     if (heroDeltaMeta) {
         const change = cumLatest - cumPrev;
         heroDeltaMeta.textContent = (months.length >= 2)
-            ? `${fmtSigned(change)} VS LAST MONTH`
+            ? `${fmtSigned(change)} ${t('dash.vsLastMonth')}`
             : '';
     }
 
