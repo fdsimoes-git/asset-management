@@ -2893,9 +2893,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (fab) fab.click();
                     break;
                 }
-                case 'partner':
-                    document.getElementById('settingsBtn').click();
-                    break;
             }
         });
     });
