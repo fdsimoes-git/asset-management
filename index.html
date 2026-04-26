@@ -337,6 +337,28 @@
             top: env(safe-area-inset-top, 0px);
             z-index: 50;
         }
+        .topbar-hamburger {
+            display: none; /* shown only on narrow screens via media query */
+            width: 40px; height: 40px;
+            padding: 0;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-md);
+            background: var(--card);
+            color: var(--ink);
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+        }
+        .topbar-hamburger:hover { background: var(--bg-2); }
+        .topbar-hamburger svg { width: 20px; height: 20px; display: block; }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 90;
+        }
+        .sidebar-backdrop.open { display: block; }
         .topbar-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
         .breadcrumbs {
             font-family: var(--mono);
@@ -464,7 +486,11 @@
             flex-direction: column;
             gap: 4px;
             min-height: 0;
+            /* `cursor: help` cues that the card has a tooltip explaining
+               what the metric means (mounted via data-i18n-title). */
+            cursor: help;
         }
+        .hero-networth .period { cursor: help; }
         .kpi .kpi-head {
             display: flex; align-items: baseline; justify-content: space-between;
         }
@@ -499,21 +525,24 @@
         @media (max-width: 980px) {
             .hero-row { grid-template-columns: 1fr; }
             .hero-kpis { grid-template-rows: auto; grid-template-columns: repeat(3, 1fr); }
+            /* Off-canvas sidebar — fixed-positioned drawer that slides in
+               from the left when .open is set on it. The desktop sticky
+               rules don't apply here because position is overridden. */
             .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-                border-right: 0;
-                border-bottom: 1px solid var(--line);
-                flex-direction: row;
-                flex-wrap: wrap;
-                padding: 14px 16px;
-                gap: 12px;
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                height: 100vh;
+                width: 260px;
+                max-width: 80vw;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                z-index: 100;
+                box-shadow: var(--shadow-lg);
+                /* keep vertical layout so we don't inherit any row tweaks */
+                flex-direction: column;
             }
-            .nav-section { flex-direction: row; align-items: center; gap: 4px; }
-            .nav { flex-direction: row; flex-wrap: wrap; }
-            .sidebar-foot { margin-top: 0; border-top: 0; padding-top: 0; }
-            .app-shell { flex-direction: column; }
+            .sidebar.open { transform: translateX(0); }
+            .topbar-hamburger { display: inline-flex; }
         }
         @media (max-width: 640px) {
             .hero-kpis { grid-template-columns: 1fr; }
@@ -1651,6 +1680,17 @@
                 width: 95%;
                 max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem);
             }
+
+            /* Narrow-screen tightening: charts shrink, topbar densifies, the
+               hero bignum stops fighting the viewport. */
+            .topbar { padding: 12px 14px; gap: 10px; }
+            .topbar-greeting { font-size: 22px; }
+            .top-actions .btn { padding: 8px 10px; font-size: 12px; }
+            .hero-networth { padding: 18px; min-height: 0; }
+            .hero-networth .bignum { font-size: clamp(40px, 11vw, 64px); }
+            .chart-wrapper { height: 280px; padding: 12px; }
+            .chart-wrapper[data-chart="categoryStacked"] { height: 320px; }
+            .charts-container { gap: 1rem; }
         }
 
         /* Custom scrollbar */
@@ -2752,7 +2792,7 @@
     </div>
 
     <div class="app-shell">
-        <aside class="sidebar" aria-label="Primary navigation">
+        <aside class="sidebar" id="primarySidebar" aria-label="Primary navigation">
             <div class="brand">
                 <div class="brand-mark" aria-hidden="true"></div>
                 <div>
@@ -2798,6 +2838,7 @@
                 </div>
             </div>
         </aside>
+        <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
     <div class="container">
         <header class="legacy-header" hidden aria-hidden="true">
@@ -2811,6 +2852,9 @@
             </div>
         </header>
         <div class="topbar">
+            <button type="button" id="sidebarToggle" class="topbar-hamburger" aria-label="Open menu" aria-controls="primarySidebar" aria-expanded="false" data-i18n-aria-label="nav.openMenu" data-i18n-title="nav.openMenu" title="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+            </button>
             <div class="topbar-left">
                 <div class="breadcrumbs"><span data-i18n="common.appName">Asset Manager</span> <span aria-hidden="true">/</span> <span data-i18n="dash.dashboard">Dashboard</span></div>
                 <h1 class="topbar-greeting" id="topbarGreeting" data-i18n="common.assetManagement">Asset Management</h1>
@@ -3132,49 +3176,6 @@
                     </div>
                 </div>
             </div>
-            <!-- Hero row: bignum net worth + KPI column -->
-            <section class="hero-row" id="heroRow" aria-label="Net worth summary">
-                <div class="hero-networth">
-                    <div class="period">
-                        <span data-i18n="dash.netBalance">Net Balance</span>
-                        <span aria-hidden="true">·</span>
-                        <span id="heroPeriodLabel">—</span>
-                    </div>
-                    <div class="bignum">
-                        <span class="pre" id="heroNetWorthPre">$</span><span id="heroNetWorthInt">0</span><span class="unit" id="heroNetWorthDec">.00</span>
-                    </div>
-                    <div class="delta-row">
-                        <span class="delta-pill" id="heroDelta">—</span>
-                        <span class="mono tiny muted" id="heroDeltaMeta"></span>
-                    </div>
-                </div>
-                <div class="hero-kpis">
-                    <div class="kpi" id="kpiIncome">
-                        <div class="kpi-head">
-                            <h3 data-i18n="dash.totalIncome">Total Income</h3>
-                            <span class="delta-pill" id="kpiIncomeDelta">—</span>
-                        </div>
-                        <div class="value"><span class="unit" id="kpiIncomeUnit">$</span><span id="kpiIncomeValue">0</span></div>
-                        <div class="spark" id="kpiIncomeSpark" aria-hidden="true"></div>
-                    </div>
-                    <div class="kpi" id="kpiExpense">
-                        <div class="kpi-head">
-                            <h3 data-i18n="dash.totalExpenses">Total Expenses</h3>
-                            <span class="delta-pill" id="kpiExpenseDelta">—</span>
-                        </div>
-                        <div class="value"><span class="unit" id="kpiExpenseUnit">$</span><span id="kpiExpenseValue">0</span></div>
-                        <div class="spark" id="kpiExpenseSpark" aria-hidden="true"></div>
-                    </div>
-                    <div class="kpi" id="kpiSaving">
-                        <div class="kpi-head">
-                            <h3 data-i18n="dash.savingRate">Saving Rate</h3>
-                            <span class="delta-pill" id="kpiSavingDelta">—</span>
-                        </div>
-                        <div class="value"><span id="kpiSavingValue">0</span><span class="unit" style="margin-left:4px; margin-right:0;">%</span></div>
-                        <div class="spark" id="kpiSavingSpark" aria-hidden="true"></div>
-                    </div>
-                </div>
-            </section>
             <!-- View Mode Toggle (visible only for users with partners) -->
             <div id="viewModeContainer" class="view-mode-toggle view-toggle" style="display: none;">
                 <label data-i18n="dash.viewMode" class="mono tiny muted" style="margin-right: 8px; padding: 6px 0;">View Mode</label>
@@ -3251,6 +3252,49 @@
                         <span class="active-filters-label" data-i18n="filter.activeFilters">Active filters</span>
                         <div id="activeFiltersList" class="active-filters-list"></div>
                         <span id="filterResultsCount" class="filter-results-count"></span>
+                    </div>
+                </div>
+            </section>
+            <!-- Hero row: bignum net worth + KPI column -->
+            <section class="hero-row" id="heroRow" aria-label="Net worth summary">
+                <div class="hero-networth">
+                    <div class="period" data-i18n-title="kpi.netWorthHelp" title="Cumulative income minus expenses across all months in view. The percentage is the month-over-month change.">
+                        <span data-i18n="dash.netBalance">Net Balance</span>
+                        <span aria-hidden="true">·</span>
+                        <span id="heroPeriodLabel">—</span>
+                    </div>
+                    <div class="bignum">
+                        <span class="pre" id="heroNetWorthPre">$</span><span id="heroNetWorthInt">0</span><span class="unit" id="heroNetWorthDec">.00</span>
+                    </div>
+                    <div class="delta-row">
+                        <span class="delta-pill" id="heroDelta">—</span>
+                        <span class="mono tiny muted" id="heroDeltaMeta"></span>
+                    </div>
+                </div>
+                <div class="hero-kpis">
+                    <div class="kpi" id="kpiIncome" data-i18n-title="kpi.incomeHelp" title="Total income recorded in the latest month in view. The percentage is the month-over-month change.">
+                        <div class="kpi-head">
+                            <h3 data-i18n="dash.totalIncome">Total Income</h3>
+                            <span class="delta-pill" id="kpiIncomeDelta">—</span>
+                        </div>
+                        <div class="value"><span class="unit" id="kpiIncomeUnit">$</span><span id="kpiIncomeValue">0</span></div>
+                        <div class="spark" id="kpiIncomeSpark" aria-hidden="true"></div>
+                    </div>
+                    <div class="kpi" id="kpiExpense" data-i18n-title="kpi.expenseHelp" title="Total expenses recorded in the latest month in view. The percentage is the month-over-month change.">
+                        <div class="kpi-head">
+                            <h3 data-i18n="dash.totalExpenses">Total Expenses</h3>
+                            <span class="delta-pill" id="kpiExpenseDelta">—</span>
+                        </div>
+                        <div class="value"><span class="unit" id="kpiExpenseUnit">$</span><span id="kpiExpenseValue">0</span></div>
+                        <div class="spark" id="kpiExpenseSpark" aria-hidden="true"></div>
+                    </div>
+                    <div class="kpi" id="kpiSaving" data-i18n-title="kpi.savingRateHelp" title="(Income − Expenses) ÷ Income × 100 for the latest month. The pts value is the point change vs the previous month, not a percent of a percent.">
+                        <div class="kpi-head">
+                            <h3 data-i18n="dash.savingRate">Saving Rate</h3>
+                            <span class="delta-pill" id="kpiSavingDelta">—</span>
+                        </div>
+                        <div class="value"><span id="kpiSavingValue">0</span><span class="unit" style="margin-left:4px; margin-right:0;">%</span></div>
+                        <div class="spark" id="kpiSavingSpark" aria-hidden="true"></div>
                     </div>
                 </div>
             </section>

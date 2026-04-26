@@ -146,6 +146,12 @@ const translations = {
     'chart.expenseCatByMonth': 'Expense Categories by Month',
     'chart.avgIncome': 'Avg Income: ${value}',
     'chart.avgExpenses': 'Avg Expenses: ${value}',
+    'chart.axisAmount': 'Amount ($)',
+    'chart.axisMonth': 'Month',
+    'kpi.netWorthHelp': 'Cumulative income minus expenses across all months in view. The percentage is the month-over-month change vs the previous month\'s running total.',
+    'kpi.incomeHelp': 'Total income recorded in the latest month in view. The percentage is the month-over-month change vs the previous month.',
+    'kpi.expenseHelp': 'Total expenses recorded in the latest month in view. The percentage is the month-over-month change vs the previous month.',
+    'kpi.savingRateHelp': '(Income − Expenses) ÷ Income × 100 for the latest month. The "pts" value is the point change vs the previous month, not a percent of a percent.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
@@ -173,6 +179,7 @@ const translations = {
     'nav.morning': 'Good morning',
     'nav.afternoon': 'Good afternoon',
     'nav.evening': 'Good evening',
+    'nav.openMenu': 'Open menu',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Add New Entry',
@@ -737,6 +744,12 @@ const translations = {
     'chart.expenseCatByMonth': 'Categorias de Despesas por M\u00eas',
     'chart.avgIncome': 'M\u00e9dia Receita: R${value}',
     'chart.avgExpenses': 'M\u00e9dia Despesas: R${value}',
+    'chart.axisAmount': 'Valor ($)',
+    'chart.axisMonth': 'M\u00eas',
+    'kpi.netWorthHelp': 'Receita acumulada menos despesas em todos os meses no per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao acumulado anterior.',
+    'kpi.incomeHelp': 'Receita registrada no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
+    'kpi.expenseHelp': 'Despesas registradas no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
+    'kpi.savingRateHelp': '(Receita \u2212 Despesas) \u00f7 Receita \u00d7 100 para o \u00faltimo m\u00eas. O valor em "pts" \u00e9 a varia\u00e7\u00e3o em pontos vs o m\u00eas anterior, n\u00e3o uma porcentagem de uma porcentagem.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',
@@ -764,6 +777,7 @@ const translations = {
     'nav.morning': 'Bom dia',
     'nav.afternoon': 'Boa tarde',
     'nav.evening': 'Boa noite',
+    'nav.openMenu': 'Abrir menu',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Nova Entrada',

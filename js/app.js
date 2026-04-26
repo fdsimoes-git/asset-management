@@ -206,6 +206,13 @@ function buildCategoryChart(ctx, type, colors) {
             scales: {
                 x: {
                     beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: t('chart.axisAmount'),
+                        color: colors.textSecondary,
+                        font: { family: _chartFontFamily(), size: 11, weight: '500' },
+                        padding: { top: 6, bottom: 0 }
+                    },
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
@@ -322,6 +329,16 @@ function initializeCharts() {
 
     const colors = readThemePalette();
 
+    // Reusable axis-title config — same look across all charts so the
+    // legends/ticks aren't mystery numbers.
+    const axisTitle = (text) => ({
+        display: true,
+        text: text,
+        color: colors.textSecondary,
+        font: { family: _chartFontFamily(), size: 11, weight: '500' },
+        padding: { top: 6, bottom: 0 }
+    });
+
     // Common chart options for dark theme
     const commonOptions = {
         responsive: true,
@@ -352,6 +369,7 @@ function initializeCharts() {
         scales: {
             y: {
                 beginAtZero: true,
+                title: axisTitle(t('chart.axisAmount')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -362,6 +380,7 @@ function initializeCharts() {
                 }
             },
             x: {
+                title: axisTitle(t('chart.axisMonth')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -414,6 +433,7 @@ function initializeCharts() {
         scales: {
             y: {
                 beginAtZero: true,
+                title: axisTitle(t('chart.axisAmount')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -427,6 +447,7 @@ function initializeCharts() {
                 }
             },
             x: {
+                title: axisTitle(t('chart.axisMonth')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -579,6 +600,7 @@ function initializeCharts() {
             scales: {
                 x: {
                     stacked: true,
+                    title: axisTitle(t('chart.axisMonth')),
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
@@ -590,6 +612,7 @@ function initializeCharts() {
                 y: {
                     stacked: true,
                     beginAtZero: true,
+                    title: axisTitle(t('chart.axisAmount')),
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
@@ -2862,6 +2885,40 @@ document.addEventListener('DOMContentLoaded', () => {
     if (topbarAdd) topbarAdd.addEventListener('click', () => document.getElementById('addEntryBtn').click());
     const topbarBulk = document.getElementById('topbarBulkBtn');
     if (topbarBulk) topbarBulk.addEventListener('click', () => document.getElementById('openBulkUploadModal').click());
+
+    // Mobile sidebar drawer: hamburger button in topbar slides the sidebar
+    // in from the left on narrow screens. On desktop the .open class does
+    // nothing (the slide transform is gated behind the mobile media query),
+    // so this code is a no-op there.
+    (function () {
+        const toggle = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('primarySidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (!toggle || !sidebar || !backdrop) return;
+        const openSidebar = () => {
+            sidebar.classList.add('open');
+            backdrop.classList.add('open');
+            toggle.setAttribute('aria-expanded', 'true');
+        };
+        const closeSidebar = () => {
+            sidebar.classList.remove('open');
+            backdrop.classList.remove('open');
+            toggle.setAttribute('aria-expanded', 'false');
+        };
+        toggle.addEventListener('click', () => {
+            if (sidebar.classList.contains('open')) closeSidebar();
+            else openSidebar();
+        });
+        backdrop.addEventListener('click', closeSidebar);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+        });
+        // Auto-close after any nav action so the drawer doesn't sit on top
+        // of the content the user just navigated to.
+        sidebar.addEventListener('click', (e) => {
+            if (e.target.closest('.nav-item[data-target]')) closeSidebar();
+        });
+    })();
 
     // Sidebar nav: route data-target clicks to the existing modals/sections.
     // Items without data-target (Reports, Budgets, Goals) are aria-disabled
