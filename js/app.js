@@ -1443,7 +1443,10 @@ function updateHeroKpis(entriesToShow, totals) {
     const heroInt = document.getElementById('heroNetWorthInt');
     if (!heroInt) return; // hero row not in this page
 
-    const fmt = (n) => Math.round(Math.abs(n)).toLocaleString('en-US');
+    // Localize number formatting (thousands separator) to the active app
+    // language — same locale derivation we use for the period label below.
+    const locale = (typeof getLang === 'function' && getLang() === 'pt') ? 'pt-BR' : 'en-US';
+    const fmt = (n) => Math.round(Math.abs(n)).toLocaleString(locale);
     const fmtSigned = (n) => (n >= 0 ? '+' : '−') + '$' + fmt(n);
 
     // Derive the bignum integer + decimal halves from the SAME toFixed(2)
@@ -1452,7 +1455,7 @@ function updateHeroKpis(entriesToShow, totals) {
     // kept the original .56).
     const netBalance = totals.netBalance;
     const [netWhole, netDecimals = '00'] = Math.abs(netBalance).toFixed(2).split('.');
-    heroInt.textContent = Number(netWhole).toLocaleString('en-US');
+    heroInt.textContent = Number(netWhole).toLocaleString(locale);
 
     const heroDec = document.getElementById('heroNetWorthDec');
     if (heroDec) heroDec.textContent = '.' + netDecimals;
@@ -1487,9 +1490,8 @@ function updateHeroKpis(entriesToShow, totals) {
         if (latest) {
             const [y, m] = latest.split('-');
             const dt = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
-            // Match the app's selected language rather than the browser locale,
-            // so a Portuguese UI shows "ABRIL DE 2026" instead of "APRIL 2026".
-            const locale = (typeof getLang === 'function' && getLang() === 'pt') ? 'pt-BR' : 'en-US';
+            // Reuses the function-scope `locale` derived from getLang() so a
+            // Portuguese UI shows "ABRIL DE 2026" instead of "APRIL 2026".
             heroPeriod.textContent = dt.toLocaleString(locale, { month: 'long', year: 'numeric' }).toUpperCase();
         } else {
             heroPeriod.textContent = '—';

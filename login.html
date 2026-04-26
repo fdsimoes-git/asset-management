@@ -49,8 +49,8 @@
         }
 
         @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 60px rgba(245, 158, 11, 0.2); }
-            50% { box-shadow: 0 0 100px rgba(245, 158, 11, 0.35); }
+            0%, 100% { box-shadow: 0 0 60px color-mix(in oklab, var(--primary) 20%, transparent); }
+            50% { box-shadow: 0 0 100px color-mix(in oklab, var(--primary) 35%, transparent); }
         }
 
         :root {
@@ -366,7 +366,7 @@
         .form-group input:focus {
             outline: none;
             border-color: var(--color-accent-primary);
-            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 15%, transparent);
             background: var(--color-bg-deep);
         }
 
@@ -385,7 +385,7 @@
             margin-top: 0.5rem;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            box-shadow: 0 4px 24px rgba(245, 158, 11, 0.3);
+            box-shadow: 0 4px 24px color-mix(in oklab, var(--primary) 30%, transparent);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -393,7 +393,7 @@
 
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(245, 158, 11, 0.4);
+            box-shadow: 0 8px 32px color-mix(in oklab, var(--primary) 40%, transparent);
         }
 
         button:active {
