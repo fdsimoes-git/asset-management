@@ -4410,7 +4410,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const part = hour < 12 ? (typeof t === 'function' ? t('nav.morning') : 'Good morning')
                 : hour < 18 ? (typeof t === 'function' ? t('nav.afternoon') : 'Good afternoon')
                 : (typeof t === 'function' ? t('nav.evening') : 'Good evening');
-            greetingEl.textContent = `${part}, ${username || ''}`.trim() + '.';
+            // Avoid rendering "Good morning,." when the username is missing —
+            // drop the comma + name segment and just punctuate the greeting.
+            greetingEl.textContent = username ? `${part}, ${username}.` : `${part}.`;
         }
     }
 

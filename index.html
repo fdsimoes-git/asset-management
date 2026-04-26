@@ -373,7 +373,7 @@
             font-weight: 500;
             min-height: auto;
         }
-        .view-toggle button.on, .view-toggle button.active {
+        .view-toggle button.active {
             background: var(--card);
             color: var(--ink);
             box-shadow: 0 1px 2px rgba(0,0,0,.04);
@@ -520,8 +520,8 @@
         }
 
         /* Legacy <header> rules: kept narrow for safety; the new shell uses
-           .topbar instead. The h1 is hidden visually but kept for screen
-           readers via .visually-hidden if needed. */
+           .topbar instead. The legacy header is fully hidden and not
+           exposed to assistive technologies. */
         header.legacy-header { display: none; }
 
         button {
@@ -1835,7 +1835,7 @@
             min-height: auto;
         }
 
-        .view-btn.active, .view-btn.on {
+        .view-btn.active {
             background: var(--card);
             color: var(--ink);
             box-shadow: 0 1px 2px rgba(0,0,0,.04);
@@ -2812,7 +2812,7 @@
         </header>
         <div class="topbar">
             <div class="topbar-left">
-                <div class="breadcrumbs"><span data-i18n="common.assetManagement">Asset Manager</span> <span aria-hidden="true">/</span> <span data-i18n="dash.dashboard">Dashboard</span></div>
+                <div class="breadcrumbs"><span data-i18n="common.appName">Asset Manager</span> <span aria-hidden="true">/</span> <span data-i18n="dash.dashboard">Dashboard</span></div>
                 <h1 class="topbar-greeting" id="topbarGreeting" data-i18n="common.assetManagement">Asset Management</h1>
             </div>
             <div class="top-actions">
@@ -3179,7 +3179,7 @@
             <div id="viewModeContainer" class="view-mode-toggle view-toggle" style="display: none;">
                 <label data-i18n="dash.viewMode" class="mono tiny muted" style="margin-right: 8px; padding: 6px 0;">View Mode</label>
                 <div class="toggle-buttons" style="display: inline-flex;">
-                    <button type="button" id="individualViewBtn" class="view-btn active on" aria-pressed="true" data-i18n="dash.individual">Individual</button>
+                    <button type="button" id="individualViewBtn" class="view-btn active" aria-pressed="true" data-i18n="dash.individual">Individual</button>
                     <button type="button" id="combinedViewBtn" class="view-btn" aria-pressed="false" data-i18n="dash.combined">Combined (Couple)</button>
                     <button type="button" id="myShareViewBtn" class="view-btn" aria-pressed="false" data-i18n="dash.myShare" data-i18n-title="dash.myShareDescription" title="Your individual entries + half of all shared couple entries">My Share</button>
                 </div>
