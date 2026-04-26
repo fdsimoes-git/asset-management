@@ -14,6 +14,7 @@ const { pool: dbPool, testConnection: testDbConnection } = require('./db/pool');
 const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
+const PDFDocument = require('pdfkit');  // For generating report PDFs (issue #92)
 const { GoogleGenAI, Type } = require('@google/genai');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -1039,6 +1040,17 @@ const pdfUploadLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+// Report export is bounded — PDF generation can be expensive on large
+// histories, and CSV streaming is cheap but worth bounding too.
+const reportExportLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many report exports. Please try again later.' },
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
@@ -2450,6 +2462,217 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     }
 
     res.json({ message: 'Entry deleted successfully' });
+}));
+
+// ============ REPORT EXPORT (issue #92) ============
+
+const VALID_REPORT_FORMATS = new Set(['csv', 'pdf']);
+const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
+
+// Mirrors GET /api/entries' filtering (viewMode + couple/individual rules)
+// but with month=null so we get the full history, then applies range/type/
+// category filters in-process. Pulled out so CSV and PDF paths share the
+// exact same dataset.
+async function fetchEntriesForReport(req, viewMode) {
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+    if (viewMode === 'combined' && validPartner) {
+        return db.getCoupleEntries(req.user.id, validPartner.id, null);
+    }
+    if (viewMode === 'myshare' && validPartner) {
+        return db.getMyShareEntries(req.user.id, validPartner.id, null);
+    }
+    if (viewMode === 'myshare') {
+        // No partner — myshare collapses to the user's own entries.
+        return db.getIndividualEntries(req.user.id, null);
+    }
+    if (viewMode === 'individual' && validPartner) {
+        return db.getIndividualEntries(req.user.id, null);
+    }
+    return db.getEntriesByUser(req.user.id, null);
+}
+
+function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
+    let out = entries;
+    if (start) out = out.filter(e => (e.month || '') >= start);
+    if (end)   out = out.filter(e => (e.month || '') <= end);
+    if (typeFilter && typeFilter !== 'all') {
+        out = out.filter(e => e.type === typeFilter);
+    }
+    if (categorySet) {
+        out = out.filter(e => Array.isArray(e.tags) && e.tags.some(t => categorySet.has(t)));
+    }
+    out = out.slice().sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+    return out;
+}
+
+function csvEscape(v) {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Per-format writer. Both write a header + rows; PDF additionally renders a
+// summary block and a category breakdown.
+function writeCsvReport(res, entries) {
+    res.write('month,type,amount,description,categories,is_couple_expense\n');
+    for (const e of entries) {
+        const row = [
+            csvEscape(e.month),
+            csvEscape(e.type),
+            csvEscape(e.amount),
+            csvEscape(e.description),
+            csvEscape(Array.isArray(e.tags) ? e.tags.join('|') : ''),
+            csvEscape(e.isCoupleExpense ? 'true' : 'false')
+        ].join(',');
+        res.write(row + '\n');
+    }
+    res.end();
+}
+
+function summarizeForReport(entries) {
+    const totals = entries.reduce((acc, e) => {
+        const amt = parseFloat(e.amount) || 0;
+        if (e.type === 'income') acc.income += amt;
+        else if (e.type === 'expense') acc.expense += amt;
+        return acc;
+    }, { income: 0, expense: 0 });
+    const net = totals.income - totals.expense;
+    const savingRate = totals.income > 0 ? ((totals.income - totals.expense) / totals.income) * 100 : 0;
+
+    // Category breakdown is for expenses only. When an entry has multiple
+    // tags, split the amount equally across them so the breakdown sums to
+    // the total (matches the dashboard's category chart logic).
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['(uncategorized)'];
+        const share = (parseFloat(e.amount) || 0) / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+    return { totals, net, savingRate, categories };
+}
+
+function writePdfReport(res, { entries, summary, meta }) {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    doc.pipe(res);
+
+    // Header
+    doc.font('Helvetica-Bold').fontSize(18).text('Asset Management Report');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#444');
+    doc.text(`User: ${meta.username}`);
+    doc.text(`View: ${meta.viewMode}`);
+    if (meta.start || meta.end) doc.text(`Period: ${meta.start || 'beginning'} → ${meta.end || 'now'}`);
+    if (meta.typeFilter && meta.typeFilter !== 'all') doc.text(`Type: ${meta.typeFilter}`);
+    if (meta.categories) doc.text(`Categories: ${meta.categories.join(', ')}`);
+    doc.text(`Generated: ${new Date().toISOString()}`);
+    doc.moveDown();
+
+    // Summary block
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(13).text('Summary');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10);
+    const fmt = (n) => '$' + n.toFixed(2);
+    doc.text(`Total income:    ${fmt(summary.totals.income)}`);
+    doc.text(`Total expenses:  ${fmt(summary.totals.expense)}`);
+    doc.text(`Net balance:     ${fmt(summary.net)}`);
+    doc.text(`Saving rate:     ${summary.savingRate.toFixed(1)}%`);
+    doc.text(`Entries:         ${entries.length}`);
+    doc.moveDown();
+
+    // Category breakdown
+    if (summary.categories.length) {
+        doc.font('Helvetica-Bold').fontSize(13).text('Expenses by category');
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(10);
+        for (const [cat, amt] of summary.categories) {
+            const pct = summary.totals.expense > 0 ? (amt / summary.totals.expense * 100).toFixed(1) : '0.0';
+            doc.text(`${cat.padEnd(22).slice(0, 22)} ${fmt(amt).padStart(12)}  (${pct}%)`);
+        }
+        doc.moveDown();
+    }
+
+    // Entries table — month, type, amount, description (truncated), tags
+    doc.font('Helvetica-Bold').fontSize(13).text(`Entries (${entries.length})`);
+    doc.moveDown(0.3);
+    doc.font('Courier').fontSize(9);
+    doc.text('MONTH    TYPE        AMOUNT  DESCRIPTION');
+    doc.text('-------- -------- ---------- ------------------------------------------------');
+    for (const e of entries) {
+        const month = (e.month || '').slice(0, 7).padEnd(8);
+        const type = (e.type || '').padEnd(8);
+        const sign = e.type === 'income' ? '+' : '-';
+        const amt = (sign + (parseFloat(e.amount) || 0).toFixed(2)).padStart(10);
+        const tags = Array.isArray(e.tags) && e.tags.length ? ` [${e.tags.slice(0, 3).join(',')}]` : '';
+        const desc = ((e.description || '') + tags).slice(0, 50);
+        doc.text(`${month} ${type} ${amt}  ${desc}`);
+    }
+    doc.end();
+}
+
+app.get('/api/reports/export', reportExportLimiter, requireAuth, asyncHandler(async (req, res) => {
+    const format = String(req.query.format || '');
+    if (!VALID_REPORT_FORMATS.has(format)) {
+        return res.status(400).json({ message: 'Invalid format. Must be csv or pdf.' });
+    }
+    const viewMode = String(req.query.viewMode || 'individual');
+    if (!VALID_VIEW_MODES.has(viewMode)) {
+        return res.status(400).json({ message: 'Invalid viewMode.' });
+    }
+    const start = MONTH_FORMAT.test(req.query.start || '') ? req.query.start : null;
+    const end   = MONTH_FORMAT.test(req.query.end   || '') ? req.query.end   : null;
+    if (start && end && start > end) {
+        return res.status(400).json({ message: 'start must be ≤ end' });
+    }
+    const typeFilter = REPORT_TYPE_FILTERS.has(req.query.type) ? req.query.type : 'all';
+    let categorySet = null;
+    if (req.query.categories) {
+        const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
+        // Cap the category list at 50 to keep the URL/log surface bounded.
+        if (slugs.length > 50 || !slugs.every(s => SLUG_REGEX.test(s))) {
+            return res.status(400).json({ message: 'Invalid categories.' });
+        }
+        if (slugs.length) categorySet = new Set(slugs);
+    }
+
+    const allEntries = await fetchEntriesForReport(req, viewMode);
+    const entries = applyReportFilters(allEntries, { start, end, typeFilter, categorySet });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const usernameSlug = String(req.user.username).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'user';
+    const fileBase = `asset-management-${usernameSlug}-${dateStr}`;
+
+    if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
+        return writeCsvReport(res, entries);
+    }
+
+    // format === 'pdf'
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`);
+    const summary = summarizeForReport(entries);
+    writePdfReport(res, {
+        entries,
+        summary,
+        meta: {
+            username: req.user.username,
+            viewMode,
+            start,
+            end,
+            typeFilter,
+            categories: categorySet ? [...categorySet] : null
+        }
+    });
 }));
 
 // ============ USER CATEGORIES (issue #70) ============

@@ -2923,8 +2923,8 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
 
     // Sidebar nav: route data-target clicks to the existing modals/sections.
-    // Items without data-target (Reports, Budgets, Goals) are aria-disabled
-    // and stay inert.
+    // Items without data-target (Budgets, Goals) are aria-disabled and stay
+    // inert; Reports opens its own modal (issue #92).
     document.querySelectorAll('.sidebar .nav-item[data-target]').forEach(item => {
         item.addEventListener('click', () => {
             const target = item.getAttribute('data-target');
@@ -2962,6 +2962,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (fab) fab.click();
                     break;
                 }
+                case 'reports':
+                    openReportsModal();
+                    break;
             }
         });
     });
@@ -3060,6 +3063,100 @@ document.addEventListener('DOMContentLoaded', () => {
             try { localStorage.setItem('assetmgmt.categoryChartType', type); } catch {}
         });
     });
+
+    // ============ REPORTS MODAL (issue #92) ============
+    //
+    // Lightweight modal: pick format + date range + type, then trigger a
+    // download by clicking a transient `<a href="/api/reports/export?…">`.
+    // The session cookie authenticates; CSRF isn't required for GET. The
+    // server respects the user's current viewMode (individual / combined /
+    // myshare) and replies with `Content-Disposition: attachment` so the
+    // browser saves the file rather than navigating to it.
+    function openReportsModal() {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.display = 'block';
+
+        const start = (filterState && filterState.start) || '';
+        const end = (filterState && filterState.end) || '';
+        const typeF = (filterState && filterState.type) || 'all';
+        const viewMode = currentViewMode || 'individual';
+
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 480px;">
+                <span class="close" id="closeReportsModal">&times;</span>
+                <h2>${t('report.title')}</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">${t('report.help')}</p>
+
+                <div class="form-group">
+                    <label>${t('report.format')}</label>
+                    <div style="display: flex; gap: 16px; align-items: center; padding-top: 6px;">
+                        <label style="display: flex; gap: 6px; align-items: center; cursor: pointer;"><input type="radio" name="reportFormat" value="pdf" checked> PDF</label>
+                        <label style="display: flex; gap: 6px; align-items: center; cursor: pointer;"><input type="radio" name="reportFormat" value="csv"> CSV</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="reportStart">${t('report.startMonth')}</label>
+                    <input type="month" id="reportStart" value="${escapeHtml(start)}">
+                </div>
+                <div class="form-group">
+                    <label for="reportEnd">${t('report.endMonth')}</label>
+                    <input type="month" id="reportEnd" value="${escapeHtml(end)}">
+                </div>
+                <div class="form-group">
+                    <label for="reportType">${t('common.type')}</label>
+                    <select id="reportType">
+                        <option value="all" ${typeF === 'all' ? 'selected' : ''}>${t('type.all')}</option>
+                        <option value="income" ${typeF === 'income' ? 'selected' : ''}>${t('type.income')}</option>
+                        <option value="expense" ${typeF === 'expense' ? 'selected' : ''}>${t('type.expense')}</option>
+                    </select>
+                </div>
+
+                <p style="color: var(--color-text-muted); font-size: 0.8rem; margin-top: 12px;">${t('report.viewModeHint', { mode: viewMode })}</p>
+
+                <div style="display: flex; gap: 8px; margin-top: 1.25rem; justify-content: flex-end;">
+                    <button type="button" id="reportCancelBtn" class="edit-btn">${t('common.cancel')}</button>
+                    <button type="button" id="reportExportBtn" class="filter-btn">${t('report.export')}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+        overlay.querySelector('#closeReportsModal').addEventListener('click', cleanup);
+        overlay.querySelector('#reportCancelBtn').addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+        overlay.querySelector('#reportExportBtn').addEventListener('click', () => {
+            const fmt = overlay.querySelector('input[name="reportFormat"]:checked').value;
+            const startV = overlay.querySelector('#reportStart').value;
+            const endV = overlay.querySelector('#reportEnd').value;
+            const typeV = overlay.querySelector('#reportType').value;
+            if (startV && endV && startV > endV) {
+                alert(t('report.errStartAfterEnd'));
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.set('format', fmt);
+            params.set('viewMode', viewMode);
+            if (startV) params.set('start', startV);
+            if (endV) params.set('end', endV);
+            if (typeV && typeV !== 'all') params.set('type', typeV);
+            if (filterState && Array.isArray(filterState.categories) && filterState.categories.length) {
+                params.set('categories', filterState.categories.join(','));
+            }
+
+            const a = document.createElement('a');
+            a.href = '/api/reports/export?' + params.toString();
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            cleanup();
+        });
+    }
 
     // ============ SETTINGS MODAL ============
 
