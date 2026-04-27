@@ -2632,13 +2632,17 @@ function writePdfReport(res, { entries, summary, meta }) {
     doc.font('Courier').fontSize(9);
     doc.text('MONTH    TYPE        AMOUNT  DESCRIPTION');
     doc.text('-------- -------- ---------- ------------------------------------------------');
+    // Collapse any control whitespace (newlines / tabs / CR) in the
+    // description to a single space, otherwise pdfkit would wrap on the
+    // newline and shift subsequent columns out of alignment.
+    const oneLine = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     for (const e of entries) {
         const month = (e.month || '').slice(0, 7).padEnd(8);
         const type = (e.type || '').padEnd(8);
         const sign = e.type === 'income' ? '+' : '-';
         const amt = (sign + (parseFloat(e.amount) || 0).toFixed(2)).padStart(10);
         const tags = Array.isArray(e.tags) && e.tags.length ? ` [${e.tags.slice(0, 3).join(',')}]` : '';
-        const desc = ((e.description || '') + tags).slice(0, 50);
+        const desc = (oneLine(e.description) + tags).slice(0, 50);
         doc.text(`${month} ${type} ${amt}  ${desc}`);
     }
     doc.end();
