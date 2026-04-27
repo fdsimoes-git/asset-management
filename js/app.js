@@ -3074,13 +3074,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============ REPORTS MODAL (issue #92) ============
     //
-    // Lightweight modal: pick format + date range + type, then trigger a
-    // download by clicking a transient `<a href="/api/reports/export?…">`.
-    // Authentication and any CSRF requirements are enforced by the backend
-    // export endpoint. The server respects the user's current viewMode
-    // (individual / combined / myshare) and replies with
-    // `Content-Disposition: attachment` so the browser saves the file
-    // rather than navigating to it.
+    // Lightweight modal: pick format + date range + type, then request the
+    // export with `fetch(...)`, read the response as a Blob, and trigger
+    // the browser download by clicking a transient `<a>` that points to a
+    // temporary `blob:` URL. Going through fetch (rather than an `<a href>`
+    // navigation to the API URL) lets us surface 4xx/5xx responses as
+    // in-modal alerts instead of having the browser navigate the SPA away
+    // to a JSON error body. Authentication and any CSRF requirements are
+    // enforced by the backend export endpoint. The server respects the
+    // user's current viewMode (individual / combined / myshare) and
+    // replies with `Content-Disposition: attachment` so the browser saves
+    // the file rather than displaying it.
     function openReportsModal() {
         const overlay = document.createElement('div');
         overlay.className = 'modal';

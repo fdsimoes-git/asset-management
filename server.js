@@ -1262,13 +1262,14 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
 
     // Validate email format. Length + char check first so the regex never
     // sees an unbounded input (was a polynomial-ReDoS path: see issue #80
-    // / CodeQL #10). Regex itself uses bounded quantifiers as defense in
-    // depth — they overlap on `.` (the middle class still includes it),
-    // but bounding the repeats keeps any backtracking polynomial.
+    // / CodeQL #10). The regex uses bounded per-label quantifiers and an
+    // explicit `(label.)+TLD` structure so consecutive-dot domains like
+    // `a@..com` are rejected too, while real multi-label addresses
+    // (`user@sub.example.co.uk`) keep working.
     if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
@@ -2047,12 +2048,13 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
     }
 
     // Length + char check first so the regex never sees an unbounded input
-    // (issue #80 / CodeQL #11). Regex uses bounded quantifiers as defense
-    // in depth.
+    // (issue #80 / CodeQL #11). Regex uses bounded per-label quantifiers
+    // and an explicit `(label.)+TLD` structure so consecutive-dot domains
+    // like `a@..com` are rejected too — see /api/register for details.
     if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
@@ -2512,17 +2514,17 @@ function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
     return out;
 }
 
-// CSV escaping with formula-injection mitigation: cells starting with
-// `=`, `+`, `-`, `@`, tab, or CR can be parsed as formulas by Excel /
-// Google Sheets. User-controlled fields like description could otherwise
-// execute formulas when the report is opened. Prefix with an apostrophe
-// so the spreadsheet treats the value as text. (Bounded fields like
-// month / type / amount don't match the leading-char pattern, so they
-// pass through unchanged.)
+// CSV escaping with formula-injection mitigation: cells whose first
+// non-whitespace character is `=`, `+`, `-`, or `@` can be parsed as
+// formulas by Excel / Google Sheets — even with leading whitespace, since
+// many spreadsheet apps trim the cell before evaluating. Prefix the
+// value with an apostrophe so it's treated as text. (Bounded fields like
+// month / type / amount don't match the dangerous leading pattern, so
+// they pass through unchanged.)
 function csvEscape(v) {
     if (v == null) return '';
     let s = String(v);
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    if (/^\s*[=+\-@]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -2571,7 +2573,10 @@ function summarizeForReport(entries) {
     const byCategory = new Map();
     for (const e of entries) {
         if (e.type !== 'expense') continue;
-        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['(uncategorized)'];
+        // Match the dashboard / Budgets actuals: no-tag expenses bucket
+        // into 'other' so report PDFs use the same label as the rest of
+        // the UI.
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
         const share = (parseFloat(e.amount) || 0) / cats.length;
         for (const c of cats) {
             byCategory.set(c, (byCategory.get(c) || 0) + share);
@@ -2669,7 +2674,14 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
     if (start && end && start > end) {
         return res.status(400).json({ message: 'start must be ≤ end' });
     }
-    const typeFilter = REPORT_TYPE_FILTERS.has(req.query.type) ? req.query.type : 'all';
+    // Reject malformed `type` instead of silently widening to 'all' — same
+    // strictness as format / viewMode / start / end / categories.
+    const rawType = req.query.type;
+    const hasType = rawType != null && String(rawType) !== '';
+    if (hasType && !REPORT_TYPE_FILTERS.has(String(rawType))) {
+        return res.status(400).json({ message: 'Invalid type. Must be income, expense, or all.' });
+    }
+    const typeFilter = hasType ? String(rawType) : 'all';
     let categorySet = null;
     if (req.query.categories) {
         const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
