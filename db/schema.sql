@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_entries_user_couple_month ON entries(user_id, is_
 CREATE INDEX IF NOT EXISTS idx_invite_codes_used_by    ON invite_codes(used_by);
 CREATE INDEX IF NOT EXISTS idx_user_categories_user_id ON user_categories(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_budgets_unique
-    ON user_budgets (user_id, COALESCE(category_slug, ''), period);
+    ON user_budgets (user_id, (COALESCE(category_slug, '')), period);
 CREATE INDEX IF NOT EXISTS idx_user_budgets_user_id ON user_budgets(user_id);
 
 -- ── Idempotent column additions for existing deployments ─────────────

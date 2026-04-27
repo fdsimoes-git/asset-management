@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS user_budgets (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_budgets_unique
-    ON user_budgets (user_id, COALESCE(category_slug, ''), period);
+    ON user_budgets (user_id, (COALESCE(category_slug, '')), period);
 
 CREATE INDEX IF NOT EXISTS idx_user_budgets_user_id ON user_budgets(user_id);
 

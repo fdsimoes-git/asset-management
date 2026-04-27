@@ -3315,12 +3315,24 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         };
 
+        // Default-category rows have `label` seeded as the raw slug
+        // server-side; the rest of the app translates those via
+        // categoryLabel(slug) → i18n key `cat.<slug>`. Fall back to the
+        // server-provided label only when categoryLabel doesn't recognize
+        // the slug (custom or orphan categories).
+        const budgetRowLabel = (r) => {
+            if (!r || !r.slug) return (r && r.label) || '';
+            if (typeof categoryLabel !== 'function') return r.label || r.slug;
+            const localized = categoryLabel(r.slug);
+            return localized && localized !== r.slug ? localized : (r.label || r.slug);
+        };
+
         container.innerHTML = `
             <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 6px;">
                 ${t('budget.month')}: ${escapeHtml(data.month || '')}
             </div>
             ${renderRow('_overall', t('budget.overallLabel'), null, overall.amount, overall.actual, true)}
-            ${rows.map(r => renderRow(r.slug, r.label, r.color, r.amount, r.actual, false)).join('')}
+            ${rows.map(r => renderRow(r.slug, budgetRowLabel(r), r.color, r.amount, r.actual, false)).join('')}
         `;
 
         // Save on blur or Enter; clear via the explicit button.
