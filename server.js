@@ -2514,17 +2514,17 @@ function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
     return out;
 }
 
-// CSV escaping with formula-injection mitigation: cells starting with
-// `=`, `+`, `-`, `@`, tab, or CR can be parsed as formulas by Excel /
-// Google Sheets. User-controlled fields like description could otherwise
-// execute formulas when the report is opened. Prefix with an apostrophe
-// so the spreadsheet treats the value as text. (Bounded fields like
-// month / type / amount don't match the leading-char pattern, so they
-// pass through unchanged.)
+// CSV escaping with formula-injection mitigation: cells whose first
+// non-whitespace character is `=`, `+`, `-`, or `@` can be parsed as
+// formulas by Excel / Google Sheets — even with leading whitespace, since
+// many spreadsheet apps trim the cell before evaluating. Prefix the
+// value with an apostrophe so it's treated as text. (Bounded fields like
+// month / type / amount don't match the dangerous leading pattern, so
+// they pass through unchanged.)
 function csvEscape(v) {
     if (v == null) return '';
     let s = String(v);
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    if (/^\s*[=+\-@]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -2573,7 +2573,10 @@ function summarizeForReport(entries) {
     const byCategory = new Map();
     for (const e of entries) {
         if (e.type !== 'expense') continue;
-        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['(uncategorized)'];
+        // Match the dashboard / Budgets actuals: no-tag expenses bucket
+        // into 'other' so report PDFs use the same label as the rest of
+        // the UI.
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
         const share = (parseFloat(e.amount) || 0) / cats.length;
         for (const c of cats) {
             byCategory.set(c, (byCategory.get(c) || 0) + share);
@@ -2671,7 +2674,14 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
     if (start && end && start > end) {
         return res.status(400).json({ message: 'start must be ≤ end' });
     }
-    const typeFilter = REPORT_TYPE_FILTERS.has(req.query.type) ? req.query.type : 'all';
+    // Reject malformed `type` instead of silently widening to 'all' — same
+    // strictness as format / viewMode / start / end / categories.
+    const rawType = req.query.type;
+    const hasType = rawType != null && String(rawType) !== '';
+    if (hasType && !REPORT_TYPE_FILTERS.has(String(rawType))) {
+        return res.status(400).json({ message: 'Invalid type. Must be income, expense, or all.' });
+    }
+    const typeFilter = hasType ? String(rawType) : 'all';
     let categorySet = null;
     if (req.query.categories) {
         const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
