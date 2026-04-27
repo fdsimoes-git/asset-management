@@ -3188,7 +3188,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
-                URL.revokeObjectURL(url);
+                // Defer revocation by a tick so browsers (notably Safari)
+                // have actually started the download before the blob: URL
+                // is invalidated. Calling revoke synchronously after click
+                // can intermittently produce "failed" downloads on large
+                // blobs.
+                setTimeout(() => URL.revokeObjectURL(url), 0);
                 cleanup();
             } catch (e) {
                 console.error('Report export failed:', e);

@@ -2606,7 +2606,9 @@ function writePdfReport(res, { entries, summary, meta }) {
     doc.font('Helvetica').fontSize(10).fillColor('#444');
     doc.text(`User: ${meta.username}`);
     doc.text(`View: ${meta.viewMode}`);
-    if (meta.start || meta.end) doc.text(`Period: ${meta.start || 'beginning'} → ${meta.end || 'now'}`);
+    // ASCII separator — pdfkit's default Helvetica is WinAnsi-encoded and
+    // doesn't have a glyph for "→", which would render as a tofu box.
+    if (meta.start || meta.end) doc.text(`Period: ${meta.start || 'beginning'} to ${meta.end || 'now'}`);
     if (meta.typeFilter && meta.typeFilter !== 'all') doc.text(`Type: ${meta.typeFilter}`);
     if (meta.categories) doc.text(`Categories: ${meta.categories.join(', ')}`);
     doc.text(`Generated: ${new Date().toISOString()}`);
