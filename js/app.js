@@ -1585,11 +1585,16 @@ function renderSparkline(data, color) {
         const cx = (x0 + x1) / 2;
         d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
     }
+    // CSS variables (var(--…)) don't reliably resolve when set directly
+    // on SVG presentation attributes (notably in Safari). Routing through
+    // the `color` CSS property and using `currentColor` on the SVG nodes
+    // works across browsers and still lets the sparkline reskin when the
+    // theme palette changes.
     const safeColor = color || 'var(--primary)';
     const last = pts[pts.length - 1];
-    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%; height:32px;">
-        <path d="${d}" fill="none" stroke="${safeColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-        <circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="${safeColor}" />
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%; height:32px; color:${safeColor};">
+        <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="currentColor" />
     </svg>`;
 }
 

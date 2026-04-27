@@ -173,7 +173,12 @@
         html, body {
             /* `clip` rather than `hidden`: same overflow guard but doesn't
                make html/body a scroll container, so position: sticky on
-               the sidebar can engage against the viewport. */
+               the sidebar can engage against the viewport. The `hidden`
+               line is a fallback for browsers that don't support `clip`
+               (Chrome <90, Firefox <81, Safari <15.4) — those browsers
+               skip the second declaration and keep the overflow guard
+               at the cost of breaking sidebar stickiness. */
+            overflow-x: hidden;
             overflow-x: clip;
         }
 
@@ -2792,7 +2797,7 @@
     </div>
 
     <div class="app-shell">
-        <aside class="sidebar" id="primarySidebar" aria-label="Primary navigation">
+        <aside class="sidebar" id="primarySidebar" data-i18n-aria-label="nav.primaryNavigation" aria-label="Primary navigation">
             <div class="brand">
                 <div class="brand-mark" aria-hidden="true"></div>
                 <div>
@@ -3256,7 +3261,7 @@
                 </div>
             </section>
             <!-- Hero row: bignum net worth + KPI column -->
-            <section class="hero-row" id="heroRow" aria-label="Net worth summary">
+            <section class="hero-row" id="heroRow" data-i18n-aria-label="dash.netWorthSummary" aria-label="Net worth summary">
                 <div class="hero-networth">
                     <div class="period" data-i18n-title="kpi.netWorthHelp" title="Cumulative income minus expenses across all months in view. The percentage is the month-over-month change.">
                         <span data-i18n="dash.netBalance">Net Balance</span>
