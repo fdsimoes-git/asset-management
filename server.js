@@ -2658,7 +2658,9 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
     }
     const viewMode = String(req.query.viewMode || 'individual');
     if (!VALID_VIEW_MODES.has(viewMode)) {
-        return res.status(400).json({ message: 'Invalid viewMode.' });
+        return res.status(400).json({
+            message: `Invalid viewMode. Must be one of: ${[...VALID_VIEW_MODES].join(', ')}.`
+        });
     }
     // Reject malformed start/end with 400 instead of silently dropping the
     // bound — otherwise `start=2025-13` would quietly export the full
@@ -2690,8 +2692,12 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
     if (req.query.categories) {
         const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
         // Cap the category list at 50 to keep the URL/log surface bounded.
-        if (slugs.length > 50 || !slugs.every(s => SLUG_REGEX.test(s))) {
-            return res.status(400).json({ message: 'Invalid categories.' });
+        // Distinct messages per failure so callers know what to change.
+        if (slugs.length > 50) {
+            return res.status(400).json({ message: 'Too many categories. Maximum 50 allowed.' });
+        }
+        if (!slugs.every(s => SLUG_REGEX.test(s))) {
+            return res.status(400).json({ message: 'Invalid categories. Each slug must match the expected format.' });
         }
         if (slugs.length) categorySet = new Set(slugs);
     }
