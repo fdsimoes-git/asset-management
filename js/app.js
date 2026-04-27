@@ -3475,8 +3475,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const shouldDelete = isEmpty || v === 0;
                 // Visual feedback while the round-trip is in flight: disable
                 // the input + Clear button and mark the row aria-busy so SR
-                // users get the cue. The row gets re-rendered on success so
-                // these flags only matter on the brief in-flight window.
+                // users get the cue. The row gets re-rendered on success, so
+                // we only need to restore prior state on the error path —
+                // capture Clear's pre-request disabled state up-front so we
+                // can put it back exactly as `renderRow` left it.
+                const clearWasDisabled = clearBtn ? clearBtn.disabled : false;
                 row.setAttribute('aria-busy', 'true');
                 input.disabled = true;
                 if (clearBtn) clearBtn.disabled = true;
@@ -3509,7 +3512,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (row.isConnected) {
                         row.removeAttribute('aria-busy');
                         input.disabled = false;
-                        if (clearBtn) clearBtn.disabled = clearBtn.disabled && !(input.value); // restore prior state
+                        if (clearBtn) clearBtn.disabled = clearWasDisabled;
                     }
                 }
             };
