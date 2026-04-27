@@ -14,6 +14,7 @@ const { pool: dbPool, testConnection: testDbConnection } = require('./db/pool');
 const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
+const PDFDocument = require('pdfkit');  // For generating report PDFs (issue #92)
 const { GoogleGenAI, Type } = require('@google/genai');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -38,6 +39,23 @@ const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8VS.wG.ZyWQ/2t6WvTDWv1Q5I8bHHy
 
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// Shared email validator — used by /api/register and /api/user/email so the
+// two endpoints can't drift apart. Length + forbidden-char check runs first
+// so the regex never sees an unbounded input (was a polynomial-ReDoS path:
+// see issue #80 / CodeQL #10/#11). The regex itself uses bounded per-label
+// quantifiers + an explicit `(label.)+TLD` structure so consecutive-dot
+// domains like `a@..com` are rejected, while real multi-label addresses
+// (`user@sub.example.co.uk`) keep working. Returns null on success or an
+// error message string on failure (always the same generic message — no
+// information leakage about which specific check failed).
+const EMAIL_REGEX = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
+function validateEmailFormat(email) {
+    if (typeof email !== 'string') return 'Invalid email format';
+    if (email.length > 254 || /[<>]/.test(email)) return 'Invalid email format';
+    if (!EMAIL_REGEX.test(email)) return 'Invalid email format';
+    return null;
+}
 
 // ============ SMTP CONFIGURATION ============
 
@@ -683,11 +701,21 @@ const MAX_RESET_ATTEMPTS = 5;
 const RESET_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 function generateResetCode() {
+    // Rejection sampling: 256 % 36 = 4, so bytes >= 252 (the unused tail)
+    // are discarded. This makes every alphabet character equiprobable
+    // (issue #81 / CodeQL #9 — the previous `byte % 36` left the first
+    // 4 alphabet chars ~14% more likely than the rest).
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const bytes = crypto.randomBytes(8);
+    const max = 256 - (256 % alphabet.length);
     let code = '';
-    for (let i = 0; i < 8; i++) {
-        code += alphabet[bytes[i] % alphabet.length];
+    while (code.length < 8) {
+        const buf = crypto.randomBytes(8);
+        for (const b of buf) {
+            if (b < max) {
+                code += alphabet[b % alphabet.length];
+                if (code.length === 8) break;
+            }
+        }
     }
     return code;
 }
@@ -1032,6 +1060,17 @@ const pdfUploadLimiter = rateLimit({
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
+// Report export is bounded — PDF generation can be expensive on large
+// histories, and CSV streaming is cheap but worth bounding too.
+const reportExportLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many report exports. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
 const paypalOrderLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 5,
@@ -1238,13 +1277,11 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
-    if (email.length > 254 || /[<>]/.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
+    // Validate email format via the shared helper (see validateEmailFormat
+    // — kept in one place so /api/register and /api/user/email can't drift).
+    const emailError = validateEmailFormat(email);
+    if (emailError) {
+        return res.status(400).json({ message: emailError });
     }
 
     // Validate invite code before expensive operations
@@ -2020,12 +2057,10 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid email' });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
-    if (email.length > 254 || /[<>]/.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
+    // Validate email format via the shared helper (see validateEmailFormat).
+    const emailError = validateEmailFormat(email);
+    if (emailError) {
+        return res.status(400).json({ message: emailError });
     }
 
     const parts = email.split('@');
@@ -2434,6 +2469,496 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     }
 
     res.json({ message: 'Entry deleted successfully' });
+}));
+
+// ============ REPORT EXPORT (issue #92) ============
+
+const VALID_REPORT_FORMATS = new Set(['csv', 'pdf']);
+const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
+
+// Mirrors GET /api/entries' filtering (viewMode + couple/individual rules)
+// but with month=null so we get the full history, then applies range/type/
+// category filters in-process. Pulled out so CSV and PDF paths share the
+// exact same dataset.
+async function fetchEntriesForReport(req, viewMode, month = null) {
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+    if (viewMode === 'combined' && validPartner) {
+        return db.getCoupleEntries(req.user.id, validPartner.id, month);
+    }
+    if (viewMode === 'myshare' && validPartner) {
+        return db.getMyShareEntries(req.user.id, validPartner.id, month);
+    }
+    if (viewMode === 'myshare') {
+        // No partner — myshare collapses to the user's own entries.
+        return db.getIndividualEntries(req.user.id, month);
+    }
+    if (viewMode === 'individual' && validPartner) {
+        return db.getIndividualEntries(req.user.id, month);
+    }
+    return db.getEntriesByUser(req.user.id, month);
+}
+
+function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
+    let out = entries;
+    if (start) out = out.filter(e => (e.month || '') >= start);
+    if (end)   out = out.filter(e => (e.month || '') <= end);
+    if (typeFilter && typeFilter !== 'all') {
+        out = out.filter(e => e.type === typeFilter);
+    }
+    if (categorySet) {
+        out = out.filter(e => Array.isArray(e.tags) && e.tags.some(t => categorySet.has(t)));
+    }
+    out = out.slice().sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+    return out;
+}
+
+// CSV escaping with formula-injection mitigation: cells whose first
+// non-whitespace character is `=`, `+`, `-`, or `@` can be parsed as
+// formulas by Excel / Google Sheets — even with leading whitespace, since
+// many spreadsheet apps trim the cell before evaluating. Prefix the
+// value with an apostrophe so it's treated as text. (Bounded fields like
+// month / type / amount don't match the dangerous leading pattern, so
+// they pass through unchanged.)
+function csvEscape(v) {
+    if (v == null) return '';
+    let s = String(v);
+    if (/^\s*[=+\-@]/.test(s)) s = "'" + s;
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Per-format writer. Both write a header + rows; PDF additionally renders a
+// summary block and a category breakdown.
+// Honors the response stream's backpressure: when res.write returns false,
+// pause until 'drain' before writing the next row. Otherwise a user with a
+// long history could buffer the entire CSV in memory. We also resolve on
+// 'close' / 'error' so the loop short-circuits if the client disconnects
+// mid-export instead of hanging on a 'drain' that will never fire.
+async function writeCsvReport(res, entries) {
+    const writeLine = (chunk) => new Promise((resolve, reject) => {
+        if (res.writableEnded || res.destroyed) return resolve(false);
+        const ok = res.write(chunk);
+        if (ok) return resolve(true);
+        const cleanup = () => {
+            res.off('drain', onDrain);
+            res.off('close', onClose);
+            res.off('error', onErr);
+        };
+        const onDrain = () => { cleanup(); resolve(true); };
+        const onClose = () => { cleanup(); resolve(false); };
+        const onErr = (err) => { cleanup(); reject(err); };
+        res.once('drain', onDrain);
+        res.once('close', onClose);
+        res.once('error', onErr);
+    });
+    if (!(await writeLine('month,type,amount,description,categories,is_couple_expense\n'))) return;
+    for (const e of entries) {
+        const row = [
+            csvEscape(e.month),
+            csvEscape(e.type),
+            csvEscape(e.amount),
+            csvEscape(e.description),
+            csvEscape(Array.isArray(e.tags) ? e.tags.join('|') : ''),
+            csvEscape(e.isCoupleExpense ? 'true' : 'false')
+        ].join(',');
+        if (!(await writeLine(row + '\n'))) return; // client disconnected
+    }
+    if (!res.writableEnded) res.end();
+}
+
+function summarizeForReport(entries) {
+    const totals = entries.reduce((acc, e) => {
+        const amt = parseFloat(e.amount) || 0;
+        if (e.type === 'income') acc.income += amt;
+        else if (e.type === 'expense') acc.expense += amt;
+        return acc;
+    }, { income: 0, expense: 0 });
+    const net = totals.income - totals.expense;
+    const savingRate = totals.income > 0 ? ((totals.income - totals.expense) / totals.income) * 100 : 0;
+
+    // Category breakdown is for expenses only. When an entry has multiple
+    // tags, split the amount equally across them so the breakdown sums to
+    // the total (matches the dashboard's category chart logic).
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        // Match the dashboard / Budgets actuals: no-tag expenses bucket
+        // into 'other' so report PDFs use the same label as the rest of
+        // the UI.
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
+        const share = (parseFloat(e.amount) || 0) / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+    return { totals, net, savingRate, categories };
+}
+
+function writePdfReport(res, { entries, summary, meta }) {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+    // Wire up error handling on both ends of the pipe before piping.
+    // Without listeners, an EPIPE / abort during the download would emit
+    // an unhandled 'error' on the doc or res stream and crash the worker.
+    let streamFinished = false;
+    const abortDoc = () => {
+        try { if (typeof doc.destroy === 'function' && !doc.destroyed) doc.destroy(); }
+        catch (e) { /* best-effort */ }
+    };
+    doc.on('error', (err) => {
+        console.error('PDF report doc error:', err && err.code || err && err.name || 'Error');
+        if (!res.headersSent) {
+            res.status(500).end('Failed to generate PDF report');
+        } else if (!res.writableEnded) {
+            try { res.end(); } catch (e) { /* nothing more to do */ }
+        }
+    });
+    res.on('error', (err) => {
+        console.error('PDF report stream error:', err && err.code || err && err.name || 'Error');
+        abortDoc();
+    });
+    res.on('finish', () => { streamFinished = true; });
+    res.on('close', () => { if (!streamFinished) abortDoc(); });
+
+    doc.pipe(res);
+
+    // Header
+    doc.font('Helvetica-Bold').fontSize(18).text('Asset Management Report');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#444');
+    doc.text(`User: ${meta.username}`);
+    doc.text(`View: ${meta.viewMode}`);
+    // ASCII separator — pdfkit's default Helvetica is WinAnsi-encoded and
+    // doesn't have a glyph for "→", which would render as a tofu box.
+    if (meta.start || meta.end) doc.text(`Period: ${meta.start || 'beginning'} to ${meta.end || 'now'}`);
+    if (meta.typeFilter && meta.typeFilter !== 'all') doc.text(`Type: ${meta.typeFilter}`);
+    if (meta.categories) doc.text(`Categories: ${meta.categories.join(', ')}`);
+    doc.text(`Generated: ${new Date().toISOString()}`);
+    doc.moveDown();
+
+    // Summary block
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(13).text('Summary');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10);
+    // Format negatives as `-$X.XX` rather than `$-X.XX` so the sign reads
+    // before the currency symbol (matches the entries-table convention).
+    const fmt = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    doc.text(`Total income:    ${fmt(summary.totals.income)}`);
+    doc.text(`Total expenses:  ${fmt(summary.totals.expense)}`);
+    doc.text(`Net balance:     ${fmt(summary.net)}`);
+    doc.text(`Saving rate:     ${summary.savingRate.toFixed(1)}%`);
+    doc.text(`Entries:         ${entries.length}`);
+    doc.moveDown();
+
+    // Category breakdown
+    if (summary.categories.length) {
+        doc.font('Helvetica-Bold').fontSize(13).text('Expenses by category');
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(10);
+        for (const [cat, amt] of summary.categories) {
+            const pct = summary.totals.expense > 0 ? (amt / summary.totals.expense * 100).toFixed(1) : '0.0';
+            doc.text(`${cat.padEnd(22).slice(0, 22)} ${fmt(amt).padStart(12)}  (${pct}%)`);
+        }
+        doc.moveDown();
+    }
+
+    // Entries table — month, type, amount, description (truncated), tags
+    doc.font('Helvetica-Bold').fontSize(13).text(`Entries (${entries.length})`);
+    doc.moveDown(0.3);
+    doc.font('Courier').fontSize(9);
+    doc.text('MONTH    TYPE        AMOUNT  DESCRIPTION');
+    doc.text('-------- -------- ---------- ------------------------------------------------');
+    // Collapse any control whitespace (newlines / tabs / CR) in the
+    // description to a single space, otherwise pdfkit would wrap on the
+    // newline and shift subsequent columns out of alignment.
+    const oneLine = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    for (const e of entries) {
+        const month = (e.month || '').slice(0, 7).padEnd(8);
+        const type = (e.type || '').padEnd(8);
+        const sign = e.type === 'income' ? '+' : '-';
+        const amt = (sign + (parseFloat(e.amount) || 0).toFixed(2)).padStart(10);
+        const tags = Array.isArray(e.tags) && e.tags.length ? ` [${e.tags.slice(0, 3).join(',')}]` : '';
+        const desc = (oneLine(e.description) + tags).slice(0, 50);
+        doc.text(`${month} ${type} ${amt}  ${desc}`);
+    }
+    doc.end();
+}
+
+// requireAuth before the limiter so unauthenticated requests don't burn
+// quota slots and so authenticated requests get the per-user keyGen
+// (rather than falling back to the IP key).
+app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(async (req, res) => {
+    const format = String(req.query.format || '');
+    if (!VALID_REPORT_FORMATS.has(format)) {
+        return res.status(400).json({ message: 'Invalid format. Must be csv or pdf.' });
+    }
+    const viewMode = String(req.query.viewMode || 'individual');
+    if (!VALID_VIEW_MODES.has(viewMode)) {
+        return res.status(400).json({
+            message: `Invalid viewMode. Must be one of: ${[...VALID_VIEW_MODES].join(', ')}.`
+        });
+    }
+    // Reject malformed start/end with 400 instead of silently dropping the
+    // bound — otherwise `start=2025-13` would quietly export the full
+    // history.
+    const rawStart = req.query.start;
+    const rawEnd = req.query.end;
+    const hasStart = rawStart != null && String(rawStart) !== '';
+    const hasEnd = rawEnd != null && String(rawEnd) !== '';
+    if (hasStart && !MONTH_FORMAT.test(String(rawStart))) {
+        return res.status(400).json({ message: 'Invalid start. Expected YYYY-MM.' });
+    }
+    if (hasEnd && !MONTH_FORMAT.test(String(rawEnd))) {
+        return res.status(400).json({ message: 'Invalid end. Expected YYYY-MM.' });
+    }
+    const start = hasStart ? String(rawStart) : null;
+    const end = hasEnd ? String(rawEnd) : null;
+    if (start && end && start > end) {
+        return res.status(400).json({ message: 'start must be ≤ end' });
+    }
+    // Reject malformed `type` instead of silently widening to 'all' — same
+    // strictness as format / viewMode / start / end / categories.
+    const rawType = req.query.type;
+    const hasType = rawType != null && String(rawType) !== '';
+    if (hasType && !REPORT_TYPE_FILTERS.has(String(rawType))) {
+        return res.status(400).json({ message: 'Invalid type. Must be income, expense, or all.' });
+    }
+    const typeFilter = hasType ? String(rawType) : 'all';
+    let categorySet = null;
+    if (req.query.categories) {
+        const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
+        // Cap the category list at 50 to keep the URL/log surface bounded.
+        // Distinct messages per failure so callers know what to change.
+        if (slugs.length > 50) {
+            return res.status(400).json({ message: 'Too many categories. Maximum 50 allowed.' });
+        }
+        if (!slugs.every(s => SLUG_REGEX.test(s))) {
+            return res.status(400).json({ message: 'Invalid categories. Each slug must match the expected format.' });
+        }
+        if (slugs.length) categorySet = new Set(slugs);
+    }
+
+    const allEntries = await fetchEntriesForReport(req, viewMode);
+    const entries = applyReportFilters(allEntries, { start, end, typeFilter, categorySet });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const usernameSlug = String(req.user.username).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'user';
+    const fileBase = `asset-management-${usernameSlug}-${dateStr}`;
+
+    // Reports contain personal financial data. `no-store` keeps the
+    // payload out of intermediary caches and the browser's back/forward
+    // cache; `Pragma: no-cache` is the HTTP/1.0 equivalent for the rare
+    // proxy that still honors it.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+
+    if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
+        return writeCsvReport(res, entries);
+    }
+
+    // format === 'pdf'
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`);
+    const summary = summarizeForReport(entries);
+    writePdfReport(res, {
+        entries,
+        summary,
+        meta: {
+            username: req.user.username,
+            viewMode,
+            start,
+            end,
+            typeFilter,
+            categories: categorySet ? [...categorySet] : null
+        }
+    });
+}));
+
+// ============ USER BUDGETS (issue #93) ============
+
+const BUDGET_OVERALL_TOKEN = '_overall';
+// Schema is NUMERIC(12,2) — bound the input far below the column limit so
+// typos don't slip into the row.
+const BUDGET_AMOUNT_MAX = 100_000_000;
+
+// Compute actual spend per category + overall for the given month + view
+// mode. Multi-tag expenses are split equally across their tags, and
+// expenses with no tags bucket into 'other' — both rules match the
+// dashboard's category chart so per-category sums add up to the overall.
+async function computeBudgetActuals(req, viewMode, month) {
+    const entries = await fetchEntriesForReport(req, viewMode, month);
+    let overall = 0;
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        const amt = parseFloat(e.amount) || 0;
+        overall += amt;
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
+        const share = amt / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    return { overall, byCategory };
+}
+
+function currentMonthYYYYMM() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// GET /api/budgets — returns the user's budgets joined with their
+// categories and the actual spend for the requested month, ready for
+// the UI to render rows + progress bars without further fetches.
+//
+// Query params:
+//   month=YYYY-MM   client-supplied month so timezone differences between
+//                   the client (where entries get their month from) and
+//                   the server don't shift the tracking window. Defaults
+//                   to the server clock if omitted.
+//   viewMode=…      same semantics as /api/entries (individual / combined
+//                   / myshare). Defaults to 'individual' so couple users
+//                   don't accidentally see partner-shared spend bucketed
+//                   into their personal budget.
+app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
+    const requestedViewMode = req.query.viewMode || 'individual';
+    if (!VALID_VIEW_MODES.has(requestedViewMode)) {
+        return res.status(400).json({ message: 'Invalid viewMode.' });
+    }
+    let month = req.query.month;
+    if (month != null && month !== '') {
+        if (typeof month !== 'string' || !MONTH_FORMAT.test(month)) {
+            return res.status(400).json({ message: 'Invalid month. Expected YYYY-MM.' });
+        }
+    } else {
+        month = currentMonthYYYYMM();
+    }
+
+    // Use the self-healing helper (matches /api/categories) so a brand-new
+    // account that hits /api/budgets first still gets the 17 default
+    // categories seeded — otherwise the modal would render with no rows.
+    const [budgets, categories, actuals] = await Promise.all([
+        db.getUserBudgets(req.user.id),
+        getCategoriesForUserSelfHeal(req.user.id),
+        computeBudgetActuals(req, requestedViewMode, month)
+    ]);
+
+    const budgetBySlug = new Map();
+    let overallBudget = 0;
+    for (const b of budgets) {
+        if (b.categorySlug == null) overallBudget = b.amount;
+        else budgetBySlug.set(b.categorySlug, b.amount);
+    }
+
+    // byCategory must include every slug the actuals touched, not just
+    // the user's current category list — otherwise spend on orphan slugs
+    // (a category the user deleted but kept on existing entries) and on
+    // the synthetic 'other' bucket (no-tag expenses) would be invisible
+    // in the modal even though it's still summed into overall.actual.
+    // We render the user's categories first (in their existing order),
+    // then append any extra slugs from actuals as orphan rows with a
+    // neutral label/color.
+    //
+    // Return unrounded actuals so the per-category sums add up exactly to
+    // the overall (multi-tag splits create fractional-cent shares; display
+    // rounding is the UI's job).
+    const userSlugSet = new Set(categories.map(c => c.slug));
+    const byCategory = categories.map(c => ({
+        slug: c.slug,
+        label: c.label,
+        color: c.color,
+        amount: budgetBySlug.get(c.slug) || 0,
+        actual: actuals.byCategory.get(c.slug) || 0
+    }));
+    for (const [slug, actual] of actuals.byCategory.entries()) {
+        if (userSlugSet.has(slug)) continue;
+        byCategory.push({
+            slug,
+            label: slug, // raw slug — user has no row for it (deleted or 'other')
+            color: '#94a3b8', // neutral gray for orphan rows
+            amount: budgetBySlug.get(slug) || 0,
+            actual,
+            isOrphan: true
+        });
+    }
+
+    // Currency is intentionally absent from the response — money formatting
+    // is the client's job and follows getLang() (BRL for pt-BR, USD for
+    // en-US), the same rule the hero KPIs use. If we ever want a per-user
+    // currency, persist it on `users` and surface it from a single place.
+    res.json({
+        month,
+        overall: {
+            amount: overallBudget,
+            actual: actuals.overall
+        },
+        byCategory
+    });
+}));
+
+// PUT /api/budgets/:slug — set or update a single budget. The special
+// slug `_overall` (BUDGET_OVERALL_TOKEN) targets the user's NULL-slug
+// "overall" budget row.
+app.put('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+
+    // Round to 2dp BEFORE validating — the column is NUMERIC(12,2) so any
+    // sub-cent value (e.g. 0.004) would be silently rounded to 0.00 by
+    // Postgres on insert, leaving a stranded zero-amount row. Validate
+    // the rounded value so anything that would land at 0 is rejected
+    // up-front. The UI deletes-on-zero; callers that want to remove a
+    // budget should hit DELETE /api/budgets/:slug.
+    const rawAmount = Number(req.body && req.body.amount);
+    if (!Number.isFinite(rawAmount)) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
+    }
+    const amount = Math.round((rawAmount + Number.EPSILON) * 100) / 100;
+    if (amount <= 0 || amount > BUDGET_AMOUNT_MAX) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
+    }
+
+    // For non-overall budgets, require the slug to be one of the user's
+    // own categories so we don't accumulate orphan rows for slugs the user
+    // doesn't have.
+    if (!isOverall) {
+        const userSlugs = await db.getUserCategorySlugs(req.user.id);
+        if (!userSlugs.includes(slugParam)) {
+            return res.status(404).json({ message: 'Category not found for this user.' });
+        }
+    }
+
+    const budget = await db.upsertUserBudget(
+        req.user.id,
+        isOverall ? null : slugParam,
+        amount
+    );
+    res.json(budget);
+}));
+
+// DELETE /api/budgets/:slug
+app.delete('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+    const removed = await db.deleteUserBudget(req.user.id, isOverall ? null : slugParam);
+    if (!removed) {
+        return res.status(404).json({ message: 'Budget not found.' });
+    }
+    res.json({ message: 'Budget removed.' });
 }));
 
 // ============ USER CATEGORIES (issue #70) ============

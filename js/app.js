@@ -112,10 +112,10 @@ let hasPartner = false;
 // with CATEGORY_COLORS regardless of sort order.
 function buildCategoryChart(ctx, type, colors) {
     const commonTooltip = {
-        backgroundColor: '#1e293b',
+        backgroundColor: colors.cardBg || '#FBF6EC',
         titleColor: colors.textPrimary,
         bodyColor: colors.textSecondary,
-        borderColor: 'rgba(148, 163, 184, 0.2)',
+        borderColor: colors.gridColor,
         borderWidth: 1,
         padding: 12,
         cornerRadius: 8
@@ -124,7 +124,7 @@ function buildCategoryChart(ctx, type, colors) {
         display: true,
         text: t('chart.expensesByCategory'),
         color: colors.textPrimary,
-        font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+        font: { size: 14, weight: '500', family: _chartSerifFamily() },
         padding: { bottom: 20 }
     };
     if (type === 'doughnut') {
@@ -150,7 +150,7 @@ function buildCategoryChart(ctx, type, colors) {
                         position: 'right',
                         labels: {
                             color: colors.textSecondary,
-                            font: { size: 11, family: "'DM Sans', sans-serif" },
+                            font: { size: 11, family: _chartFontFamily() },
                             boxWidth: 12,
                             padding: 8
                         }
@@ -206,10 +206,17 @@ function buildCategoryChart(ctx, type, colors) {
             scales: {
                 x: {
                     beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: t('chart.axisAmount'),
+                        color: colors.textSecondary,
+                        font: { family: _chartFontFamily(), size: 11, weight: '500' },
+                        padding: { top: 6, bottom: 0 }
+                    },
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'DM Sans', sans-serif" },
+                        font: { family: _chartFontFamily() },
                         callback: function(value) { return '$' + value.toFixed(0); }
                     }
                 },
@@ -217,7 +224,7 @@ function buildCategoryChart(ctx, type, colors) {
                     grid: { display: false },
                     ticks: {
                         color: colors.textSecondary,
-                        font: { size: 11, weight: '500', family: "'DM Sans', sans-serif" }
+                        font: { size: 11, weight: '500', family: _chartFontFamily() }
                     }
                 }
             }
@@ -237,6 +244,82 @@ function setCategoryChartType(type) {
     }
 }
 
+// Tear down and rebuild every chart so it picks up the freshly-resolved
+// CSS palette and font tokens — used after Appearance changes (theme /
+// typography). Safe to call before charts have been initialised.
+function reapplyChartTheme() {
+    [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
+        if (c) c.destroy();
+    });
+    monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
+    initializeCharts();
+    if (Array.isArray(currentFilteredEntries)) {
+        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+    }
+}
+
+// Resolves the active --sans token to a concrete font-family string for
+// Chart.js (which doesn't accept var(--…)). Called from chart configs in
+// scopes where the full palette isn't already in hand.
+function _chartFontFamily() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--sans');
+    return (v && v.trim()) || "Geist, ui-sans-serif, system-ui, sans-serif";
+}
+
+// Serif counterpart for chart titles — tracks --serif so editorial vs.
+// modern vs. system typography presets reach the chart titles too.
+function _chartSerifFamily() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--serif');
+    return (v && v.trim()) || "'Instrument Serif', Georgia, serif";
+}
+
+// Read theme palette from CSS custom properties so chart colors track the
+// active design system (warm earthy "Clay & Sand"). Falls back to the
+// hard-coded defaults if a variable is missing — keeps Chart.js happy when
+// the page is rendered before the stylesheet has fully resolved.
+function readThemePalette() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, fallback) => {
+        const raw = cs.getPropertyValue(name);
+        return raw && raw.trim() ? raw.trim() : fallback;
+    };
+    // Canvas (Chart.js) doesn't accept CSS color-mix() strings, so we mix the
+    // accent fill ourselves by parsing the hex token to rgba.
+    const hexToRgba = (hex, alpha) => {
+        const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || '').trim());
+        if (!m) return 'rgba(184, 89, 58, ' + alpha + ')';
+        let h = m[1];
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    };
+    const primary = v('--primary', '#B8593A');
+    const negative = v('--negative', primary);
+    const positive = v('--positive', '#6B8248');
+    const accent1 = v('--accent-1', '#7A8450');
+    const accent2 = v('--accent-2', '#C89A3E');
+    // Chart.js wants a concrete font-family string — pull it from --sans so
+    // chart legends/ticks track the active typography preset.
+    const sansFamily = v('--sans', "'Geist', sans-serif");
+    return {
+        textPrimary: v('--ink', '#26201A'),
+        textSecondary: v('--ink-2', '#5A4E3F'),
+        textMuted: v('--ink-3', '#8A7A65'),
+        gridColor: v('--line', '#DDD0B8'),
+        cardBg: v('--card', '#FBF6EC'),
+        accent: primary,
+        accentGlow: hexToRgba(primary, 0.22),
+        success: positive,
+        danger: negative,
+        olive: accent1,
+        ochre: accent2,
+        primarySoft: v('--primary-soft', '#E8BFAB'),
+        fontFamily: sansFamily,
+    };
+}
+
 // Initialize charts
 function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
@@ -244,19 +327,21 @@ function initializeCharts() {
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
     const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
-    // Dark theme colors
-    const colors = {
-        textPrimary: '#f8fafc',
-        textSecondary: '#94a3b8',
-        textMuted: '#64748b',
-        gridColor: 'rgba(148, 163, 184, 0.1)',
-        accent: '#f59e0b',
-        accentGlow: 'rgba(245, 158, 11, 0.2)',
-        success: '#10b981',
-        danger: '#ef4444'
-    };
+    const colors = readThemePalette();
 
-    // Common chart options for dark theme
+    // Reusable axis-title config — same look across all charts so the
+    // legends/ticks aren't mystery numbers.
+    const axisTitle = (text) => ({
+        display: true,
+        text: text,
+        color: colors.textSecondary,
+        font: { family: _chartFontFamily(), size: 11, weight: '500' },
+        padding: { top: 6, bottom: 0 }
+    });
+
+    // Common chart options driven by the current CSS theme palette —
+    // colors and fonts come from readThemePalette() above, which resolves
+    // the active --ink / --line / --sans / etc. tokens.
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -266,36 +351,38 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'DM Sans', sans-serif"
+                        family: _chartFontFamily()
                     },
                     padding: 15
                 }
             },
             tooltip: {
-                backgroundColor: '#1e293b',
+                backgroundColor: colors.cardBg || '#FBF6EC',
                 titleColor: colors.textPrimary,
                 bodyColor: colors.textSecondary,
-                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderColor: colors.gridColor,
                 borderWidth: 1,
                 padding: 12,
                 cornerRadius: 8,
-                titleFont: { family: "'DM Sans', sans-serif", weight: '600' },
-                bodyFont: { family: "'DM Sans', sans-serif" }
+                titleFont: { family: _chartFontFamily(), weight: '600' },
+                bodyFont: { family: _chartFontFamily() }
             }
         },
         scales: {
             y: {
                 beginAtZero: true,
+                title: axisTitle(t('chart.axisAmount')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             },
             x: {
+                title: axisTitle(t('chart.axisMonth')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -304,7 +391,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             }
         }
@@ -320,16 +407,16 @@ function initializeCharts() {
                     color: colors.textSecondary,
                     font: {
                         size: 12,
-                        family: "'DM Sans', sans-serif"
+                        family: _chartFontFamily()
                     },
                     padding: 15
                 }
             },
             tooltip: {
-                backgroundColor: '#1e293b',
+                backgroundColor: colors.cardBg || '#FBF6EC',
                 titleColor: colors.textPrimary,
                 bodyColor: colors.textSecondary,
-                borderColor: 'rgba(148, 163, 184, 0.2)',
+                borderColor: colors.gridColor,
                 borderWidth: 1,
                 padding: 12,
                 cornerRadius: 8,
@@ -348,19 +435,21 @@ function initializeCharts() {
         scales: {
             y: {
                 beginAtZero: true,
+                title: axisTitle(t('chart.axisAmount')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
                 },
                 ticks: {
                     color: colors.textMuted,
-                    font: { family: "'DM Sans', sans-serif" },
+                    font: { family: _chartFontFamily() },
                     callback: function(value) {
                         return '$' + value.toFixed(0);
                     }
                 }
             },
             x: {
+                title: axisTitle(t('chart.axisMonth')),
                 grid: {
                     color: colors.gridColor,
                     drawBorder: false
@@ -369,7 +458,7 @@ function initializeCharts() {
                     color: colors.textMuted,
                     maxRotation: 45,
                     minRotation: 45,
-                    font: { family: "'DM Sans', sans-serif" }
+                    font: { family: _chartFontFamily() }
                 }
             }
         }
@@ -387,7 +476,7 @@ function initializeCharts() {
                 tension: 0.4,
                 fill: true,
                 pointBackgroundColor: colors.accent,
-                pointBorderColor: '#0f172a',
+                pointBorderColor: colors.cardBg,
                 pointBorderWidth: 2,
                 pointRadius: 5,
                 pointHoverRadius: 7,
@@ -416,7 +505,7 @@ function initializeCharts() {
                             type: 'line',
                             yMin: 0,
                             yMax: 0,
-                            borderColor: 'rgba(148, 163, 184, 0.35)',
+                            borderColor: colors.gridColor,
                             borderWidth: 1,
                             borderDash: [4, 4]
                         }
@@ -434,8 +523,8 @@ function initializeCharts() {
                 {
                     label: t('chart.income'),
                     data: [],
-                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                    borderColor: colors.success,
+                    backgroundColor: colors.olive,
+                    borderColor: colors.olive,
                     borderWidth: 2,
                     borderRadius: 6,
                     hoverBackgroundColor: colors.success
@@ -443,8 +532,8 @@ function initializeCharts() {
                 {
                     label: t('chart.expenses'),
                     data: [],
-                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                    borderColor: colors.danger,
+                    backgroundColor: colors.accent,
+                    borderColor: colors.accent,
                     borderWidth: 2,
                     borderRadius: 6,
                     hoverBackgroundColor: colors.danger
@@ -481,7 +570,7 @@ function initializeCharts() {
                     position: 'bottom',
                     labels: {
                         color: colors.textSecondary,
-                        font: { size: 10, family: "'DM Sans', sans-serif" },
+                        font: { size: 10, family: _chartFontFamily() },
                         boxWidth: 12,
                         padding: 10
                     }
@@ -490,7 +579,7 @@ function initializeCharts() {
                     display: true,
                     text: t('chart.expenseCatByMonth'),
                     color: colors.textPrimary,
-                    font: { size: 14, weight: '600', family: "'Fraunces', serif" },
+                    font: { size: 14, weight: '600', family: _chartSerifFamily() },
                     padding: { bottom: 15 }
                 },
                 tooltip: {
@@ -513,21 +602,23 @@ function initializeCharts() {
             scales: {
                 x: {
                     stacked: true,
+                    title: axisTitle(t('chart.axisMonth')),
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
                         maxRotation: 45,
                         minRotation: 45,
-                        font: { family: "'DM Sans', sans-serif" }
+                        font: { family: _chartFontFamily() }
                     }
                 },
                 y: {
                     stacked: true,
                     beginAtZero: true,
+                    title: axisTitle(t('chart.axisAmount')),
                     grid: { color: colors.gridColor, drawBorder: false },
                     ticks: {
                         color: colors.textMuted,
-                        font: { family: "'DM Sans', sans-serif" },
+                        font: { family: _chartFontFamily() },
                         callback: function(value) {
                             return '$' + value.toFixed(0);
                         }
@@ -648,6 +739,7 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
         const avgIncome = incomeValues.reduce((a, b) => a + b, 0) / months.length;
         const avgExpense = expenseValues.reduce((a, b) => a + b, 0) / months.length;
 
+        const themePalette = readThemePalette();
         const annotations = {};
 
         if (avgIncome > 0) {
@@ -655,16 +747,16 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgIncome,
                 yMax: avgIncome,
-                borderColor: '#10b981',
+                borderColor: themePalette.olive,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgIncome', { value: avgIncome.toFixed(0) }),
                     position: 'start',
-                    backgroundColor: 'rgba(16, 185, 129, 0.85)',
-                    color: '#fff',
-                    font: { size: 11, family: "'DM Sans', sans-serif" },
+                    backgroundColor: themePalette.olive,
+                    color: themePalette.cardBg,
+                    font: { size: 11, family: _chartFontFamily() },
                     padding: 4
                 }
             };
@@ -675,16 +767,16 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgExpense,
                 yMax: avgExpense,
-                borderColor: '#ef4444',
+                borderColor: themePalette.accent,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgExpenses', { value: avgExpense.toFixed(0) }),
                     position: 'end',
-                    backgroundColor: 'rgba(239, 68, 68, 0.85)',
-                    color: '#fff',
-                    font: { size: 11, family: "'DM Sans', sans-serif" },
+                    backgroundColor: themePalette.accent,
+                    color: themePalette.cardBg,
+                    font: { size: 11, family: _chartFontFamily() },
                     padding: 4
                 }
             };
@@ -1327,14 +1419,219 @@ function updateSummary(entriesToShow) {
     const expensesEl = document.getElementById('totalExpenses');
     const netEl = document.getElementById('netBalance');
 
-    incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
-    incomeEl.style.color = '#10b981';
+    if (incomeEl) {
+        incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
+        incomeEl.style.color = 'var(--positive)';
+    }
+    if (expensesEl) {
+        expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
+        expensesEl.style.color = 'var(--negative)';
+    }
+    if (netEl) {
+        netEl.textContent = `$${netBalance.toFixed(2)}`;
+        netEl.style.color = netBalance >= 0 ? 'var(--ink)' : 'var(--negative)';
+    }
 
-    expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
-    expensesEl.style.color = '#ef4444';
+    // Hero / KPI row
+    updateHeroKpis(entriesToShow, { totalIncome, totalExpenses, netBalance });
+}
 
-    netEl.textContent = `$${netBalance.toFixed(2)}`;
-    netEl.style.color = netBalance >= 0 ? '#f59e0b' : '#ef4444';
+// --- Hero net-worth + KPI column ---
+// Renders the bignum net-worth figure, three KPI cards (income/expense/saving
+// rate) with sparklines, and month-over-month delta pills. The figures sum
+// the entries currently visible to the user (filters + view mode applied) so
+// they always reflect what's on screen.
+function updateHeroKpis(entriesToShow, totals) {
+    const heroInt = document.getElementById('heroNetWorthInt');
+    if (!heroInt) return; // hero row not in this page
+
+    // Localize currency formatting to the active app language. EN → USD/$,
+    // PT → BRL/R$ — matches the symbol the chart strings already use in
+    // PT (chart.avgIncome / chart.avgExpenses say "R$"). Drives both the
+    // hero bignum and the +/− delta pill so symbol, grouping, and decimal
+    // separator all stay consistent.
+    const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+    const locale = isPt ? 'pt-BR' : 'en-US';
+    const currency = isPt ? 'BRL' : 'USD';
+    const currencyFmt0 = new Intl.NumberFormat(locale, {
+        style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0
+    });
+    const currencyFmt2 = new Intl.NumberFormat(locale, {
+        style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+    // Plain (no currency) integer formatter for KPI value spans, where
+    // the currency symbol lives in a separate `.unit` element.
+    const intFmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+    const fmt = (n) => intFmt.format(Math.round(Math.abs(n)));
+    const fmtSigned = (n) => (n >= 0 ? '+' : '-') + currencyFmt0.format(Math.abs(n));
+    // Currency symbol pulled from formatToParts so we get whatever symbol
+    // the active locale uses ("R$" for pt-BR, "$" for en-US, etc.).
+    const currencySymbol = (() => {
+        const sym = currencyFmt0.formatToParts(0).find(p => p.type === 'currency');
+        return sym ? sym.value : (isPt ? 'R$' : '$');
+    })();
+    const kpiIncomeUnit = document.getElementById('kpiIncomeUnit');
+    if (kpiIncomeUnit) kpiIncomeUnit.textContent = currencySymbol;
+    const kpiExpenseUnit = document.getElementById('kpiExpenseUnit');
+    if (kpiExpenseUnit) kpiExpenseUnit.textContent = currencySymbol;
+
+    // Split the bignum into "currency symbol prefix" / "integer with grouping" /
+    // "decimal" parts via formatToParts so the prefix span shows the right
+    // symbol ($ vs R$), the integer span has the locale's grouping
+    // separators, and the decimal span carries the right separator (`.`
+    // vs `,`).
+    const netBalance = totals.netBalance;
+    const netParts = currencyFmt2.formatToParts(Math.abs(netBalance));
+    const intIdx = netParts.findIndex(p => p.type === 'integer');
+    const decIdx = netParts.findIndex(p => p.type === 'decimal');
+    const prefix = netParts.slice(0, intIdx >= 0 ? intIdx : netParts.length).map(p => p.value).join('');
+    const integer = netParts
+        .slice(intIdx >= 0 ? intIdx : 0, decIdx >= 0 ? decIdx : netParts.length)
+        .filter(p => p.type === 'integer' || p.type === 'group')
+        .map(p => p.value)
+        .join('');
+    const decimal = decIdx >= 0 ? netParts.slice(decIdx).map(p => p.value).join('') : '';
+    heroInt.textContent = integer;
+
+    const heroDec = document.getElementById('heroNetWorthDec');
+    if (heroDec) heroDec.textContent = decimal;
+
+    const heroPre = document.getElementById('heroNetWorthPre');
+    if (heroPre) heroPre.textContent = (netBalance < 0 ? '−' : '') + prefix;
+
+    // Group entries by year-month
+    const byMonth = new Map();
+    for (const e of entriesToShow) {
+        const ym = (e.month || '').slice(0, 7); // expects "YYYY-MM" or "YYYY-MM-DD"
+        if (!ym) continue;
+        if (!byMonth.has(ym)) byMonth.set(ym, { income: 0, expense: 0 });
+        const bucket = byMonth.get(ym);
+        const amt = parseFloat(e.amount) || 0;
+        if (e.type === 'income') bucket.income += amt;
+        else if (e.type === 'expense') bucket.expense += amt;
+    }
+    const months = [...byMonth.keys()].sort();
+    const last6 = months.slice(-6);
+    const incomeSeries = last6.map(m => byMonth.get(m).income);
+    const expenseSeries = last6.map(m => byMonth.get(m).expense);
+    const savingSeries = last6.map(m => {
+        const b = byMonth.get(m);
+        return b.income > 0 ? Math.round(((b.income - b.expense) / b.income) * 100) : 0;
+    });
+
+    // Period label = latest month in view
+    const heroPeriod = document.getElementById('heroPeriodLabel');
+    if (heroPeriod) {
+        const latest = months[months.length - 1];
+        if (latest) {
+            const [y, m] = latest.split('-');
+            const dt = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+            // Reuses the function-scope `locale` derived from getLang() so a
+            // Portuguese UI shows "ABRIL DE 2026" instead of "APRIL 2026".
+            heroPeriod.textContent = dt.toLocaleString(locale, { month: 'long', year: 'numeric' }).toUpperCase();
+        } else {
+            heroPeriod.textContent = '—';
+        }
+    }
+
+    // Net-worth MoM delta: compare the running cumulative net to the prior
+    // month's running cumulative.
+    let cumPrev = 0, cumLatest = 0;
+    let running = 0;
+    months.forEach((m, i) => {
+        const b = byMonth.get(m);
+        running += (b.income - b.expense);
+        if (i === months.length - 2) cumPrev = running;
+        if (i === months.length - 1) cumLatest = running;
+    });
+    if (months.length < 2) cumPrev = 0;
+    const heroDelta = document.getElementById('heroDelta');
+    const heroDeltaMeta = document.getElementById('heroDeltaMeta');
+    if (heroDelta) {
+        const change = cumLatest - cumPrev;
+        if (months.length < 2 || cumPrev === 0 || !isFinite(cumPrev)) {
+            // Percent-change off a zero baseline is undefined — show an em
+            // dash instead of a misleading "▲ 0.0%".
+            heroDelta.textContent = '—';
+            heroDelta.classList.remove('up', 'down');
+        } else {
+            const pct = (change / Math.abs(cumPrev)) * 100;
+            heroDelta.textContent = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(1) + '%';
+            heroDelta.classList.toggle('up', change >= 0);
+            heroDelta.classList.toggle('down', change < 0);
+        }
+    }
+    if (heroDeltaMeta) {
+        const change = cumLatest - cumPrev;
+        heroDeltaMeta.textContent = (months.length >= 2)
+            ? `${fmtSigned(change)} ${t('dash.vsLastMonth')}`
+            : '';
+    }
+
+    // KPI cards: current-month income / expense / saving rate, with MoM delta
+    // and a 6-point sparkline.
+    const latestM = byMonth.get(months[months.length - 1]) || { income: 0, expense: 0 };
+    const prevM = byMonth.get(months[months.length - 2]) || { income: 0, expense: 0 };
+    const setKpi = (idValue, idDelta, idSpark, value, prev, series, opts = {}) => {
+        const valEl = document.getElementById(idValue);
+        if (valEl) valEl.textContent = opts.percent ? Math.round(value).toString() : fmt(value);
+        const deltaEl = document.getElementById(idDelta);
+        if (deltaEl) {
+            if (prev === 0 || !isFinite(prev)) {
+                deltaEl.textContent = '—';
+                deltaEl.classList.remove('up', 'down');
+            } else {
+                // For percent-valued KPIs (e.g. saving rate) the delta is a
+                // point change, not a percent-of-percent. Showing the latter
+                // would label e.g. 10% → 20% as "+100.0 pts" instead of +10.
+                const delta = opts.percent ? (value - prev) : (((value - prev) / Math.abs(prev)) * 100);
+                const isGood = opts.invert ? (value <= prev) : (value >= prev);
+                deltaEl.textContent = (delta >= 0 ? '+' : '−') + Math.abs(delta).toFixed(1) + (opts.percent ? ' pts' : '%');
+                deltaEl.classList.toggle('up', isGood);
+                deltaEl.classList.toggle('down', !isGood);
+            }
+        }
+        const sparkEl = document.getElementById(idSpark);
+        if (sparkEl) sparkEl.innerHTML = renderSparkline(series, opts.color);
+    };
+    setKpi('kpiIncomeValue', 'kpiIncomeDelta', 'kpiIncomeSpark', latestM.income, prevM.income, incomeSeries, { color: 'var(--accent-1)' });
+    setKpi('kpiExpenseValue', 'kpiExpenseDelta', 'kpiExpenseSpark', latestM.expense, prevM.expense, expenseSeries, { color: 'var(--primary)', invert: true });
+    const latestRate = latestM.income > 0 ? ((latestM.income - latestM.expense) / latestM.income) * 100 : 0;
+    const prevRate = prevM.income > 0 ? ((prevM.income - prevM.expense) / prevM.income) * 100 : 0;
+    setKpi('kpiSavingValue', 'kpiSavingDelta', 'kpiSavingSpark', latestRate, prevRate, savingSeries, { color: 'var(--accent-2)', percent: true });
+}
+
+// Pure-SVG sparkline. Mirrors the shape used by the design prototype
+// (charts.jsx Sparkline) but rendered as static HTML so we don't need a
+// React runtime.
+function renderSparkline(data, color) {
+    if (!Array.isArray(data) || data.length < 2) {
+        return '<svg viewBox="0 0 220 32" preserveAspectRatio="none" style="width:100%; height:32px;"></svg>';
+    }
+    const w = 220, h = 32;
+    const max = Math.max(...data), min = Math.min(...data);
+    const range = max - min || 1;
+    const xs = (i) => (i / (data.length - 1)) * w;
+    const ys = (v) => h - 3 - ((v - min) / range) * (h - 6);
+    const pts = data.map((v, i) => [xs(i), ys(v)]);
+    let d = `M ${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[i + 1];
+        const cx = (x0 + x1) / 2;
+        d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
+    }
+    // CSS variables (var(--…)) don't reliably resolve when set directly
+    // on SVG presentation attributes (notably in Safari). Routing through
+    // the `color` CSS property and using `currentColor` on the SVG nodes
+    // works across browsers and still lets the sparkline reskin when the
+    // theme palette changes.
+    const safeColor = color || 'var(--primary)';
+    const last = pts[pts.length - 1];
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%; height:32px; color:${safeColor};">
+        <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="currentColor" />
+    </svg>`;
 }
 
 // --- Couple Expense Share Widget ---
@@ -2622,6 +2919,129 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add New Entry button opens modal
     document.getElementById('addEntryBtn').addEventListener('click', openModal);
+
+    // Topbar CTAs delegate to the legacy header buttons so existing handlers
+    // keep working unchanged. Bulk + add are wired here; settings/admin/logout
+    // are reachable via the sidebar (and the legacy header buttons remain in
+    // the DOM but hidden, retaining their event listeners as fallbacks).
+    const topbarAdd = document.getElementById('topbarAddEntryBtn');
+    if (topbarAdd) topbarAdd.addEventListener('click', () => document.getElementById('addEntryBtn').click());
+    const topbarBulk = document.getElementById('topbarBulkBtn');
+    if (topbarBulk) topbarBulk.addEventListener('click', () => document.getElementById('openBulkUploadModal').click());
+
+    // Mobile sidebar drawer: hamburger button in topbar slides the sidebar
+    // in from the left on narrow screens. On desktop the .open class does
+    // nothing (the slide transform is gated behind the mobile media query),
+    // so this code is a no-op there.
+    (function () {
+        const toggle = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('primarySidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (!toggle || !sidebar || !backdrop) return;
+        // Track who triggered the open so we can return focus there on
+        // close — keeps keyboard / screen-reader users out of focus limbo
+        // when the drawer hides under the slide-out transform.
+        let lastFocused = null;
+        // Swap the toggle's accessible name in lockstep with the drawer
+        // state so screen readers don't keep announcing "Open menu" while
+        // the menu is already open.
+        const setToggleLabel = (open) => {
+            const key = open ? 'nav.closeMenu' : 'nav.openMenu';
+            const label = (typeof t === 'function') ? t(key) : (open ? 'Close menu' : 'Open menu');
+            toggle.setAttribute('aria-label', label);
+            toggle.setAttribute('title', label);
+            toggle.setAttribute('data-i18n-aria-label', key);
+            toggle.setAttribute('data-i18n-title', key);
+        };
+        const openSidebar = () => {
+            lastFocused = document.activeElement;
+            sidebar.classList.add('open');
+            backdrop.classList.add('open');
+            toggle.setAttribute('aria-expanded', 'true');
+            setToggleLabel(true);
+            // Move focus into the drawer so SR users land on the nav.
+            const firstNav = sidebar.querySelector('.nav-item:not([disabled])');
+            if (firstNav) firstNav.focus();
+        };
+        const closeSidebar = () => {
+            const wasOpen = sidebar.classList.contains('open');
+            sidebar.classList.remove('open');
+            backdrop.classList.remove('open');
+            toggle.setAttribute('aria-expanded', 'false');
+            setToggleLabel(false);
+            // Restore focus to whichever element opened the drawer (the
+            // hamburger by default), but only if a close actually happened
+            // and the previous element is still in the DOM.
+            if (wasOpen) {
+                const target = (lastFocused && document.body.contains(lastFocused)) ? lastFocused : toggle;
+                if (target && typeof target.focus === 'function') target.focus();
+            }
+            lastFocused = null;
+        };
+        toggle.addEventListener('click', () => {
+            if (sidebar.classList.contains('open')) closeSidebar();
+            else openSidebar();
+        });
+        backdrop.addEventListener('click', closeSidebar);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+        });
+        // Auto-close after any nav action so the drawer doesn't sit on top
+        // of the content the user just navigated to.
+        sidebar.addEventListener('click', (e) => {
+            if (e.target.closest('.nav-item[data-target]')) closeSidebar();
+        });
+    })();
+
+    // Sidebar nav: route data-target clicks to the existing modals/sections.
+    // The remaining "Coming soon" item (Goals) is aria-disabled and stays
+    // inert; Reports / Budgets open their own modals (issues #92, #93).
+    document.querySelectorAll('.sidebar .nav-item[data-target]').forEach(item => {
+        item.addEventListener('click', () => {
+            const target = item.getAttribute('data-target');
+            // Visual active state — only one nav-item active at a time.
+            document.querySelectorAll('.sidebar .nav-item').forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+            switch (target) {
+                case 'dashboard':
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    break;
+                case 'entries': {
+                    const sec = document.querySelector('.entries-section');
+                    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    break;
+                }
+                case 'manageCategories': {
+                    const btn = document.getElementById('manageCategoriesBtn');
+                    if (btn) btn.click();
+                    break;
+                }
+                case 'bulk':
+                    document.getElementById('openBulkUploadModal').click();
+                    break;
+                case 'settings':
+                    document.getElementById('settingsBtn').click();
+                    break;
+                case 'admin':
+                    document.getElementById('adminPanelBtn').click();
+                    break;
+                case 'logout':
+                    document.getElementById('logoutBtn').click();
+                    break;
+                case 'advisor': {
+                    const fab = document.getElementById('chatFab');
+                    if (fab) fab.click();
+                    break;
+                }
+                case 'reports':
+                    openReportsModal();
+                    break;
+                case 'budgets':
+                    openBudgetsModal();
+                    break;
+            }
+        });
+    });
     // Close modal on close button
     document.querySelector('#entryModal .close').addEventListener('click', closeModal);
     // Close modal on outside click
@@ -2717,6 +3137,376 @@ document.addEventListener('DOMContentLoaded', () => {
             try { localStorage.setItem('assetmgmt.categoryChartType', type); } catch {}
         });
     });
+
+    // ============ REPORTS MODAL (issue #92) ============
+    //
+    // Lightweight modal: pick format + date range + type, then request the
+    // export with `fetch(...)`, read the response as a Blob, and trigger
+    // the browser download by clicking a transient `<a>` that points to a
+    // temporary `blob:` URL. Going through fetch (rather than an `<a href>`
+    // navigation to the API URL) lets us surface 4xx/5xx responses as
+    // in-modal alerts instead of having the browser navigate the SPA away
+    // to a JSON error body. Authentication and any CSRF requirements are
+    // enforced by the backend export endpoint. The server respects the
+    // user's current viewMode (individual / combined / myshare) and
+    // replies with `Content-Disposition: attachment` so the browser saves
+    // the file rather than displaying it.
+    function openReportsModal() {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.display = 'block';
+
+        const start = (filterState && filterState.start) || '';
+        const end = (filterState && filterState.end) || '';
+        const typeF = (filterState && filterState.type) || 'all';
+        const viewMode = currentViewMode || 'individual';
+
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 480px;">
+                <span class="close" id="closeReportsModal">&times;</span>
+                <h2>${t('report.title')}</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">${t('report.help')}</p>
+
+                <div class="form-group">
+                    <label>${t('report.format')}</label>
+                    <div style="display: flex; gap: 16px; align-items: center; padding-top: 6px;">
+                        <label style="display: flex; gap: 6px; align-items: center; cursor: pointer;"><input type="radio" name="reportFormat" value="pdf" checked> PDF</label>
+                        <label style="display: flex; gap: 6px; align-items: center; cursor: pointer;"><input type="radio" name="reportFormat" value="csv"> CSV</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="reportStart">${t('report.startMonth')}</label>
+                    <input type="month" id="reportStart" value="${escapeHtml(start)}">
+                </div>
+                <div class="form-group">
+                    <label for="reportEnd">${t('report.endMonth')}</label>
+                    <input type="month" id="reportEnd" value="${escapeHtml(end)}">
+                </div>
+                <div class="form-group">
+                    <label for="reportType">${t('common.type')}</label>
+                    <select id="reportType">
+                        <option value="all" ${typeF === 'all' ? 'selected' : ''}>${t('type.all')}</option>
+                        <option value="income" ${typeF === 'income' ? 'selected' : ''}>${t('type.income')}</option>
+                        <option value="expense" ${typeF === 'expense' ? 'selected' : ''}>${t('type.expense')}</option>
+                    </select>
+                </div>
+
+                <p style="color: var(--color-text-muted); font-size: 0.8rem; margin-top: 12px;">${t('report.viewModeHint', { mode: t({ individual: 'dash.individual', combined: 'dash.combined', myshare: 'dash.myShare' }[viewMode] || 'dash.individual') })}</p>
+
+                <div style="display: flex; gap: 8px; margin-top: 1.25rem; justify-content: flex-end;">
+                    <button type="button" id="reportCancelBtn" class="edit-btn">${t('common.cancel')}</button>
+                    <button type="button" id="reportExportBtn" class="filter-btn">${t('report.export')}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+        overlay.querySelector('#closeReportsModal').addEventListener('click', cleanup);
+        overlay.querySelector('#reportCancelBtn').addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+        overlay.querySelector('#reportExportBtn').addEventListener('click', async () => {
+            const exportBtn = overlay.querySelector('#reportExportBtn');
+            const fmt = overlay.querySelector('input[name="reportFormat"]:checked').value;
+            const startV = overlay.querySelector('#reportStart').value;
+            const endV = overlay.querySelector('#reportEnd').value;
+            const typeV = overlay.querySelector('#reportType').value;
+            if (startV && endV && startV > endV) {
+                alert(t('report.errStartAfterEnd'));
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.set('format', fmt);
+            params.set('viewMode', viewMode);
+            if (startV) params.set('start', startV);
+            if (endV) params.set('end', endV);
+            if (typeV && typeV !== 'all') params.set('type', typeV);
+            if (filterState && Array.isArray(filterState.categories) && filterState.categories.length) {
+                params.set('categories', filterState.categories.join(','));
+            }
+
+            // Fetch + blob (rather than `<a href>` navigation) so we can
+            // surface 4xx/5xx errors as in-modal alerts instead of having
+            // the browser navigate away from the SPA to a JSON error body.
+            exportBtn.disabled = true;
+            try {
+                const res = await fetch('/api/reports/export?' + params.toString(), {
+                    credentials: 'include'
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.message || t('report.exportError') || ('Export failed: ' + res.status));
+                    return;
+                }
+                const blob = await res.blob();
+                const filenameMatch = /filename="?([^"]+)"?/i.exec(res.headers.get('Content-Disposition') || '');
+                const filename = filenameMatch ? filenameMatch[1] : ('report.' + fmt);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                // Defer revocation by a tick so browsers (notably Safari)
+                // have actually started the download before the blob: URL
+                // is invalidated. Calling revoke synchronously after click
+                // can intermittently produce "failed" downloads on large
+                // blobs.
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+                cleanup();
+            } catch (e) {
+                console.error('Report export failed:', e);
+                alert(t('report.exportError') || 'Export failed');
+            } finally {
+                exportBtn.disabled = false;
+            }
+        });
+    }
+
+    // ============ BUDGETS MODAL (issue #93) ============
+    //
+    // Lists every category the user owns plus an "overall" row at the top,
+    // each with: an editable monthly target, the actual spend so far this
+    // month, and a colored progress bar. Save behaviour: a positive value
+    // PUTs the budget; clearing the input (or saving 0) DELETEs the row,
+    // matching the explicit Clear button.
+    // Build the GET /api/budgets URL with the client-local month + the
+    // active viewMode, so the server doesn't fall back to its own clock
+    // (timezone skew) and so couple users see the same scope as the
+    // dashboard. Used by the initial load and by every refresh after a
+    // PUT/DELETE so the modal always stays on the same tracking window.
+    function buildBudgetsUrl(month) {
+        const params = new URLSearchParams({
+            month,
+            viewMode: currentViewMode || 'individual'
+        });
+        return '/api/budgets?' + params.toString();
+    }
+
+    function currentClientMonth() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    async function loadBudgets(month) {
+        const res = await fetch(buildBudgetsUrl(month), { credentials: 'include' });
+        if (!res.ok) throw new Error('GET /api/budgets failed: ' + res.status);
+        return res.json();
+    }
+
+    async function openBudgetsModal() {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.display = 'block';
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 640px;">
+                <span class="close" id="closeBudgetsModal">&times;</span>
+                <h2>${t('budget.title')}</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1rem;">${t('budget.help')}</p>
+                <div id="budgetsBody" style="min-height: 80px;">
+                    <div style="color: var(--color-text-muted); padding: 16px 0;">${t('common.loading')}</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+        overlay.querySelector('#closeBudgetsModal').addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+        const body = overlay.querySelector('#budgetsBody');
+        // Capture the month once when the modal opens. Crossing a month
+        // boundary mid-edit would otherwise silently shift the tracking
+        // window on the post-save refresh.
+        const trackingMonth = currentClientMonth();
+        try {
+            const data = await loadBudgets(trackingMonth);
+            renderBudgetsModal(body, data, trackingMonth);
+        } catch (e) {
+            console.error('Failed to load budgets:', e);
+            body.innerHTML = `<div style="color: var(--color-danger); padding: 12px 0;">${escapeHtml(t('budget.loadError'))}</div>`;
+        }
+    }
+
+    function renderBudgetsModal(container, data, trackingMonth) {
+        const overall = data.overall || { amount: 0, actual: 0 };
+        const rows = data.byCategory || [];
+
+        // Locale-aware currency formatter (pt-BR → BRL/R$, en-US → USD/$).
+        // Matches the hero-KPI formatting introduced in PR #91; we don't
+        // honor `data.currency` from the API because the server intentionally
+        // doesn't dictate it (currency follows the client's language).
+        const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+        const moneyFmt = new Intl.NumberFormat(isPt ? 'pt-BR' : 'en-US', {
+            style: 'currency',
+            currency: isPt ? 'BRL' : 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+        const fmtMoney = (n) => moneyFmt.format(Number(n) || 0);
+        // Safe progress: 0 if no budget. Cap at 100% for the bar fill but
+        // surface a separate "over budget" pill when actual > budget.
+        const progressFor = (amount, actual) => {
+            if (!amount || amount <= 0) return { pct: null, over: false };
+            const ratio = actual / amount;
+            return { pct: Math.min(ratio, 1) * 100, over: ratio > 1, raw: ratio * 100 };
+        };
+        const barColor = (p) => {
+            if (!p) return 'var(--ink-3)';
+            if (p.over) return 'var(--negative)';
+            if (p.pct >= 70) return 'var(--accent-2)';
+            return 'var(--positive)';
+        };
+
+        const renderRow = (slug, label, color, amount, actual, isOverall, isOrphan) => {
+            const p = progressFor(amount, actual);
+            const barWidth = p.pct == null ? 0 : p.pct;
+            const fill = barColor(p);
+            const overPill = p.over
+                ? `<span class="delta-pill down" style="margin-left: 8px;">${escapeHtml(t('budget.overBudget'))}</span>`
+                : '';
+            // "Orphan" rows are slugs the server saw spend on but the user
+            // doesn't have in user_categories anymore (deleted category, or
+            // the synthetic 'other' bucket). PUT to those slugs would 404
+            // server-side, so we render them read-only — only Clear is
+            // allowed (DELETE works against the user_id row regardless of
+            // category ownership). A small "(removed)" tag visually marks
+            // them.
+            const orphanPill = isOrphan
+                ? `<span class="mono tiny muted" style="margin-left: 8px;">${escapeHtml(t('budget.orphanLabel'))}</span>`
+                : '';
+            const swatch = isOverall
+                ? `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: var(--ink); margin-right: 6px;"></span>`
+                : `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: ${escapeHtml(color || 'var(--ink-3)')}; margin-right: 6px;"></span>`;
+            const inputDisabled = isOrphan ? 'disabled' : '';
+            const clearDisabled = (amount > 0) ? '' : 'disabled';
+
+            return `
+                <div class="budget-row" data-slug="${escapeHtml(slug)}" data-orphan="${isOrphan ? '1' : '0'}" style="padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle); ${isOrphan ? 'opacity: 0.7;' : ''}">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; font-weight: ${isOverall ? '600' : '500'};">
+                                ${swatch}<span>${escapeHtml(label)}</span>${overPill}${orphanPill}
+                            </div>
+                            <div style="font-family: var(--mono); font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">
+                                ${fmtMoney(actual)} ${t('budget.spent')} · ${p.pct == null ? t('budget.noTarget') : fmtMoney(amount) + ' ' + t('budget.target') + (p.over ? ' · ' + p.raw.toFixed(0) + '%' : ' · ' + p.pct.toFixed(0) + '%')}
+                            </div>
+                        </div>
+                        <input type="number" class="budget-amount" min="0" step="0.01" value="${amount > 0 ? amount.toFixed(2) : ''}" placeholder="0.00" ${inputDisabled}
+                               style="width: 110px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-base); color: var(--color-text-primary); font-family: var(--mono);" />
+                        <button type="button" class="budget-clear edit-btn" style="padding: 4px 8px; font-size: 11px;" ${clearDisabled}>${t('common.delete')}</button>
+                    </div>
+                    <div style="height: 6px; background: var(--color-border-subtle); border-radius: 3px; margin-top: 8px; overflow: hidden;">
+                        <div style="height: 100%; width: ${barWidth}%; background: ${fill}; transition: width 0.2s ease;"></div>
+                    </div>
+                </div>
+            `;
+        };
+
+        // Default-category rows have `label` seeded as the raw slug
+        // server-side; the rest of the app translates those via
+        // categoryLabel(slug) → i18n key `cat.<slug>`. Fall back to the
+        // server-provided label only when categoryLabel doesn't recognize
+        // the slug (custom or orphan categories).
+        const budgetRowLabel = (r) => {
+            if (!r || !r.slug) return (r && r.label) || '';
+            if (typeof categoryLabel !== 'function') return r.label || r.slug;
+            const localized = categoryLabel(r.slug);
+            return localized && localized !== r.slug ? localized : (r.label || r.slug);
+        };
+
+        container.innerHTML = `
+            <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 6px;">
+                ${t('budget.month')}: ${escapeHtml(data.month || '')}
+            </div>
+            ${renderRow('_overall', t('budget.overallLabel'), null, overall.amount, overall.actual, true, false)}
+            ${rows.map(r => renderRow(r.slug, budgetRowLabel(r), r.color, r.amount, r.actual, false, !!r.isOrphan)).join('')}
+        `;
+
+        // Save on blur or Enter; clear via the explicit button.
+        container.querySelectorAll('.budget-row').forEach(row => {
+            const slug = row.getAttribute('data-slug');
+            const input = row.querySelector('.budget-amount');
+            const clearBtn = row.querySelector('.budget-clear');
+            const isOrphan = row.getAttribute('data-orphan') === '1';
+            const save = async () => {
+                if (isOrphan) return; // input is disabled; defensive
+                const raw = input.value.trim();
+                const isEmpty = raw === '';
+                const v = isEmpty ? 0 : Number(raw);
+                if (!isEmpty && (!Number.isFinite(v) || v < 0)) {
+                    // Restore the previous value rather than clearing — an
+                    // empty field would otherwise trigger the DELETE path on
+                    // the next blur and silently remove a saved budget the
+                    // user didn't intend to remove. Show the browser's
+                    // built-in validity tooltip via setCustomValidity, then
+                    // immediately clear the validity so the field doesn't
+                    // stay stuck after revert.
+                    input.setCustomValidity(t('budget.invalidAmount'));
+                    input.reportValidity();
+                    input.value = input.defaultValue;
+                    input.setCustomValidity('');
+                    return;
+                }
+                input.setCustomValidity('');
+                // Empty input or 0 clears the row — same effect as the Clear
+                // button. Avoids stranding a 0-amount row that the UI then
+                // renders as "no target set" with a disabled Clear.
+                const shouldDelete = isEmpty || v === 0;
+                try {
+                    let res;
+                    if (shouldDelete) {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
+                        if (!res.ok && res.status !== 404) {
+                            alert(t('budget.deleteError'));
+                            return;
+                        }
+                    } else {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ amount: v })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            alert(err.message || t('budget.saveError'));
+                            return;
+                        }
+                    }
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
+                } catch (e) {
+                    console.error('Budget save failed:', e);
+                    alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
+                }
+            };
+            input.addEventListener('blur', () => {
+                const original = input.defaultValue;
+                if (input.value !== original) save();
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            });
+            clearBtn.addEventListener('click', async () => {
+                try {
+                    const res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
+                    if (!res.ok && res.status !== 404) {
+                        alert(t('budget.deleteError'));
+                        return;
+                    }
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
+                } catch (e) {
+                    console.error('DELETE /api/budgets failed:', e);
+                    alert(t('budget.deleteError'));
+                }
+            });
+        });
+    }
 
     // ============ SETTINGS MODAL ============
 
@@ -2968,6 +3758,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         <small id="webSearchInactiveHint" style="display: ${(currentUser && currentUser.webSearchEnabled && currentUser.aiProvider !== 'anthropic') ? 'block' : 'none'}; margin-top: 0.35rem; color: var(--color-warning, #d97706); font-size: 0.8rem;">${t('settings.webSearchInactiveProvider')}</small>
                     </div>
                 </div>
+
+                <div style="margin-top: 2rem;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">${t('settings.appearanceSection')}</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.themeLabel')}</span>
+                            <select id="settingsThemeSelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                                <option value="earthy">${t('settings.themeEarthy')}</option>
+                                <option value="dark">${t('settings.themeDark')}</option>
+                                <option value="light">${t('settings.themeLight')}</option>
+                            </select>
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.typographyLabel')}</span>
+                            <select id="settingsTypographySelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
+                                <option value="editorial">${t('settings.typographyEditorial')}</option>
+                                <option value="modern">${t('settings.typographyModern')}</option>
+                                <option value="system">${t('settings.typographySystem')}</option>
+                            </select>
+                        </label>
+                    </div>
+                    <small style="display: block; margin-top: 0.5rem; color: var(--color-text-muted); font-size: 0.8rem;">${t('settings.appearanceHelp')}</small>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -2987,6 +3800,39 @@ document.addEventListener('DOMContentLoaded', () => {
         wireSettingsAiProvider(overlay);
         wireSettingsAiModel(overlay);
         wireSettingsWebSearch(overlay);
+        wireSettingsAppearance(overlay);
+    }
+
+    function wireSettingsAppearance(overlay) {
+        const themeSel = overlay.querySelector('#settingsThemeSelect');
+        const typoSel = overlay.querySelector('#settingsTypographySelect');
+        if (!themeSel || !typoSel) return;
+        // Default values match the dataset attributes the early-bootstrap
+        // script applied to <html> on page load.
+        themeSel.value = document.documentElement.getAttribute('data-theme') || 'earthy';
+        typoSel.value = document.documentElement.getAttribute('data-typography') || 'editorial';
+
+        themeSel.addEventListener('change', () => {
+            const v = themeSel.value;
+            try {
+                if (v === 'earthy') localStorage.removeItem('appTheme');
+                else localStorage.setItem('appTheme', v);
+            } catch (e) {}
+            if (v === 'earthy') document.documentElement.removeAttribute('data-theme');
+            else document.documentElement.setAttribute('data-theme', v);
+            reapplyChartTheme();
+        });
+
+        typoSel.addEventListener('change', () => {
+            const v = typoSel.value;
+            try {
+                if (v === 'editorial') localStorage.removeItem('appTypography');
+                else localStorage.setItem('appTypography', v);
+            } catch (e) {}
+            if (v === 'editorial') document.documentElement.removeAttribute('data-typography');
+            else document.documentElement.setAttribute('data-typography', v);
+            reapplyChartTheme();
+        });
     }
 
     function wireSettingsEmail(overlay, emailData) {
@@ -4008,6 +4854,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 hasPartner = !!currentUser.partnerId;
                 updateUIForRole();
                 updateUIForPartner();
+                applyUserToShell();
                 // Categories are user-scoped (issue #70). Fetch them now so
                 // the chips, charts, and select dropdowns can render with
                 // the correct palette + labels. Self-heals via the GET
@@ -4034,10 +4881,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update UI based on user role
     function updateUIForRole() {
         const adminBtn = document.getElementById('adminPanelBtn');
+        const sidebarAdminItem = document.getElementById('sidebarAdminItem');
         if (currentUser && currentUser.role === 'admin') {
             adminBtn.style.display = 'inline-flex';
+            if (sidebarAdminItem) sidebarAdminItem.style.display = '';
         } else {
             adminBtn.style.display = 'none';
+            if (sidebarAdminItem) sidebarAdminItem.style.display = 'none';
+        }
+    }
+
+    // Populate sidebar avatar + topbar greeting from currentUser.
+    function applyUserToShell() {
+        if (!currentUser) return;
+        const username = currentUser.username || '';
+        const initials = username
+            .split(/\s+/)
+            .filter(Boolean)
+            .map(s => s[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase() || (username.slice(0, 2).toUpperCase()) || '·';
+        const avatar = document.getElementById('sidebarAvatar');
+        if (avatar) avatar.textContent = initials;
+        const nameEl = document.getElementById('sidebarUserName');
+        if (nameEl) nameEl.textContent = username || '—';
+        const planEl = document.getElementById('sidebarUserPlan');
+        if (planEl) {
+            planEl.textContent = (currentUser.partnerId ? (typeof t === 'function' ? t('nav.couplePlan') : 'COUPLE PLAN') : (typeof t === 'function' ? t('nav.individualPlan') : 'INDIVIDUAL PLAN'));
+        }
+        const greetingEl = document.getElementById('topbarGreeting');
+        if (greetingEl) {
+            const hour = new Date().getHours();
+            const part = hour < 12 ? (typeof t === 'function' ? t('nav.morning') : 'Good morning')
+                : hour < 18 ? (typeof t === 'function' ? t('nav.afternoon') : 'Good afternoon')
+                : (typeof t === 'function' ? t('nav.evening') : 'Good evening');
+            // Avoid rendering "Good morning,." when the username is missing —
+            // drop the comma + name segment and just punctuate the greeting.
+            greetingEl.textContent = username ? `${part}, ${username}.` : `${part}.`;
         }
     }
 

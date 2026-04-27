@@ -56,7 +56,14 @@ function parseJsonField(val) {
     try {
         return JSON.parse(val);
     } catch (err) {
-        console.error('Failed to parse JSON field:', err.message, '— value preview:', String(val).slice(0, 50));
+        // Don't log anything derived from `val` — this helper runs on every
+        // encrypted credential column on user reads. V8's JSON.parse
+        // SyntaxError message embeds the unexpected token plus a snippet
+        // of the input (e.g. `Unexpected token 'x', "abc" is not valid
+        // JSON`), so even `err.message` / `err.stack` would reintroduce
+        // the taint CodeQL flagged in alerts #6 / #13. Log a static label
+        // plus the error class name only.
+        console.error('Failed to parse JSON field:', (err && err.name) || 'Error');
         return null;
     }
 }
@@ -1205,6 +1212,71 @@ async function importPartnerCategoriesFromTags(userId, partnerId, slugs) {
     return _insertImportedPartnerRows(userId, partnerId, rows);
 }
 
+// ===== User Budgets (issue #93) =====
+//
+// Budgets are scoped per-user. category_slug = NULL is the "overall"
+// monthly budget; otherwise it's a target for a single category. We
+// constrain period to 'monthly' on writes — the column exists for
+// future weekly/yearly support but the API only accepts monthly.
+
+const BUDGET_PERIODS = new Set(['monthly']);
+
+function dbRowToBudget(row) {
+    return {
+        id: Number(row.id),
+        userId: Number(row.user_id),
+        categorySlug: row.category_slug, // null means "overall"
+        amount: row.amount == null ? 0 : parseFloat(row.amount),
+        period: row.period,
+        currency: row.currency,
+        createdAt: row.created_at ? row.created_at.toISOString() : null,
+        updatedAt: row.updated_at ? row.updated_at.toISOString() : null
+    };
+}
+
+async function getUserBudgets(userId) {
+    // Constrain reads to monthly so the response shape matches the
+    // hard-coded write/delete paths even if non-monthly rows are ever
+    // added by a future migration.
+    const { rows } = await pool.query(
+        `SELECT * FROM user_budgets
+         WHERE user_id = $1 AND period = 'monthly'
+         ORDER BY category_slug NULLS FIRST`,
+        [userId]
+    );
+    return rows.map(dbRowToBudget);
+}
+
+// Upsert into the user's monthly slot for the given category (or null for
+// the overall budget). Conflict target uses (COALESCE(...)) — the parens
+// are required for ON CONFLICT to match the COALESCE-keyed unique index
+// in the migration when the conflict element is an expression.
+async function upsertUserBudget(userId, categorySlug, amount) {
+    const slug = categorySlug == null ? null : String(categorySlug);
+    const amt = Number(amount);
+    const { rows } = await pool.query(
+        `INSERT INTO user_budgets (user_id, category_slug, amount, period, currency)
+         VALUES ($1, $2, $3, 'monthly', 'USD')
+         ON CONFLICT (user_id, (COALESCE(category_slug, '')), period)
+         DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()
+         RETURNING *`,
+        [userId, slug, amt]
+    );
+    return dbRowToBudget(rows[0]);
+}
+
+async function deleteUserBudget(userId, categorySlug) {
+    const slug = categorySlug == null ? null : String(categorySlug);
+    // Use COALESCE to match NULL → '' so the overall budget can be deleted
+    // by passing categorySlug = null.
+    const { rowCount } = await pool.query(
+        `DELETE FROM user_budgets
+         WHERE user_id = $1 AND COALESCE(category_slug, '') = COALESCE($2, '') AND period = 'monthly'`,
+        [userId, slug]
+    );
+    return rowCount > 0;
+}
+
 module.exports = {
     // Users
     findUserByUsername,
@@ -1267,4 +1339,10 @@ module.exports = {
     resetUserCategoriesToDefaults,
     ensurePartnerCategories,
     importPartnerCategoriesFromTags,
+
+    // User Budgets (issue #93)
+    BUDGET_PERIODS,
+    getUserBudgets,
+    upsertUserBudget,
+    deleteUserBudget,
 };
