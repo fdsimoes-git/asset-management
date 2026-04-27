@@ -3165,9 +3165,9 @@ document.addEventListener('DOMContentLoaded', () => {
     //
     // Lists every category the user owns plus an "overall" row at the top,
     // each with: an editable monthly target, the actual spend so far this
-    // month, and a colored progress bar. Edits are PUT immediately on
-    // blur/Enter; deleting a budget is implicit by saving 0 (we DELETE the
-    // row server-side via the explicit clear button).
+    // month, and a colored progress bar. Save behaviour: a positive value
+    // PUTs the budget; clearing the input (or saving 0) DELETEs the row,
+    // matching the explicit Clear button.
     async function openBudgetsModal() {
         const overlay = document.createElement('div');
         overlay.className = 'modal';
@@ -3265,27 +3265,42 @@ document.addEventListener('DOMContentLoaded', () => {
             const input = row.querySelector('.budget-amount');
             const clearBtn = row.querySelector('.budget-clear');
             const save = async () => {
-                const v = Number(input.value);
-                if (!Number.isFinite(v) || v < 0) {
+                const raw = input.value.trim();
+                const isEmpty = raw === '';
+                const v = isEmpty ? 0 : Number(raw);
+                if (!isEmpty && (!Number.isFinite(v) || v < 0)) {
                     input.value = '';
                     return;
                 }
+                // Empty input or 0 clears the row — same effect as the Clear
+                // button. Avoids stranding a 0-amount row that the UI then
+                // renders as "no target set" with a disabled Clear.
+                const shouldDelete = isEmpty || v === 0;
                 try {
-                    const res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ amount: v })
-                    });
-                    if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        alert(err.message || t('budget.saveError'));
-                        return;
+                    let res;
+                    if (shouldDelete) {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
+                        if (!res.ok && res.status !== 404) {
+                            alert(t('budget.deleteError'));
+                            return;
+                        }
+                    } else {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ amount: v })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            alert(err.message || t('budget.saveError'));
+                            return;
+                        }
                     }
                     const fresh = await fetch('/api/budgets', { credentials: 'include' }).then(r => r.json());
                     renderBudgetsModal(container, fresh);
                 } catch (e) {
-                    console.error('PUT /api/budgets failed:', e);
-                    alert(t('budget.saveError'));
+                    console.error('Budget save failed:', e);
+                    alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
                 }
             };
             input.addEventListener('blur', () => {
