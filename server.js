@@ -40,6 +40,23 @@ const DUMMY_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8VS.wG.ZyWQ/2t6WvTDWv1Q5I8bHHy
 // Wrap async route handlers so rejected promises are forwarded to Express error middleware
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Shared email validator — used by /api/register and /api/user/email so the
+// two endpoints can't drift apart. Length + forbidden-char check runs first
+// so the regex never sees an unbounded input (was a polynomial-ReDoS path:
+// see issue #80 / CodeQL #10/#11). The regex itself uses bounded per-label
+// quantifiers + an explicit `(label.)+TLD` structure so consecutive-dot
+// domains like `a@..com` are rejected, while real multi-label addresses
+// (`user@sub.example.co.uk`) keep working. Returns null on success or an
+// error message string on failure (always the same generic message — no
+// information leakage about which specific check failed).
+const EMAIL_REGEX = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
+function validateEmailFormat(email) {
+    if (typeof email !== 'string') return 'Invalid email format';
+    if (email.length > 254 || /[<>]/.test(email)) return 'Invalid email format';
+    if (!EMAIL_REGEX.test(email)) return 'Invalid email format';
+    return null;
+}
+
 // ============ SMTP CONFIGURATION ============
 
 let smtpTransport = null;
@@ -1260,18 +1277,11 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Validate email format. Length + char check first so the regex never
-    // sees an unbounded input (was a polynomial-ReDoS path: see issue #80
-    // / CodeQL #10). The regex uses bounded per-label quantifiers and an
-    // explicit `(label.)+TLD` structure so consecutive-dot domains like
-    // `a@..com` are rejected too, while real multi-label addresses
-    // (`user@sub.example.co.uk`) keep working.
-    if (email.length > 254 || /[<>]/.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
-    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
+    // Validate email format via the shared helper (see validateEmailFormat
+    // — kept in one place so /api/register and /api/user/email can't drift).
+    const emailError = validateEmailFormat(email);
+    if (emailError) {
+        return res.status(400).json({ message: emailError });
     }
 
     // Validate invite code before expensive operations
@@ -2047,16 +2057,10 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid email' });
     }
 
-    // Length + char check first so the regex never sees an unbounded input
-    // (issue #80 / CodeQL #11). Regex uses bounded per-label quantifiers
-    // and an explicit `(label.)+TLD` structure so consecutive-dot domains
-    // like `a@..com` are rejected too — see /api/register for details.
-    if (email.length > 254 || /[<>]/.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
-    }
-    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: 'Invalid email format' });
+    // Validate email format via the shared helper (see validateEmailFormat).
+    const emailError = validateEmailFormat(email);
+    if (emailError) {
+        return res.status(400).json({ message: emailError });
     }
 
     const parts = email.split('@');
@@ -2598,6 +2602,30 @@ function summarizeForReport(entries) {
 
 function writePdfReport(res, { entries, summary, meta }) {
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+    // Wire up error handling on both ends of the pipe before piping.
+    // Without listeners, an EPIPE / abort during the download would emit
+    // an unhandled 'error' on the doc or res stream and crash the worker.
+    let streamFinished = false;
+    const abortDoc = () => {
+        try { if (typeof doc.destroy === 'function' && !doc.destroyed) doc.destroy(); }
+        catch (e) { /* best-effort */ }
+    };
+    doc.on('error', (err) => {
+        console.error('PDF report doc error:', err && err.code || err && err.name || 'Error');
+        if (!res.headersSent) {
+            res.status(500).end('Failed to generate PDF report');
+        } else if (!res.writableEnded) {
+            try { res.end(); } catch (e) { /* nothing more to do */ }
+        }
+    });
+    res.on('error', (err) => {
+        console.error('PDF report stream error:', err && err.code || err && err.name || 'Error');
+        abortDoc();
+    });
+    res.on('finish', () => { streamFinished = true; });
+    res.on('close', () => { if (!streamFinished) abortDoc(); });
+
     doc.pipe(res);
 
     // Header

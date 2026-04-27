@@ -2904,15 +2904,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const sidebar = document.getElementById('primarySidebar');
         const backdrop = document.getElementById('sidebarBackdrop');
         if (!toggle || !sidebar || !backdrop) return;
+        // Track who triggered the open so we can return focus there on
+        // close — keeps keyboard / screen-reader users out of focus limbo
+        // when the drawer hides under the slide-out transform.
+        let lastFocused = null;
         const openSidebar = () => {
+            lastFocused = document.activeElement;
             sidebar.classList.add('open');
             backdrop.classList.add('open');
             toggle.setAttribute('aria-expanded', 'true');
+            // Move focus into the drawer so SR users land on the nav.
+            const firstNav = sidebar.querySelector('.nav-item:not([disabled])');
+            if (firstNav) firstNav.focus();
         };
         const closeSidebar = () => {
+            const wasOpen = sidebar.classList.contains('open');
             sidebar.classList.remove('open');
             backdrop.classList.remove('open');
             toggle.setAttribute('aria-expanded', 'false');
+            // Restore focus to whichever element opened the drawer (the
+            // hamburger by default), but only if a close actually happened
+            // and the previous element is still in the DOM.
+            if (wasOpen) {
+                const target = (lastFocused && document.body.contains(lastFocused)) ? lastFocused : toggle;
+                if (target && typeof target.focus === 'function') target.focus();
+            }
+            lastFocused = null;
         };
         toggle.addEventListener('click', () => {
             if (sidebar.classList.contains('open')) closeSidebar();
