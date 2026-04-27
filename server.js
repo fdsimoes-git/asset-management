@@ -2773,12 +2773,15 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         else budgetBySlug.set(b.categorySlug, b.amount);
     }
 
+    // Return unrounded actuals so the per-category sums add up exactly to
+    // the overall (multi-tag splits create fractional-cent shares; rounding
+    // here would introduce drift). Display rounding is the UI's job.
     const byCategory = categories.map(c => ({
         slug: c.slug,
         label: c.label,
         color: c.color,
         amount: budgetBySlug.get(c.slug) || 0,
-        actual: Math.round((actuals.byCategory.get(c.slug) || 0) * 100) / 100
+        actual: actuals.byCategory.get(c.slug) || 0
     }));
 
     res.json({
@@ -2786,7 +2789,7 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         currency: 'USD',
         overall: {
             amount: overallBudget,
-            actual: Math.round(actuals.overall * 100) / 100
+            actual: actuals.overall
         },
         byCategory
     });

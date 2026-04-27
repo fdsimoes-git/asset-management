@@ -3174,6 +3174,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // month, and a colored progress bar. Save behaviour: a positive value
     // PUTs the budget; clearing the input (or saving 0) DELETEs the row,
     // matching the explicit Clear button.
+    // Build the GET /api/budgets URL with the client-local month + the
+    // active viewMode, so the server doesn't fall back to its own clock
+    // (timezone skew) and so couple users see the same scope as the
+    // dashboard. Used by the initial load and by every refresh after a
+    // PUT/DELETE so the modal always stays on the same tracking window.
+    function buildBudgetsUrl() {
+        const d = new Date();
+        const month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const params = new URLSearchParams({
+            month,
+            viewMode: currentViewMode || 'individual'
+        });
+        return '/api/budgets?' + params.toString();
+    }
+
+    async function loadBudgets() {
+        const res = await fetch(buildBudgetsUrl(), { credentials: 'include' });
+        if (!res.ok) throw new Error('GET /api/budgets failed: ' + res.status);
+        return res.json();
+    }
+
     async function openBudgetsModal() {
         const overlay = document.createElement('div');
         overlay.className = 'modal';
@@ -3195,9 +3216,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const body = overlay.querySelector('#budgetsBody');
         try {
-            const res = await fetch('/api/budgets', { credentials: 'include' });
-            if (!res.ok) throw new Error('GET /api/budgets failed: ' + res.status);
-            const data = await res.json();
+            const data = await loadBudgets();
             renderBudgetsModal(body, data);
         } catch (e) {
             console.error('Failed to load budgets:', e);
@@ -3302,7 +3321,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
                     }
-                    const fresh = await fetch('/api/budgets', { credentials: 'include' }).then(r => r.json());
+                    const fresh = await loadBudgets();
                     renderBudgetsModal(container, fresh);
                 } catch (e) {
                     console.error('Budget save failed:', e);
@@ -3323,7 +3342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert(t('budget.deleteError'));
                         return;
                     }
-                    const fresh = await fetch('/api/budgets', { credentials: 'include' }).then(r => r.json());
+                    const fresh = await loadBudgets();
                     renderBudgetsModal(container, fresh);
                 } catch (e) {
                     console.error('DELETE /api/budgets failed:', e);
