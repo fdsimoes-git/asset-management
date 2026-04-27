@@ -211,18 +211,21 @@
         }
 
         /* ---------- Sidebar ----------
-           Pinned to the viewport: position: sticky + top: 0 keeps it in
-           view as the user scrolls; align-self: flex-start (required for
-           sticky to work inside the flex parent) plus height: 100vh sizes
-           it to the screen; overflow-y: auto lets the nav scroll
-           internally if the brand + sections + foot exceed the viewport. */
+           Pinned to the viewport: position: sticky + a safe-area-aware
+           `top` keeps it in view as the user scrolls without rendering
+           under the iOS status bar / notch (the topbar's sticky `top`
+           already uses the same offset); align-self: flex-start (required
+           for sticky to work inside the flex parent) plus a safe-area-
+           adjusted viewport height sizes it to the visible screen;
+           overflow-y: auto lets the nav scroll internally if the brand +
+           sections + foot exceed the viewport. */
         .sidebar {
             width: 232px;
             flex: none;
             align-self: flex-start;
             position: sticky;
-            top: 0;
-            height: 100vh;
+            top: env(safe-area-inset-top, 0px);
+            height: calc(100vh - env(safe-area-inset-top, 0px));
             overflow-y: auto;
             background: var(--bg-2);
             border-right: 1px solid var(--line);
@@ -531,12 +534,14 @@
             .hero-row { grid-template-columns: 1fr; }
             .hero-kpis { grid-template-rows: auto; grid-template-columns: repeat(3, 1fr); }
             /* Off-canvas sidebar — fixed-positioned drawer that slides in
-               from the left when .open is set on it. The desktop sticky
-               rules don't apply here because position is overridden. */
+               from the left when .open is set on it. Safe-area-aware top
+               so the drawer doesn't render under the iOS status bar /
+               notch. The desktop sticky rules don't apply here because
+               position is overridden. */
             .sidebar {
                 position: fixed;
-                top: 0; left: 0; bottom: 0;
-                height: 100vh;
+                top: env(safe-area-inset-top, 0px); left: 0; bottom: 0;
+                height: calc(100vh - env(safe-area-inset-top, 0px));
                 width: 260px;
                 max-width: 80vw;
                 transform: translateX(-100%);
