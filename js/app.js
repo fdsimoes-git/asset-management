@@ -904,6 +904,8 @@ function setChartsLoading(isLoading) {
     document.querySelectorAll('.chart-wrapper .chart-loading-overlay').forEach(el => {
         el.hidden = !isLoading;
     });
+    const section = document.querySelector('.charts-section');
+    if (section) section.setAttribute('aria-busy', String(!!isLoading));
 }
 
 function setEntriesLoading(isLoading) {
@@ -911,11 +913,27 @@ function setEntriesLoading(isLoading) {
     if (overlay) overlay.hidden = !isLoading;
     const summary = document.querySelector('.entries-section .summary');
     if (summary) summary.classList.toggle('is-loading', isLoading);
+    const section = document.querySelector('.entries-section');
+    if (section) section.setAttribute('aria-busy', String(!!isLoading));
+}
+
+// Toggles the `is-loading` class on the hero net-worth card + each KPI
+// tile, dimming live numbers and overlaying a shimmer block via CSS while
+// data is being fetched. Also flips aria-busy so screen-reader users get
+// the cue.
+function setHeroLoading(isLoading) {
+    const hero = document.getElementById('heroRow');
+    if (!hero) return;
+    hero.setAttribute('aria-busy', String(!!isLoading));
+    const networth = hero.querySelector('.hero-networth');
+    if (networth) networth.classList.toggle('is-loading', isLoading);
+    hero.querySelectorAll('.kpi').forEach(el => el.classList.toggle('is-loading', isLoading));
 }
 
 function setViewLoading(isLoading) {
     setChartsLoading(isLoading);
     setEntriesLoading(isLoading);
+    setHeroLoading(isLoading);
 }
 
 // ============ FILTER STATE ============
@@ -2541,8 +2559,7 @@ async function resolveBulkDuplicates(candidates) {
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
-        const originalText = confirmBulkEntriesBtn.textContent;
-        confirmBulkEntriesBtn.disabled = true;
+        setButtonLoading(confirmBulkEntriesBtn, true);
         try {
             // Pre-flight duplicate detection — user confirms per duplicate.
             const candidates = bulkExtractedEntries.map(e => ({
@@ -2607,8 +2624,7 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             console.error('Error saving bulk entries:', error);
             alert(t('bulk.errorSave', { message: error.message }));
         } finally {
-            confirmBulkEntriesBtn.disabled = false;
-            confirmBulkEntriesBtn.textContent = originalText;
+            setButtonLoading(confirmBulkEntriesBtn, false);
         }
     }
 });
@@ -3231,7 +3247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch + blob (rather than `<a href>` navigation) so we can
             // surface 4xx/5xx errors as in-modal alerts instead of having
             // the browser navigate away from the SPA to a JSON error body.
-            exportBtn.disabled = true;
+            setButtonLoading(exportBtn, true);
             try {
                 const res = await fetch('/api/reports/export?' + params.toString(), {
                     credentials: 'include'
@@ -3263,7 +3279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Report export failed:', e);
                 alert(t('report.exportError') || 'Export failed');
             } finally {
-                exportBtn.disabled = false;
+                setButtonLoading(exportBtn, false);
             }
         });
     }
@@ -3457,6 +3473,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // button. Avoids stranding a 0-amount row that the UI then
                 // renders as "no target set" with a disabled Clear.
                 const shouldDelete = isEmpty || v === 0;
+                // Visual feedback while the round-trip is in flight: disable
+                // the input + Clear button and mark the row aria-busy so SR
+                // users get the cue. The row gets re-rendered on success so
+                // these flags only matter on the brief in-flight window.
+                row.setAttribute('aria-busy', 'true');
+                input.disabled = true;
+                if (clearBtn) clearBtn.disabled = true;
                 try {
                     let res;
                     if (shouldDelete) {
@@ -3482,6 +3505,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.error('Budget save failed:', e);
                     alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
+                } finally {
+                    if (row.isConnected) {
+                        row.removeAttribute('aria-busy');
+                        input.disabled = false;
+                        if (clearBtn) clearBtn.disabled = clearBtn.disabled && !(input.value); // restore prior state
+                    }
                 }
             };
             input.addEventListener('blur', () => {
@@ -3492,6 +3521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
             });
             clearBtn.addEventListener('click', async () => {
+                setButtonLoading(clearBtn, true);
                 try {
                     const res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
                     if (!res.ok && res.status !== 404) {
@@ -3503,6 +3533,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.error('DELETE /api/budgets failed:', e);
                     alert(t('budget.deleteError'));
+                } finally {
+                    // The row gets re-rendered on success, so this only
+                    // matters on the error path. Guard against the button
+                    // already being detached.
+                    if (clearBtn.isConnected) setButtonLoading(clearBtn, false);
                 }
             });
         });
