@@ -60,8 +60,9 @@ function parseJsonField(val) {
         // encrypted credential column on user reads. Even the value's
         // length flows from the credential access path and CodeQL flags it
         // (alerts #6 / #13). The error message alone is enough to surface
-        // a parse-format regression; the column name + row id can be
-        // recovered from the calling stack trace if needed.
+        // a parse-format regression; the stack trace can help identify
+        // the code path, but it will not reliably identify the specific
+        // row id.
         console.error('Failed to parse JSON field:', err.message);
         return null;
     }
