@@ -59,11 +59,11 @@ function parseJsonField(val) {
         // Don't log anything derived from `val` — this helper runs on every
         // encrypted credential column on user reads. Even the value's
         // length flows from the credential access path and CodeQL flags it
-        // (alerts #6 / #13). The error message alone is enough to surface
-        // a parse-format regression; the stack trace can help identify
-        // the code path, but it will not reliably identify the specific
-        // row id.
-        console.error('Failed to parse JSON field:', err.message);
+        // (alerts #6 / #13). Logging the error object is safe (the
+        // SyntaxError it carries doesn't include any data from `val`) and
+        // gives us a stack trace to identify the code path, though it
+        // won't reliably identify the specific row id.
+        console.error('Failed to parse JSON field:', err);
         return null;
     }
 }
