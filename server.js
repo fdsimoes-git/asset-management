@@ -1262,13 +1262,14 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
 
     // Validate email format. Length + char check first so the regex never
     // sees an unbounded input (was a polynomial-ReDoS path: see issue #80
-    // / CodeQL #10). Regex itself uses bounded quantifiers as defense in
-    // depth — they overlap on `.` (the middle class still includes it),
-    // but bounding the repeats keeps any backtracking polynomial.
+    // / CodeQL #10). The regex uses bounded per-label quantifiers and an
+    // explicit `(label.)+TLD` structure so consecutive-dot domains like
+    // `a@..com` are rejected too, while real multi-label addresses
+    // (`user@sub.example.co.uk`) keep working.
     if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
@@ -2047,12 +2048,13 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
     }
 
     // Length + char check first so the regex never sees an unbounded input
-    // (issue #80 / CodeQL #11). Regex uses bounded quantifiers as defense
-    // in depth.
+    // (issue #80 / CodeQL #11). Regex uses bounded per-label quantifiers
+    // and an explicit `(label.)+TLD` structure so consecutive-dot domains
+    // like `a@..com` are rejected too — see /api/register for details.
     if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    const emailRegex = /^[^\s@]{1,64}@(?:[^\s@.]{1,63}\.)+[^\s@.]{2,63}$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
