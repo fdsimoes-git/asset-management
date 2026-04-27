@@ -2480,7 +2480,7 @@ const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
 // but with month=null so we get the full history, then applies range/type/
 // category filters in-process. Pulled out so CSV and PDF paths share the
 // exact same dataset.
-async function fetchEntriesForReport(req, viewMode) {
+async function fetchEntriesForReport(req, viewMode, month = null) {
     let validPartner = null;
     if (req.user.partnerId) {
         const partner = await db.findUserById(req.user.partnerId);
@@ -2489,19 +2489,19 @@ async function fetchEntriesForReport(req, viewMode) {
         }
     }
     if (viewMode === 'combined' && validPartner) {
-        return db.getCoupleEntries(req.user.id, validPartner.id, null);
+        return db.getCoupleEntries(req.user.id, validPartner.id, month);
     }
     if (viewMode === 'myshare' && validPartner) {
-        return db.getMyShareEntries(req.user.id, validPartner.id, null);
+        return db.getMyShareEntries(req.user.id, validPartner.id, month);
     }
     if (viewMode === 'myshare') {
         // No partner — myshare collapses to the user's own entries.
-        return db.getIndividualEntries(req.user.id, null);
+        return db.getIndividualEntries(req.user.id, month);
     }
     if (viewMode === 'individual' && validPartner) {
-        return db.getIndividualEntries(req.user.id, null);
+        return db.getIndividualEntries(req.user.id, month);
     }
-    return db.getEntriesByUser(req.user.id, null);
+    return db.getEntriesByUser(req.user.id, month);
 }
 
 function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
@@ -2780,6 +2780,185 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
             categories: categorySet ? [...categorySet] : null
         }
     });
+}));
+
+// ============ USER BUDGETS (issue #93) ============
+
+const BUDGET_OVERALL_TOKEN = '_overall';
+// Schema is NUMERIC(12,2) — bound the input far below the column limit so
+// typos don't slip into the row.
+const BUDGET_AMOUNT_MAX = 100_000_000;
+
+// Compute actual spend per category + overall for the given month + view
+// mode. Multi-tag expenses are split equally across their tags, and
+// expenses with no tags bucket into 'other' — both rules match the
+// dashboard's category chart so per-category sums add up to the overall.
+async function computeBudgetActuals(req, viewMode, month) {
+    const entries = await fetchEntriesForReport(req, viewMode, month);
+    let overall = 0;
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        const amt = parseFloat(e.amount) || 0;
+        overall += amt;
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
+        const share = amt / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    return { overall, byCategory };
+}
+
+function currentMonthYYYYMM() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// GET /api/budgets — returns the user's budgets joined with their
+// categories and the actual spend for the requested month, ready for
+// the UI to render rows + progress bars without further fetches.
+//
+// Query params:
+//   month=YYYY-MM   client-supplied month so timezone differences between
+//                   the client (where entries get their month from) and
+//                   the server don't shift the tracking window. Defaults
+//                   to the server clock if omitted.
+//   viewMode=…      same semantics as /api/entries (individual / combined
+//                   / myshare). Defaults to 'individual' so couple users
+//                   don't accidentally see partner-shared spend bucketed
+//                   into their personal budget.
+app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
+    const requestedViewMode = req.query.viewMode || 'individual';
+    if (!VALID_VIEW_MODES.has(requestedViewMode)) {
+        return res.status(400).json({ message: 'Invalid viewMode.' });
+    }
+    let month = req.query.month;
+    if (month != null && month !== '') {
+        if (typeof month !== 'string' || !MONTH_FORMAT.test(month)) {
+            return res.status(400).json({ message: 'Invalid month. Expected YYYY-MM.' });
+        }
+    } else {
+        month = currentMonthYYYYMM();
+    }
+
+    // Use the self-healing helper (matches /api/categories) so a brand-new
+    // account that hits /api/budgets first still gets the 17 default
+    // categories seeded — otherwise the modal would render with no rows.
+    const [budgets, categories, actuals] = await Promise.all([
+        db.getUserBudgets(req.user.id),
+        getCategoriesForUserSelfHeal(req.user.id),
+        computeBudgetActuals(req, requestedViewMode, month)
+    ]);
+
+    const budgetBySlug = new Map();
+    let overallBudget = 0;
+    for (const b of budgets) {
+        if (b.categorySlug == null) overallBudget = b.amount;
+        else budgetBySlug.set(b.categorySlug, b.amount);
+    }
+
+    // byCategory must include every slug the actuals touched, not just
+    // the user's current category list — otherwise spend on orphan slugs
+    // (a category the user deleted but kept on existing entries) and on
+    // the synthetic 'other' bucket (no-tag expenses) would be invisible
+    // in the modal even though it's still summed into overall.actual.
+    // We render the user's categories first (in their existing order),
+    // then append any extra slugs from actuals as orphan rows with a
+    // neutral label/color.
+    //
+    // Return unrounded actuals so the per-category sums add up exactly to
+    // the overall (multi-tag splits create fractional-cent shares; display
+    // rounding is the UI's job).
+    const userSlugSet = new Set(categories.map(c => c.slug));
+    const byCategory = categories.map(c => ({
+        slug: c.slug,
+        label: c.label,
+        color: c.color,
+        amount: budgetBySlug.get(c.slug) || 0,
+        actual: actuals.byCategory.get(c.slug) || 0
+    }));
+    for (const [slug, actual] of actuals.byCategory.entries()) {
+        if (userSlugSet.has(slug)) continue;
+        byCategory.push({
+            slug,
+            label: slug, // raw slug — user has no row for it (deleted or 'other')
+            color: '#94a3b8', // neutral gray for orphan rows
+            amount: budgetBySlug.get(slug) || 0,
+            actual,
+            isOrphan: true
+        });
+    }
+
+    // Currency is intentionally absent from the response — money formatting
+    // is the client's job and follows getLang() (BRL for pt-BR, USD for
+    // en-US), the same rule the hero KPIs use. If we ever want a per-user
+    // currency, persist it on `users` and surface it from a single place.
+    res.json({
+        month,
+        overall: {
+            amount: overallBudget,
+            actual: actuals.overall
+        },
+        byCategory
+    });
+}));
+
+// PUT /api/budgets/:slug — set or update a single budget. The special
+// slug `_overall` (BUDGET_OVERALL_TOKEN) targets the user's NULL-slug
+// "overall" budget row.
+app.put('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+
+    // Round to 2dp BEFORE validating — the column is NUMERIC(12,2) so any
+    // sub-cent value (e.g. 0.004) would be silently rounded to 0.00 by
+    // Postgres on insert, leaving a stranded zero-amount row. Validate
+    // the rounded value so anything that would land at 0 is rejected
+    // up-front. The UI deletes-on-zero; callers that want to remove a
+    // budget should hit DELETE /api/budgets/:slug.
+    const rawAmount = Number(req.body && req.body.amount);
+    if (!Number.isFinite(rawAmount)) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
+    }
+    const amount = Math.round((rawAmount + Number.EPSILON) * 100) / 100;
+    if (amount <= 0 || amount > BUDGET_AMOUNT_MAX) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
+    }
+
+    // For non-overall budgets, require the slug to be one of the user's
+    // own categories so we don't accumulate orphan rows for slugs the user
+    // doesn't have.
+    if (!isOverall) {
+        const userSlugs = await db.getUserCategorySlugs(req.user.id);
+        if (!userSlugs.includes(slugParam)) {
+            return res.status(404).json({ message: 'Category not found for this user.' });
+        }
+    }
+
+    const budget = await db.upsertUserBudget(
+        req.user.id,
+        isOverall ? null : slugParam,
+        amount
+    );
+    res.json(budget);
+}));
+
+// DELETE /api/budgets/:slug
+app.delete('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+    const removed = await db.deleteUserBudget(req.user.id, isOverall ? null : slugParam);
+    if (!removed) {
+        return res.status(404).json({ message: 'Budget not found.' });
+    }
+    res.json({ message: 'Budget removed.' });
 }));
 
 // ============ USER CATEGORIES (issue #70) ============

@@ -2994,8 +2994,8 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
 
     // Sidebar nav: route data-target clicks to the existing modals/sections.
-    // Items without data-target (Budgets, Goals) are aria-disabled and stay
-    // inert; Reports opens its own modal (issue #92).
+    // The remaining "Coming soon" item (Goals) is aria-disabled and stays
+    // inert; Reports / Budgets open their own modals (issues #92, #93).
     document.querySelectorAll('.sidebar .nav-item[data-target]').forEach(item => {
         item.addEventListener('click', () => {
             const target = item.getAttribute('data-target');
@@ -3035,6 +3035,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 case 'reports':
                     openReportsModal();
+                    break;
+                case 'budgets':
+                    openBudgetsModal();
                     break;
             }
         });
@@ -3262,6 +3265,246 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 exportBtn.disabled = false;
             }
+        });
+    }
+
+    // ============ BUDGETS MODAL (issue #93) ============
+    //
+    // Lists every category the user owns plus an "overall" row at the top,
+    // each with: an editable monthly target, the actual spend so far this
+    // month, and a colored progress bar. Save behaviour: a positive value
+    // PUTs the budget; clearing the input (or saving 0) DELETEs the row,
+    // matching the explicit Clear button.
+    // Build the GET /api/budgets URL with the client-local month + the
+    // active viewMode, so the server doesn't fall back to its own clock
+    // (timezone skew) and so couple users see the same scope as the
+    // dashboard. Used by the initial load and by every refresh after a
+    // PUT/DELETE so the modal always stays on the same tracking window.
+    function buildBudgetsUrl(month) {
+        const params = new URLSearchParams({
+            month,
+            viewMode: currentViewMode || 'individual'
+        });
+        return '/api/budgets?' + params.toString();
+    }
+
+    function currentClientMonth() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    async function loadBudgets(month) {
+        const res = await fetch(buildBudgetsUrl(month), { credentials: 'include' });
+        if (!res.ok) throw new Error('GET /api/budgets failed: ' + res.status);
+        return res.json();
+    }
+
+    async function openBudgetsModal() {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal';
+        overlay.style.display = 'block';
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 640px;">
+                <span class="close" id="closeBudgetsModal">&times;</span>
+                <h2>${t('budget.title')}</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1rem;">${t('budget.help')}</p>
+                <div id="budgetsBody" style="min-height: 80px;">
+                    <div style="color: var(--color-text-muted); padding: 16px 0;">${t('common.loading')}</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+        overlay.querySelector('#closeBudgetsModal').addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+        const body = overlay.querySelector('#budgetsBody');
+        // Capture the month once when the modal opens. Crossing a month
+        // boundary mid-edit would otherwise silently shift the tracking
+        // window on the post-save refresh.
+        const trackingMonth = currentClientMonth();
+        try {
+            const data = await loadBudgets(trackingMonth);
+            renderBudgetsModal(body, data, trackingMonth);
+        } catch (e) {
+            console.error('Failed to load budgets:', e);
+            body.innerHTML = `<div style="color: var(--color-danger); padding: 12px 0;">${escapeHtml(t('budget.loadError'))}</div>`;
+        }
+    }
+
+    function renderBudgetsModal(container, data, trackingMonth) {
+        const overall = data.overall || { amount: 0, actual: 0 };
+        const rows = data.byCategory || [];
+
+        // Locale-aware currency formatter (pt-BR → BRL/R$, en-US → USD/$).
+        // Matches the hero-KPI formatting introduced in PR #91; we don't
+        // honor `data.currency` from the API because the server intentionally
+        // doesn't dictate it (currency follows the client's language).
+        const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+        const moneyFmt = new Intl.NumberFormat(isPt ? 'pt-BR' : 'en-US', {
+            style: 'currency',
+            currency: isPt ? 'BRL' : 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+        const fmtMoney = (n) => moneyFmt.format(Number(n) || 0);
+        // Safe progress: 0 if no budget. Cap at 100% for the bar fill but
+        // surface a separate "over budget" pill when actual > budget.
+        const progressFor = (amount, actual) => {
+            if (!amount || amount <= 0) return { pct: null, over: false };
+            const ratio = actual / amount;
+            return { pct: Math.min(ratio, 1) * 100, over: ratio > 1, raw: ratio * 100 };
+        };
+        const barColor = (p) => {
+            if (!p) return 'var(--ink-3)';
+            if (p.over) return 'var(--negative)';
+            if (p.pct >= 70) return 'var(--accent-2)';
+            return 'var(--positive)';
+        };
+
+        const renderRow = (slug, label, color, amount, actual, isOverall, isOrphan) => {
+            const p = progressFor(amount, actual);
+            const barWidth = p.pct == null ? 0 : p.pct;
+            const fill = barColor(p);
+            const overPill = p.over
+                ? `<span class="delta-pill down" style="margin-left: 8px;">${escapeHtml(t('budget.overBudget'))}</span>`
+                : '';
+            // "Orphan" rows are slugs the server saw spend on but the user
+            // doesn't have in user_categories anymore (deleted category, or
+            // the synthetic 'other' bucket). PUT to those slugs would 404
+            // server-side, so we render them read-only — only Clear is
+            // allowed (DELETE works against the user_id row regardless of
+            // category ownership). A small "(removed)" tag visually marks
+            // them.
+            const orphanPill = isOrphan
+                ? `<span class="mono tiny muted" style="margin-left: 8px;">${escapeHtml(t('budget.orphanLabel'))}</span>`
+                : '';
+            const swatch = isOverall
+                ? `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: var(--ink); margin-right: 6px;"></span>`
+                : `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: ${escapeHtml(color || 'var(--ink-3)')}; margin-right: 6px;"></span>`;
+            const inputDisabled = isOrphan ? 'disabled' : '';
+            const clearDisabled = (amount > 0) ? '' : 'disabled';
+
+            return `
+                <div class="budget-row" data-slug="${escapeHtml(slug)}" data-orphan="${isOrphan ? '1' : '0'}" style="padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle); ${isOrphan ? 'opacity: 0.7;' : ''}">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; font-weight: ${isOverall ? '600' : '500'};">
+                                ${swatch}<span>${escapeHtml(label)}</span>${overPill}${orphanPill}
+                            </div>
+                            <div style="font-family: var(--mono); font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">
+                                ${fmtMoney(actual)} ${t('budget.spent')} · ${p.pct == null ? t('budget.noTarget') : fmtMoney(amount) + ' ' + t('budget.target') + (p.over ? ' · ' + p.raw.toFixed(0) + '%' : ' · ' + p.pct.toFixed(0) + '%')}
+                            </div>
+                        </div>
+                        <input type="number" class="budget-amount" min="0" step="0.01" value="${amount > 0 ? amount.toFixed(2) : ''}" placeholder="0.00" ${inputDisabled}
+                               style="width: 110px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-base); color: var(--color-text-primary); font-family: var(--mono);" />
+                        <button type="button" class="budget-clear edit-btn" style="padding: 4px 8px; font-size: 11px;" ${clearDisabled}>${t('common.delete')}</button>
+                    </div>
+                    <div style="height: 6px; background: var(--color-border-subtle); border-radius: 3px; margin-top: 8px; overflow: hidden;">
+                        <div style="height: 100%; width: ${barWidth}%; background: ${fill}; transition: width 0.2s ease;"></div>
+                    </div>
+                </div>
+            `;
+        };
+
+        // Default-category rows have `label` seeded as the raw slug
+        // server-side; the rest of the app translates those via
+        // categoryLabel(slug) → i18n key `cat.<slug>`. Fall back to the
+        // server-provided label only when categoryLabel doesn't recognize
+        // the slug (custom or orphan categories).
+        const budgetRowLabel = (r) => {
+            if (!r || !r.slug) return (r && r.label) || '';
+            if (typeof categoryLabel !== 'function') return r.label || r.slug;
+            const localized = categoryLabel(r.slug);
+            return localized && localized !== r.slug ? localized : (r.label || r.slug);
+        };
+
+        container.innerHTML = `
+            <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 6px;">
+                ${t('budget.month')}: ${escapeHtml(data.month || '')}
+            </div>
+            ${renderRow('_overall', t('budget.overallLabel'), null, overall.amount, overall.actual, true, false)}
+            ${rows.map(r => renderRow(r.slug, budgetRowLabel(r), r.color, r.amount, r.actual, false, !!r.isOrphan)).join('')}
+        `;
+
+        // Save on blur or Enter; clear via the explicit button.
+        container.querySelectorAll('.budget-row').forEach(row => {
+            const slug = row.getAttribute('data-slug');
+            const input = row.querySelector('.budget-amount');
+            const clearBtn = row.querySelector('.budget-clear');
+            const isOrphan = row.getAttribute('data-orphan') === '1';
+            const save = async () => {
+                if (isOrphan) return; // input is disabled; defensive
+                const raw = input.value.trim();
+                const isEmpty = raw === '';
+                const v = isEmpty ? 0 : Number(raw);
+                if (!isEmpty && (!Number.isFinite(v) || v < 0)) {
+                    // Restore the previous value rather than clearing — an
+                    // empty field would otherwise trigger the DELETE path on
+                    // the next blur and silently remove a saved budget the
+                    // user didn't intend to remove. Show the browser's
+                    // built-in validity tooltip via setCustomValidity, then
+                    // immediately clear the validity so the field doesn't
+                    // stay stuck after revert.
+                    input.setCustomValidity(t('budget.invalidAmount'));
+                    input.reportValidity();
+                    input.value = input.defaultValue;
+                    input.setCustomValidity('');
+                    return;
+                }
+                input.setCustomValidity('');
+                // Empty input or 0 clears the row — same effect as the Clear
+                // button. Avoids stranding a 0-amount row that the UI then
+                // renders as "no target set" with a disabled Clear.
+                const shouldDelete = isEmpty || v === 0;
+                try {
+                    let res;
+                    if (shouldDelete) {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
+                        if (!res.ok && res.status !== 404) {
+                            alert(t('budget.deleteError'));
+                            return;
+                        }
+                    } else {
+                        res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ amount: v })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            alert(err.message || t('budget.saveError'));
+                            return;
+                        }
+                    }
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
+                } catch (e) {
+                    console.error('Budget save failed:', e);
+                    alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
+                }
+            };
+            input.addEventListener('blur', () => {
+                const original = input.defaultValue;
+                if (input.value !== original) save();
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            });
+            clearBtn.addEventListener('click', async () => {
+                try {
+                    const res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
+                    if (!res.ok && res.status !== 404) {
+                        alert(t('budget.deleteError'));
+                        return;
+                    }
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
+                } catch (e) {
+                    console.error('DELETE /api/budgets failed:', e);
+                    alert(t('budget.deleteError'));
+                }
+            });
         });
     }
 

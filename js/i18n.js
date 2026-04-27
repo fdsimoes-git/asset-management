@@ -164,6 +164,21 @@ const translations = {
     'report.errStartAfterEnd': 'Start month must be before or equal to end month.',
     'report.exportError': 'Failed to generate the report. Please try again.',
 
+    // ── Budgets (issue #93) ──
+    'budget.title': 'Monthly budgets',
+    'budget.help': 'Set a monthly target for each category, plus an overall ceiling. Progress is computed against the current calendar month.',
+    'budget.month': 'Tracking month',
+    'budget.overallLabel': 'Overall',
+    'budget.spent': 'spent',
+    'budget.target': 'target',
+    'budget.noTarget': 'no target set',
+    'budget.overBudget': 'Over budget',
+    'budget.loadError': 'Failed to load budgets.',
+    'budget.saveError': 'Failed to save budget.',
+    'budget.deleteError': 'Failed to delete budget.',
+    'budget.invalidAmount': 'Please enter a non-negative number.',
+    'budget.orphanLabel': '(removed)',
+
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
     'dash.totalIncome': 'Total Income',
@@ -776,6 +791,21 @@ const translations = {
     'report.viewModeHint': 'Modo de visualiza\u00e7\u00e3o: {mode}',
     'report.errStartAfterEnd': 'O m\u00eas inicial deve ser anterior ou igual ao m\u00eas final.',
     'report.exportError': 'Falha ao gerar o relat\u00f3rio. Tente novamente.',
+
+    // \u2500\u2500 Budgets (issue #93) \u2500\u2500
+    'budget.title': 'Or\u00e7amentos mensais',
+    'budget.help': 'Defina uma meta mensal para cada categoria, al\u00e9m de um teto geral. O progresso \u00e9 calculado em rela\u00e7\u00e3o ao m\u00eas atual.',
+    'budget.month': 'M\u00eas de refer\u00eancia',
+    'budget.overallLabel': 'Geral',
+    'budget.spent': 'gasto',
+    'budget.target': 'meta',
+    'budget.noTarget': 'sem meta definida',
+    'budget.overBudget': 'Acima do or\u00e7amento',
+    'budget.loadError': 'Falha ao carregar or\u00e7amentos.',
+    'budget.saveError': 'Falha ao salvar or\u00e7amento.',
+    'budget.deleteError': 'Falha ao remover or\u00e7amento.',
+    'budget.invalidAmount': 'Informe um n\u00famero n\u00e3o-negativo.',
+    'budget.orphanLabel': '(removida)',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',
