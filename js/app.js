@@ -3137,7 +3137,8 @@ document.addEventListener('DOMContentLoaded', () => {
         overlay.querySelector('#reportCancelBtn').addEventListener('click', cleanup);
         overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
 
-        overlay.querySelector('#reportExportBtn').addEventListener('click', () => {
+        overlay.querySelector('#reportExportBtn').addEventListener('click', async () => {
+            const exportBtn = overlay.querySelector('#reportExportBtn');
             const fmt = overlay.querySelector('input[name="reportFormat"]:checked').value;
             const startV = overlay.querySelector('#reportStart').value;
             const endV = overlay.querySelector('#reportEnd').value;
@@ -3157,13 +3158,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 params.set('categories', filterState.categories.join(','));
             }
 
-            const a = document.createElement('a');
-            a.href = '/api/reports/export?' + params.toString();
-            a.rel = 'noopener';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            cleanup();
+            // Fetch + blob (rather than `<a href>` navigation) so we can
+            // surface 4xx/5xx errors as in-modal alerts instead of having
+            // the browser navigate away from the SPA to a JSON error body.
+            exportBtn.disabled = true;
+            try {
+                const res = await fetch('/api/reports/export?' + params.toString(), {
+                    credentials: 'include'
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.message || t('report.exportError') || ('Export failed: ' + res.status));
+                    return;
+                }
+                const blob = await res.blob();
+                const filenameMatch = /filename="?([^"]+)"?/i.exec(res.headers.get('Content-Disposition') || '');
+                const filename = filenameMatch ? filenameMatch[1] : ('report.' + fmt);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                cleanup();
+            } catch (e) {
+                console.error('Report export failed:', e);
+                alert(t('report.exportError') || 'Export failed');
+            } finally {
+                exportBtn.disabled = false;
+            }
         });
     }
 

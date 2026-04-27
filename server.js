@@ -2528,8 +2528,19 @@ function csvEscape(v) {
 
 // Per-format writer. Both write a header + rows; PDF additionally renders a
 // summary block and a category breakdown.
-function writeCsvReport(res, entries) {
-    res.write('month,type,amount,description,categories,is_couple_expense\n');
+// Honors the response stream's backpressure: when res.write returns false,
+// pause until 'drain' before writing the next row. Otherwise a user with a
+// long history could buffer the entire CSV in memory.
+async function writeCsvReport(res, entries) {
+    const writeLine = (chunk) => new Promise((resolve, reject) => {
+        const ok = res.write(chunk);
+        if (ok) return resolve();
+        const onErr = (err) => { res.off('drain', onDrain); reject(err); };
+        const onDrain = () => { res.off('error', onErr); resolve(); };
+        res.once('drain', onDrain);
+        res.once('error', onErr);
+    });
+    await writeLine('month,type,amount,description,categories,is_couple_expense\n');
     for (const e of entries) {
         const row = [
             csvEscape(e.month),
@@ -2539,7 +2550,7 @@ function writeCsvReport(res, entries) {
             csvEscape(Array.isArray(e.tags) ? e.tags.join('|') : ''),
             csvEscape(e.isCoupleExpense ? 'true' : 'false')
         ].join(',');
-        res.write(row + '\n');
+        await writeLine(row + '\n');
     }
     res.end();
 }
@@ -2675,6 +2686,13 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
     const dateStr = new Date().toISOString().slice(0, 10);
     const usernameSlug = String(req.user.username).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'user';
     const fileBase = `asset-management-${usernameSlug}-${dateStr}`;
+
+    // Reports contain personal financial data. `no-store` keeps the
+    // payload out of intermediary caches and the browser's back/forward
+    // cache; `Pragma: no-cache` is the HTTP/1.0 equivalent for the rare
+    // proxy that still honors it.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
 
     if (format === 'csv') {
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
