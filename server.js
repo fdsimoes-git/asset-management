@@ -2602,6 +2602,30 @@ function summarizeForReport(entries) {
 
 function writePdfReport(res, { entries, summary, meta }) {
     const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+    // Wire up error handling on both ends of the pipe before piping.
+    // Without listeners, an EPIPE / abort during the download would emit
+    // an unhandled 'error' on the doc or res stream and crash the worker.
+    let streamFinished = false;
+    const abortDoc = () => {
+        try { if (typeof doc.destroy === 'function' && !doc.destroyed) doc.destroy(); }
+        catch (e) { /* best-effort */ }
+    };
+    doc.on('error', (err) => {
+        console.error('PDF report doc error:', err && err.code || err && err.name || 'Error');
+        if (!res.headersSent) {
+            res.status(500).end('Failed to generate PDF report');
+        } else if (!res.writableEnded) {
+            try { res.end(); } catch (e) { /* nothing more to do */ }
+        }
+    });
+    res.on('error', (err) => {
+        console.error('PDF report stream error:', err && err.code || err && err.name || 'Error');
+        abortDoc();
+    });
+    res.on('finish', () => { streamFinished = true; });
+    res.on('close', () => { if (!streamFinished) abortDoc(); });
+
     doc.pipe(res);
 
     // Header
