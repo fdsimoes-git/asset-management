@@ -3205,9 +3205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // (timezone skew) and so couple users see the same scope as the
     // dashboard. Used by the initial load and by every refresh after a
     // PUT/DELETE so the modal always stays on the same tracking window.
-    function buildBudgetsUrl() {
-        const d = new Date();
-        const month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    function buildBudgetsUrl(month) {
         const params = new URLSearchParams({
             month,
             viewMode: currentViewMode || 'individual'
@@ -3215,8 +3213,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return '/api/budgets?' + params.toString();
     }
 
-    async function loadBudgets() {
-        const res = await fetch(buildBudgetsUrl(), { credentials: 'include' });
+    function currentClientMonth() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    async function loadBudgets(month) {
+        const res = await fetch(buildBudgetsUrl(month), { credentials: 'include' });
         if (!res.ok) throw new Error('GET /api/budgets failed: ' + res.status);
         return res.json();
     }
@@ -3241,16 +3244,20 @@ document.addEventListener('DOMContentLoaded', () => {
         overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
 
         const body = overlay.querySelector('#budgetsBody');
+        // Capture the month once when the modal opens. Crossing a month
+        // boundary mid-edit would otherwise silently shift the tracking
+        // window on the post-save refresh.
+        const trackingMonth = currentClientMonth();
         try {
-            const data = await loadBudgets();
-            renderBudgetsModal(body, data);
+            const data = await loadBudgets(trackingMonth);
+            renderBudgetsModal(body, data, trackingMonth);
         } catch (e) {
             console.error('Failed to load budgets:', e);
             body.innerHTML = `<div style="color: var(--color-danger); padding: 12px 0;">${escapeHtml(t('budget.loadError'))}</div>`;
         }
     }
 
-    function renderBudgetsModal(container, data) {
+    function renderBudgetsModal(container, data, trackingMonth) {
         const overall = data.overall || { amount: 0, actual: 0 };
         const rows = data.byCategory || [];
 
@@ -3347,8 +3354,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
                     }
-                    const fresh = await loadBudgets();
-                    renderBudgetsModal(container, fresh);
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
                 } catch (e) {
                     console.error('Budget save failed:', e);
                     alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
@@ -3368,8 +3375,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert(t('budget.deleteError'));
                         return;
                     }
-                    const fresh = await loadBudgets();
-                    renderBudgetsModal(container, fresh);
+                    const fresh = await loadBudgets(trackingMonth);
+                    renderBudgetsModal(container, fresh, trackingMonth);
                 } catch (e) {
                     console.error('DELETE /api/budgets failed:', e);
                     alert(t('budget.deleteError'));

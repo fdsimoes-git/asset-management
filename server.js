@@ -2791,9 +2791,19 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         else budgetBySlug.set(b.categorySlug, b.amount);
     }
 
+    // byCategory must include every slug the actuals touched, not just
+    // the user's current category list — otherwise spend on orphan slugs
+    // (a category the user deleted but kept on existing entries) and on
+    // the synthetic 'other' bucket (no-tag expenses) would be invisible
+    // in the modal even though it's still summed into overall.actual.
+    // We render the user's categories first (in their existing order),
+    // then append any extra slugs from actuals as orphan rows with a
+    // neutral label/color.
+    //
     // Return unrounded actuals so the per-category sums add up exactly to
-    // the overall (multi-tag splits create fractional-cent shares; rounding
-    // here would introduce drift). Display rounding is the UI's job.
+    // the overall (multi-tag splits create fractional-cent shares; display
+    // rounding is the UI's job).
+    const userSlugSet = new Set(categories.map(c => c.slug));
     const byCategory = categories.map(c => ({
         slug: c.slug,
         label: c.label,
@@ -2801,6 +2811,17 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         amount: budgetBySlug.get(c.slug) || 0,
         actual: actuals.byCategory.get(c.slug) || 0
     }));
+    for (const [slug, actual] of actuals.byCategory.entries()) {
+        if (userSlugSet.has(slug)) continue;
+        byCategory.push({
+            slug,
+            label: slug, // raw slug — user has no row for it (deleted or 'other')
+            color: '#94a3b8', // neutral gray for orphan rows
+            amount: budgetBySlug.get(slug) || 0,
+            actual,
+            isOrphan: true
+        });
+    }
 
     res.json({
         month,
@@ -2823,9 +2844,13 @@ app.put('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid category slug.' });
     }
 
+    // Reject amount === 0 (and negative) — the UI deletes-on-zero, and a
+    // direct API call with amount=0 would otherwise persist a stranded
+    // zero-amount row. Callers that want to remove a budget should hit
+    // DELETE /api/budgets/:slug instead.
     const amount = Number(req.body && req.body.amount);
-    if (!Number.isFinite(amount) || amount < 0 || amount > BUDGET_AMOUNT_MAX) {
-        return res.status(400).json({ message: `Amount must be a number between 0 and ${BUDGET_AMOUNT_MAX}.` });
+    if (!Number.isFinite(amount) || amount <= 0 || amount > BUDGET_AMOUNT_MAX) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
     }
 
     // For non-overall budgets, require the slug to be one of the user's
