@@ -683,11 +683,21 @@ const MAX_RESET_ATTEMPTS = 5;
 const RESET_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 function generateResetCode() {
+    // Rejection sampling: 256 % 36 = 4, so bytes >= 252 (the unused tail)
+    // are discarded. This makes every alphabet character equiprobable
+    // (issue #81 / CodeQL #9 — the previous `byte % 36` left the first
+    // 4 alphabet chars ~14% more likely than the rest).
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const bytes = crypto.randomBytes(8);
+    const max = 256 - (256 % alphabet.length);
     let code = '';
-    for (let i = 0; i < 8; i++) {
-        code += alphabet[bytes[i] % alphabet.length];
+    while (code.length < 8) {
+        const buf = crypto.randomBytes(8);
+        for (const b of buf) {
+            if (b < max) {
+                code += alphabet[b % alphabet.length];
+                if (code.length === 8) break;
+            }
+        }
     }
     return code;
 }
@@ -1238,12 +1248,16 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Validate email format. Length + char check first so the regex never
+    // sees an unbounded input (was a polynomial-ReDoS path: see issue #80
+    // / CodeQL #10). Regex itself uses bounded quantifiers as defense in
+    // depth — they overlap on `.` (the middle class still includes it),
+    // but bounding the repeats keeps any backtracking polynomial.
+    if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    if (email.length > 254 || /[<>]/.test(email)) {
+    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
 
@@ -2020,11 +2034,14 @@ app.put('/api/user/email', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid email' });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    // Length + char check first so the regex never sees an unbounded input
+    // (issue #80 / CodeQL #11). Regex uses bounded quantifiers as defense
+    // in depth.
+    if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
-    if (email.length > 254 || /[<>]/.test(email)) {
+    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,64}$/;
+    if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
 
