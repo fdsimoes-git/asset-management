@@ -153,6 +153,17 @@ const translations = {
     'kpi.expenseHelp': 'Total expenses recorded in the latest month in view. The percentage is the month-over-month change vs the previous month.',
     'kpi.savingRateHelp': '(Income − Expenses) ÷ Income × 100 for the latest month. The "pts" value is the point change vs the previous month, not a percent of a percent.',
 
+    // ── Reports (issue #92) ──
+    'report.title': 'Export report',
+    'report.help': 'Download a CSV or PDF of your entries. The report respects your current view mode and category filter.',
+    'report.format': 'Format',
+    'report.startMonth': 'Start month',
+    'report.endMonth': 'End month',
+    'report.export': 'Export',
+    'report.viewModeHint': 'View mode: {mode}',
+    'report.errStartAfterEnd': 'Start month must be before or equal to end month.',
+    'report.exportError': 'Failed to generate the report. Please try again.',
+
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
     'dash.totalIncome': 'Total Income',
@@ -754,6 +765,17 @@ const translations = {
     'kpi.incomeHelp': 'Receita registrada no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
     'kpi.expenseHelp': 'Despesas registradas no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
     'kpi.savingRateHelp': '(Receita \u2212 Despesas) \u00f7 Receita \u00d7 100 para o \u00faltimo m\u00eas. O valor em "pts" \u00e9 a varia\u00e7\u00e3o em pontos vs o m\u00eas anterior, n\u00e3o uma porcentagem de uma porcentagem.',
+
+    // \u2500\u2500 Reports (issue #92) \u2500\u2500
+    'report.title': 'Exportar relat\u00f3rio',
+    'report.help': 'Baixe um CSV ou PDF dos seus lan\u00e7amentos. O relat\u00f3rio respeita o modo de visualiza\u00e7\u00e3o e o filtro de categorias atuais.',
+    'report.format': 'Formato',
+    'report.startMonth': 'M\u00eas inicial',
+    'report.endMonth': 'M\u00eas final',
+    'report.export': 'Exportar',
+    'report.viewModeHint': 'Modo de visualiza\u00e7\u00e3o: {mode}',
+    'report.errStartAfterEnd': 'O m\u00eas inicial deve ser anterior ou igual ao m\u00eas final.',
+    'report.exportError': 'Falha ao gerar o relat\u00f3rio. Tente novamente.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',

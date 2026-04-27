@@ -14,6 +14,7 @@ const { pool: dbPool, testConnection: testDbConnection } = require('./db/pool');
 const multer = require('multer'); // For handling file uploads
 const rateLimit = require('express-rate-limit');
 const pdfParse = require('pdf-parse'); // For parsing PDF files
+const PDFDocument = require('pdfkit');  // For generating report PDFs (issue #92)
 const { GoogleGenAI, Type } = require('@google/genai');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -1056,6 +1057,17 @@ const pdfUploadLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: 'Too many upload attempts. Please try again later.' },
+    keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
+});
+
+// Report export is bounded — PDF generation can be expensive on large
+// histories, and CSV streaming is cheap but worth bounding too.
+const reportExportLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many report exports. Please try again later.' },
     keyGenerator: (req, res) => req.session?.user?.id?.toString() || rateLimit.ipKeyGenerator(req, res)
 });
 
@@ -2457,6 +2469,317 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
     }
 
     res.json({ message: 'Entry deleted successfully' });
+}));
+
+// ============ REPORT EXPORT (issue #92) ============
+
+const VALID_REPORT_FORMATS = new Set(['csv', 'pdf']);
+const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
+
+// Mirrors GET /api/entries' filtering (viewMode + couple/individual rules)
+// but with month=null so we get the full history, then applies range/type/
+// category filters in-process. Pulled out so CSV and PDF paths share the
+// exact same dataset.
+async function fetchEntriesForReport(req, viewMode) {
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
+    }
+    if (viewMode === 'combined' && validPartner) {
+        return db.getCoupleEntries(req.user.id, validPartner.id, null);
+    }
+    if (viewMode === 'myshare' && validPartner) {
+        return db.getMyShareEntries(req.user.id, validPartner.id, null);
+    }
+    if (viewMode === 'myshare') {
+        // No partner — myshare collapses to the user's own entries.
+        return db.getIndividualEntries(req.user.id, null);
+    }
+    if (viewMode === 'individual' && validPartner) {
+        return db.getIndividualEntries(req.user.id, null);
+    }
+    return db.getEntriesByUser(req.user.id, null);
+}
+
+function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
+    let out = entries;
+    if (start) out = out.filter(e => (e.month || '') >= start);
+    if (end)   out = out.filter(e => (e.month || '') <= end);
+    if (typeFilter && typeFilter !== 'all') {
+        out = out.filter(e => e.type === typeFilter);
+    }
+    if (categorySet) {
+        out = out.filter(e => Array.isArray(e.tags) && e.tags.some(t => categorySet.has(t)));
+    }
+    out = out.slice().sort((a, b) => (a.month || '').localeCompare(b.month || ''));
+    return out;
+}
+
+// CSV escaping with formula-injection mitigation: cells whose first
+// non-whitespace character is `=`, `+`, `-`, or `@` can be parsed as
+// formulas by Excel / Google Sheets — even with leading whitespace, since
+// many spreadsheet apps trim the cell before evaluating. Prefix the
+// value with an apostrophe so it's treated as text. (Bounded fields like
+// month / type / amount don't match the dangerous leading pattern, so
+// they pass through unchanged.)
+function csvEscape(v) {
+    if (v == null) return '';
+    let s = String(v);
+    if (/^\s*[=+\-@]/.test(s)) s = "'" + s;
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Per-format writer. Both write a header + rows; PDF additionally renders a
+// summary block and a category breakdown.
+// Honors the response stream's backpressure: when res.write returns false,
+// pause until 'drain' before writing the next row. Otherwise a user with a
+// long history could buffer the entire CSV in memory. We also resolve on
+// 'close' / 'error' so the loop short-circuits if the client disconnects
+// mid-export instead of hanging on a 'drain' that will never fire.
+async function writeCsvReport(res, entries) {
+    const writeLine = (chunk) => new Promise((resolve, reject) => {
+        if (res.writableEnded || res.destroyed) return resolve(false);
+        const ok = res.write(chunk);
+        if (ok) return resolve(true);
+        const cleanup = () => {
+            res.off('drain', onDrain);
+            res.off('close', onClose);
+            res.off('error', onErr);
+        };
+        const onDrain = () => { cleanup(); resolve(true); };
+        const onClose = () => { cleanup(); resolve(false); };
+        const onErr = (err) => { cleanup(); reject(err); };
+        res.once('drain', onDrain);
+        res.once('close', onClose);
+        res.once('error', onErr);
+    });
+    if (!(await writeLine('month,type,amount,description,categories,is_couple_expense\n'))) return;
+    for (const e of entries) {
+        const row = [
+            csvEscape(e.month),
+            csvEscape(e.type),
+            csvEscape(e.amount),
+            csvEscape(e.description),
+            csvEscape(Array.isArray(e.tags) ? e.tags.join('|') : ''),
+            csvEscape(e.isCoupleExpense ? 'true' : 'false')
+        ].join(',');
+        if (!(await writeLine(row + '\n'))) return; // client disconnected
+    }
+    if (!res.writableEnded) res.end();
+}
+
+function summarizeForReport(entries) {
+    const totals = entries.reduce((acc, e) => {
+        const amt = parseFloat(e.amount) || 0;
+        if (e.type === 'income') acc.income += amt;
+        else if (e.type === 'expense') acc.expense += amt;
+        return acc;
+    }, { income: 0, expense: 0 });
+    const net = totals.income - totals.expense;
+    const savingRate = totals.income > 0 ? ((totals.income - totals.expense) / totals.income) * 100 : 0;
+
+    // Category breakdown is for expenses only. When an entry has multiple
+    // tags, split the amount equally across them so the breakdown sums to
+    // the total (matches the dashboard's category chart logic).
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        // Match the dashboard / Budgets actuals: no-tag expenses bucket
+        // into 'other' so report PDFs use the same label as the rest of
+        // the UI.
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : ['other'];
+        const share = (parseFloat(e.amount) || 0) / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+    return { totals, net, savingRate, categories };
+}
+
+function writePdfReport(res, { entries, summary, meta }) {
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+    // Wire up error handling on both ends of the pipe before piping.
+    // Without listeners, an EPIPE / abort during the download would emit
+    // an unhandled 'error' on the doc or res stream and crash the worker.
+    let streamFinished = false;
+    const abortDoc = () => {
+        try { if (typeof doc.destroy === 'function' && !doc.destroyed) doc.destroy(); }
+        catch (e) { /* best-effort */ }
+    };
+    doc.on('error', (err) => {
+        console.error('PDF report doc error:', err && err.code || err && err.name || 'Error');
+        if (!res.headersSent) {
+            res.status(500).end('Failed to generate PDF report');
+        } else if (!res.writableEnded) {
+            try { res.end(); } catch (e) { /* nothing more to do */ }
+        }
+    });
+    res.on('error', (err) => {
+        console.error('PDF report stream error:', err && err.code || err && err.name || 'Error');
+        abortDoc();
+    });
+    res.on('finish', () => { streamFinished = true; });
+    res.on('close', () => { if (!streamFinished) abortDoc(); });
+
+    doc.pipe(res);
+
+    // Header
+    doc.font('Helvetica-Bold').fontSize(18).text('Asset Management Report');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#444');
+    doc.text(`User: ${meta.username}`);
+    doc.text(`View: ${meta.viewMode}`);
+    // ASCII separator — pdfkit's default Helvetica is WinAnsi-encoded and
+    // doesn't have a glyph for "→", which would render as a tofu box.
+    if (meta.start || meta.end) doc.text(`Period: ${meta.start || 'beginning'} to ${meta.end || 'now'}`);
+    if (meta.typeFilter && meta.typeFilter !== 'all') doc.text(`Type: ${meta.typeFilter}`);
+    if (meta.categories) doc.text(`Categories: ${meta.categories.join(', ')}`);
+    doc.text(`Generated: ${new Date().toISOString()}`);
+    doc.moveDown();
+
+    // Summary block
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(13).text('Summary');
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10);
+    // Format negatives as `-$X.XX` rather than `$-X.XX` so the sign reads
+    // before the currency symbol (matches the entries-table convention).
+    const fmt = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    doc.text(`Total income:    ${fmt(summary.totals.income)}`);
+    doc.text(`Total expenses:  ${fmt(summary.totals.expense)}`);
+    doc.text(`Net balance:     ${fmt(summary.net)}`);
+    doc.text(`Saving rate:     ${summary.savingRate.toFixed(1)}%`);
+    doc.text(`Entries:         ${entries.length}`);
+    doc.moveDown();
+
+    // Category breakdown
+    if (summary.categories.length) {
+        doc.font('Helvetica-Bold').fontSize(13).text('Expenses by category');
+        doc.moveDown(0.3);
+        doc.font('Helvetica').fontSize(10);
+        for (const [cat, amt] of summary.categories) {
+            const pct = summary.totals.expense > 0 ? (amt / summary.totals.expense * 100).toFixed(1) : '0.0';
+            doc.text(`${cat.padEnd(22).slice(0, 22)} ${fmt(amt).padStart(12)}  (${pct}%)`);
+        }
+        doc.moveDown();
+    }
+
+    // Entries table — month, type, amount, description (truncated), tags
+    doc.font('Helvetica-Bold').fontSize(13).text(`Entries (${entries.length})`);
+    doc.moveDown(0.3);
+    doc.font('Courier').fontSize(9);
+    doc.text('MONTH    TYPE        AMOUNT  DESCRIPTION');
+    doc.text('-------- -------- ---------- ------------------------------------------------');
+    // Collapse any control whitespace (newlines / tabs / CR) in the
+    // description to a single space, otherwise pdfkit would wrap on the
+    // newline and shift subsequent columns out of alignment.
+    const oneLine = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    for (const e of entries) {
+        const month = (e.month || '').slice(0, 7).padEnd(8);
+        const type = (e.type || '').padEnd(8);
+        const sign = e.type === 'income' ? '+' : '-';
+        const amt = (sign + (parseFloat(e.amount) || 0).toFixed(2)).padStart(10);
+        const tags = Array.isArray(e.tags) && e.tags.length ? ` [${e.tags.slice(0, 3).join(',')}]` : '';
+        const desc = (oneLine(e.description) + tags).slice(0, 50);
+        doc.text(`${month} ${type} ${amt}  ${desc}`);
+    }
+    doc.end();
+}
+
+// requireAuth before the limiter so unauthenticated requests don't burn
+// quota slots and so authenticated requests get the per-user keyGen
+// (rather than falling back to the IP key).
+app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(async (req, res) => {
+    const format = String(req.query.format || '');
+    if (!VALID_REPORT_FORMATS.has(format)) {
+        return res.status(400).json({ message: 'Invalid format. Must be csv or pdf.' });
+    }
+    const viewMode = String(req.query.viewMode || 'individual');
+    if (!VALID_VIEW_MODES.has(viewMode)) {
+        return res.status(400).json({
+            message: `Invalid viewMode. Must be one of: ${[...VALID_VIEW_MODES].join(', ')}.`
+        });
+    }
+    // Reject malformed start/end with 400 instead of silently dropping the
+    // bound — otherwise `start=2025-13` would quietly export the full
+    // history.
+    const rawStart = req.query.start;
+    const rawEnd = req.query.end;
+    const hasStart = rawStart != null && String(rawStart) !== '';
+    const hasEnd = rawEnd != null && String(rawEnd) !== '';
+    if (hasStart && !MONTH_FORMAT.test(String(rawStart))) {
+        return res.status(400).json({ message: 'Invalid start. Expected YYYY-MM.' });
+    }
+    if (hasEnd && !MONTH_FORMAT.test(String(rawEnd))) {
+        return res.status(400).json({ message: 'Invalid end. Expected YYYY-MM.' });
+    }
+    const start = hasStart ? String(rawStart) : null;
+    const end = hasEnd ? String(rawEnd) : null;
+    if (start && end && start > end) {
+        return res.status(400).json({ message: 'start must be ≤ end' });
+    }
+    // Reject malformed `type` instead of silently widening to 'all' — same
+    // strictness as format / viewMode / start / end / categories.
+    const rawType = req.query.type;
+    const hasType = rawType != null && String(rawType) !== '';
+    if (hasType && !REPORT_TYPE_FILTERS.has(String(rawType))) {
+        return res.status(400).json({ message: 'Invalid type. Must be income, expense, or all.' });
+    }
+    const typeFilter = hasType ? String(rawType) : 'all';
+    let categorySet = null;
+    if (req.query.categories) {
+        const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
+        // Cap the category list at 50 to keep the URL/log surface bounded.
+        // Distinct messages per failure so callers know what to change.
+        if (slugs.length > 50) {
+            return res.status(400).json({ message: 'Too many categories. Maximum 50 allowed.' });
+        }
+        if (!slugs.every(s => SLUG_REGEX.test(s))) {
+            return res.status(400).json({ message: 'Invalid categories. Each slug must match the expected format.' });
+        }
+        if (slugs.length) categorySet = new Set(slugs);
+    }
+
+    const allEntries = await fetchEntriesForReport(req, viewMode);
+    const entries = applyReportFilters(allEntries, { start, end, typeFilter, categorySet });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const usernameSlug = String(req.user.username).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'user';
+    const fileBase = `asset-management-${usernameSlug}-${dateStr}`;
+
+    // Reports contain personal financial data. `no-store` keeps the
+    // payload out of intermediary caches and the browser's back/forward
+    // cache; `Pragma: no-cache` is the HTTP/1.0 equivalent for the rare
+    // proxy that still honors it.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+
+    if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.csv"`);
+        return writeCsvReport(res, entries);
+    }
+
+    // format === 'pdf'
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.pdf"`);
+    const summary = summarizeForReport(entries);
+    writePdfReport(res, {
+        entries,
+        summary,
+        meta: {
+            username: req.user.username,
+            viewMode,
+            start,
+            end,
+            typeFilter,
+            categories: categorySet ? [...categorySet] : null
+        }
+    });
 }));
 
 // ============ USER CATEGORIES (issue #70) ============
