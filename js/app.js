@@ -3189,7 +3189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </select>
                 </div>
 
-                <p style="color: var(--color-text-muted); font-size: 0.8rem; margin-top: 12px;">${t('report.viewModeHint', { mode: viewMode })}</p>
+                <p style="color: var(--color-text-muted); font-size: 0.8rem; margin-top: 12px;">${t('report.viewModeHint', { mode: t({ individual: 'dash.individual', combined: 'dash.combined', myshare: 'dash.myShare' }[viewMode] || 'dash.individual') })}</p>
 
                 <div style="display: flex; gap: 8px; margin-top: 1.25rem; justify-content: flex-end;">
                     <button type="button" id="reportCancelBtn" class="edit-btn">${t('common.cancel')}</button>
