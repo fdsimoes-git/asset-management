@@ -2906,12 +2906,18 @@ app.put('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Invalid category slug.' });
     }
 
-    // Reject amount === 0 (and negative) — the UI deletes-on-zero, and a
-    // direct API call with amount=0 would otherwise persist a stranded
-    // zero-amount row. Callers that want to remove a budget should hit
-    // DELETE /api/budgets/:slug instead.
-    const amount = Number(req.body && req.body.amount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > BUDGET_AMOUNT_MAX) {
+    // Round to 2dp BEFORE validating — the column is NUMERIC(12,2) so any
+    // sub-cent value (e.g. 0.004) would be silently rounded to 0.00 by
+    // Postgres on insert, leaving a stranded zero-amount row. Validate
+    // the rounded value so anything that would land at 0 is rejected
+    // up-front. The UI deletes-on-zero; callers that want to remove a
+    // budget should hit DELETE /api/budgets/:slug.
+    const rawAmount = Number(req.body && req.body.amount);
+    if (!Number.isFinite(rawAmount)) {
+        return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
+    }
+    const amount = Math.round((rawAmount + Number.EPSILON) * 100) / 100;
+    if (amount <= 0 || amount > BUDGET_AMOUNT_MAX) {
         return res.status(400).json({ message: `Amount must be a positive number no greater than ${BUDGET_AMOUNT_MAX}. Use DELETE to remove a budget.` });
     }
 

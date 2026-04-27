@@ -3367,9 +3367,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isEmpty = raw === '';
                 const v = isEmpty ? 0 : Number(raw);
                 if (!isEmpty && (!Number.isFinite(v) || v < 0)) {
-                    input.value = '';
+                    // Restore the previous value rather than clearing — an
+                    // empty field would otherwise trigger the DELETE path on
+                    // the next blur and silently remove a saved budget the
+                    // user didn't intend to remove. Use the browser's
+                    // built-in validity tooltip to surface the rejection.
+                    input.setCustomValidity('Please enter a non-negative number.');
+                    input.reportValidity();
+                    input.value = input.defaultValue;
                     return;
                 }
+                input.setCustomValidity('');
                 // Empty input or 0 clears the row — same effect as the Clear
                 // button. Avoids stranding a 0-amount row that the UI then
                 // renders as "no target set" with a disabled Clear.
