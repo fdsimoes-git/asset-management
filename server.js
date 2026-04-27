@@ -2646,7 +2646,9 @@ function writePdfReport(res, { entries, summary, meta }) {
     doc.fillColor('#000').font('Helvetica-Bold').fontSize(13).text('Summary');
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(10);
-    const fmt = (n) => '$' + n.toFixed(2);
+    // Format negatives as `-$X.XX` rather than `$-X.XX` so the sign reads
+    // before the currency symbol (matches the entries-table convention).
+    const fmt = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     doc.text(`Total income:    ${fmt(summary.totals.income)}`);
     doc.text(`Total expenses:  ${fmt(summary.totals.expense)}`);
     doc.text(`Net balance:     ${fmt(summary.net)}`);
