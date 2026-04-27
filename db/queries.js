@@ -57,13 +57,13 @@ function parseJsonField(val) {
         return JSON.parse(val);
     } catch (err) {
         // Don't log anything derived from `val` — this helper runs on every
-        // encrypted credential column on user reads. Even the value's
-        // length flows from the credential access path and CodeQL flags it
-        // (alerts #6 / #13). Logging the error object is safe (the
-        // SyntaxError it carries doesn't include any data from `val`) and
-        // gives us a stack trace to identify the code path, though it
-        // won't reliably identify the specific row id.
-        console.error('Failed to parse JSON field:', err);
+        // encrypted credential column on user reads. V8's JSON.parse
+        // SyntaxError message embeds the unexpected token plus a snippet
+        // of the input (e.g. `Unexpected token 'x', "abc" is not valid
+        // JSON`), so even `err.message` / `err.stack` would reintroduce
+        // the taint CodeQL flagged in alerts #6 / #13. Log a static label
+        // plus the error class name only.
+        console.error('Failed to parse JSON field:', (err && err.name) || 'Error');
         return null;
     }
 }
