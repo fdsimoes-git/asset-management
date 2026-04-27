@@ -3336,7 +3336,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const overall = data.overall || { amount: 0, actual: 0 };
         const rows = data.byCategory || [];
 
-        const fmtMoney = (n) => '$' + (Number(n) || 0).toFixed(2);
+        // Locale-aware currency formatter (pt-BR → BRL/R$, en-US → USD/$).
+        // Matches the hero-KPI formatting introduced in PR #91; we don't
+        // honor `data.currency` from the API because the server intentionally
+        // doesn't dictate it (currency follows the client's language).
+        const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+        const moneyFmt = new Intl.NumberFormat(isPt ? 'pt-BR' : 'en-US', {
+            style: 'currency',
+            currency: isPt ? 'BRL' : 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+        const fmtMoney = (n) => moneyFmt.format(Number(n) || 0);
         // Safe progress: 0 if no budget. Cap at 100% for the bar fill but
         // surface a separate "over budget" pill when actual > budget.
         const progressFor = (amount, actual) => {
@@ -3351,31 +3362,43 @@ document.addEventListener('DOMContentLoaded', () => {
             return 'var(--positive)';
         };
 
-        const renderRow = (slug, label, color, amount, actual, isOverall) => {
+        const renderRow = (slug, label, color, amount, actual, isOverall, isOrphan) => {
             const p = progressFor(amount, actual);
             const barWidth = p.pct == null ? 0 : p.pct;
             const fill = barColor(p);
             const overPill = p.over
                 ? `<span class="delta-pill down" style="margin-left: 8px;">${escapeHtml(t('budget.overBudget'))}</span>`
                 : '';
+            // "Orphan" rows are slugs the server saw spend on but the user
+            // doesn't have in user_categories anymore (deleted category, or
+            // the synthetic 'other' bucket). PUT to those slugs would 404
+            // server-side, so we render them read-only — only Clear is
+            // allowed (DELETE works against the user_id row regardless of
+            // category ownership). A small "(removed)" tag visually marks
+            // them.
+            const orphanPill = isOrphan
+                ? `<span class="mono tiny muted" style="margin-left: 8px;">${escapeHtml(t('budget.orphanLabel'))}</span>`
+                : '';
             const swatch = isOverall
                 ? `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: var(--ink); margin-right: 6px;"></span>`
                 : `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: ${escapeHtml(color || 'var(--ink-3)')}; margin-right: 6px;"></span>`;
+            const inputDisabled = isOrphan ? 'disabled' : '';
+            const clearDisabled = (amount > 0) ? '' : 'disabled';
 
             return `
-                <div class="budget-row" data-slug="${escapeHtml(slug)}" style="padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle);">
+                <div class="budget-row" data-slug="${escapeHtml(slug)}" data-orphan="${isOrphan ? '1' : '0'}" style="padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle); ${isOrphan ? 'opacity: 0.7;' : ''}">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <div style="flex: 1; min-width: 0;">
                             <div style="display: flex; align-items: center; font-weight: ${isOverall ? '600' : '500'};">
-                                ${swatch}<span>${escapeHtml(label)}</span>${overPill}
+                                ${swatch}<span>${escapeHtml(label)}</span>${overPill}${orphanPill}
                             </div>
                             <div style="font-family: var(--mono); font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">
                                 ${fmtMoney(actual)} ${t('budget.spent')} · ${p.pct == null ? t('budget.noTarget') : fmtMoney(amount) + ' ' + t('budget.target') + (p.over ? ' · ' + p.raw.toFixed(0) + '%' : ' · ' + p.pct.toFixed(0) + '%')}
                             </div>
                         </div>
-                        <input type="number" class="budget-amount" min="0" step="0.01" value="${amount > 0 ? amount.toFixed(2) : ''}" placeholder="0.00"
+                        <input type="number" class="budget-amount" min="0" step="0.01" value="${amount > 0 ? amount.toFixed(2) : ''}" placeholder="0.00" ${inputDisabled}
                                style="width: 110px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-base); color: var(--color-text-primary); font-family: var(--mono);" />
-                        <button type="button" class="budget-clear edit-btn" style="padding: 4px 8px; font-size: 11px;" ${amount > 0 ? '' : 'disabled'}>${t('common.delete')}</button>
+                        <button type="button" class="budget-clear edit-btn" style="padding: 4px 8px; font-size: 11px;" ${clearDisabled}>${t('common.delete')}</button>
                     </div>
                     <div style="height: 6px; background: var(--color-border-subtle); border-radius: 3px; margin-top: 8px; overflow: hidden;">
                         <div style="height: 100%; width: ${barWidth}%; background: ${fill}; transition: width 0.2s ease;"></div>
@@ -3400,8 +3423,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 6px;">
                 ${t('budget.month')}: ${escapeHtml(data.month || '')}
             </div>
-            ${renderRow('_overall', t('budget.overallLabel'), null, overall.amount, overall.actual, true)}
-            ${rows.map(r => renderRow(r.slug, budgetRowLabel(r), r.color, r.amount, r.actual, false)).join('')}
+            ${renderRow('_overall', t('budget.overallLabel'), null, overall.amount, overall.actual, true, false)}
+            ${rows.map(r => renderRow(r.slug, budgetRowLabel(r), r.color, r.amount, r.actual, false, !!r.isOrphan)).join('')}
         `;
 
         // Save on blur or Enter; clear via the explicit button.
@@ -3409,7 +3432,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const slug = row.getAttribute('data-slug');
             const input = row.querySelector('.budget-amount');
             const clearBtn = row.querySelector('.budget-clear');
+            const isOrphan = row.getAttribute('data-orphan') === '1';
             const save = async () => {
+                if (isOrphan) return; // input is disabled; defensive
                 const raw = input.value.trim();
                 const isEmpty = raw === '';
                 const v = isEmpty ? 0 : Number(raw);
@@ -3417,11 +3442,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Restore the previous value rather than clearing — an
                     // empty field would otherwise trigger the DELETE path on
                     // the next blur and silently remove a saved budget the
-                    // user didn't intend to remove. Use the browser's
-                    // built-in validity tooltip to surface the rejection.
-                    input.setCustomValidity('Please enter a non-negative number.');
+                    // user didn't intend to remove. Show the browser's
+                    // built-in validity tooltip via setCustomValidity, then
+                    // immediately clear the validity so the field doesn't
+                    // stay stuck after revert.
+                    input.setCustomValidity(t('budget.invalidAmount'));
                     input.reportValidity();
                     input.value = input.defaultValue;
+                    input.setCustomValidity('');
                     return;
                 }
                 input.setCustomValidity('');

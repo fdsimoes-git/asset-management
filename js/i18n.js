@@ -176,6 +176,8 @@ const translations = {
     'budget.loadError': 'Failed to load budgets.',
     'budget.saveError': 'Failed to save budget.',
     'budget.deleteError': 'Failed to delete budget.',
+    'budget.invalidAmount': 'Please enter a non-negative number.',
+    'budget.orphanLabel': '(removed)',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
@@ -802,6 +804,8 @@ const translations = {
     'budget.loadError': 'Falha ao carregar or\u00e7amentos.',
     'budget.saveError': 'Falha ao salvar or\u00e7amento.',
     'budget.deleteError': 'Falha ao remover or\u00e7amento.',
+    'budget.invalidAmount': 'Informe um n\u00famero n\u00e3o-negativo.',
+    'budget.orphanLabel': '(removida)',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',

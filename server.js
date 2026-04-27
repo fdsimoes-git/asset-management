@@ -2842,9 +2842,12 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         month = currentMonthYYYYMM();
     }
 
+    // Use the self-healing helper (matches /api/categories) so a brand-new
+    // account that hits /api/budgets first still gets the 17 default
+    // categories seeded — otherwise the modal would render with no rows.
     const [budgets, categories, actuals] = await Promise.all([
         db.getUserBudgets(req.user.id),
-        db.getUserCategories(req.user.id),
+        getCategoriesForUserSelfHeal(req.user.id),
         computeBudgetActuals(req, requestedViewMode, month)
     ]);
 
@@ -2887,9 +2890,12 @@ app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
         });
     }
 
+    // Currency is intentionally absent from the response — money formatting
+    // is the client's job and follows getLang() (BRL for pt-BR, USD for
+    // en-US), the same rule the hero KPIs use. If we ever want a per-user
+    // currency, persist it on `users` and surface it from a single place.
     res.json({
         month,
-        currency: 'USD',
         overall: {
             amount: overallBudget,
             actual: actuals.overall
