@@ -1445,25 +1445,59 @@ function updateHeroKpis(entriesToShow, totals) {
     const heroInt = document.getElementById('heroNetWorthInt');
     if (!heroInt) return; // hero row not in this page
 
-    // Localize number formatting (thousands separator) to the active app
-    // language — same locale derivation we use for the period label below.
-    const locale = (typeof getLang === 'function' && getLang() === 'pt') ? 'pt-BR' : 'en-US';
-    const fmt = (n) => Math.round(Math.abs(n)).toLocaleString(locale);
-    const fmtSigned = (n) => (n >= 0 ? '+' : '−') + '$' + fmt(n);
+    // Localize currency formatting to the active app language. EN → USD/$,
+    // PT → BRL/R$ — matches the symbol the chart strings already use in
+    // PT (chart.avgIncome / chart.avgExpenses say "R$"). Drives both the
+    // hero bignum and the +/− delta pill so symbol, grouping, and decimal
+    // separator all stay consistent.
+    const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+    const locale = isPt ? 'pt-BR' : 'en-US';
+    const currency = isPt ? 'BRL' : 'USD';
+    const currencyFmt0 = new Intl.NumberFormat(locale, {
+        style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0
+    });
+    const currencyFmt2 = new Intl.NumberFormat(locale, {
+        style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+    // Plain (no currency) integer formatter for KPI value spans, where
+    // the currency symbol lives in a separate `.unit` element.
+    const intFmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+    const fmt = (n) => intFmt.format(Math.round(Math.abs(n)));
+    const fmtSigned = (n) => (n >= 0 ? '+' : '-') + currencyFmt0.format(Math.abs(n));
+    // Currency symbol pulled from formatToParts so we get whatever symbol
+    // the active locale uses ("R$" for pt-BR, "$" for en-US, etc.).
+    const currencySymbol = (() => {
+        const sym = currencyFmt0.formatToParts(0).find(p => p.type === 'currency');
+        return sym ? sym.value : (isPt ? 'R$' : '$');
+    })();
+    const kpiIncomeUnit = document.getElementById('kpiIncomeUnit');
+    if (kpiIncomeUnit) kpiIncomeUnit.textContent = currencySymbol;
+    const kpiExpenseUnit = document.getElementById('kpiExpenseUnit');
+    if (kpiExpenseUnit) kpiExpenseUnit.textContent = currencySymbol;
 
-    // Derive the bignum integer + decimal halves from the SAME toFixed(2)
-    // result so e.g. 1234.56 renders as "$1,234.56" and not "$1,235.56"
-    // (which would happen if the integer half rounded but the decimal half
-    // kept the original .56).
+    // Split the bignum into "currency symbol prefix" / "integer with grouping" /
+    // "decimal" parts via formatToParts so the prefix span shows the right
+    // symbol ($ vs R$), the integer span has the locale's grouping
+    // separators, and the decimal span carries the right separator (`.`
+    // vs `,`).
     const netBalance = totals.netBalance;
-    const [netWhole, netDecimals = '00'] = Math.abs(netBalance).toFixed(2).split('.');
-    heroInt.textContent = Number(netWhole).toLocaleString(locale);
+    const netParts = currencyFmt2.formatToParts(Math.abs(netBalance));
+    const intIdx = netParts.findIndex(p => p.type === 'integer');
+    const decIdx = netParts.findIndex(p => p.type === 'decimal');
+    const prefix = netParts.slice(0, intIdx >= 0 ? intIdx : netParts.length).map(p => p.value).join('');
+    const integer = netParts
+        .slice(intIdx >= 0 ? intIdx : 0, decIdx >= 0 ? decIdx : netParts.length)
+        .filter(p => p.type === 'integer' || p.type === 'group')
+        .map(p => p.value)
+        .join('');
+    const decimal = decIdx >= 0 ? netParts.slice(decIdx).map(p => p.value).join('') : '';
+    heroInt.textContent = integer;
 
     const heroDec = document.getElementById('heroNetWorthDec');
-    if (heroDec) heroDec.textContent = '.' + netDecimals;
+    if (heroDec) heroDec.textContent = decimal;
 
     const heroPre = document.getElementById('heroNetWorthPre');
-    if (heroPre) heroPre.textContent = netBalance < 0 ? '−$' : '$';
+    if (heroPre) heroPre.textContent = (netBalance < 0 ? '−' : '') + prefix;
 
     // Group entries by year-month
     const byMonth = new Map();
@@ -2908,11 +2942,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // close — keeps keyboard / screen-reader users out of focus limbo
         // when the drawer hides under the slide-out transform.
         let lastFocused = null;
+        // Swap the toggle's accessible name in lockstep with the drawer
+        // state so screen readers don't keep announcing "Open menu" while
+        // the menu is already open.
+        const setToggleLabel = (open) => {
+            const key = open ? 'nav.closeMenu' : 'nav.openMenu';
+            const label = (typeof t === 'function') ? t(key) : (open ? 'Close menu' : 'Open menu');
+            toggle.setAttribute('aria-label', label);
+            toggle.setAttribute('title', label);
+            toggle.setAttribute('data-i18n-aria-label', key);
+            toggle.setAttribute('data-i18n-title', key);
+        };
         const openSidebar = () => {
             lastFocused = document.activeElement;
             sidebar.classList.add('open');
             backdrop.classList.add('open');
             toggle.setAttribute('aria-expanded', 'true');
+            setToggleLabel(true);
             // Move focus into the drawer so SR users land on the nav.
             const firstNav = sidebar.querySelector('.nav-item:not([disabled])');
             if (firstNav) firstNav.focus();
@@ -2922,6 +2968,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebar.classList.remove('open');
             backdrop.classList.remove('open');
             toggle.setAttribute('aria-expanded', 'false');
+            setToggleLabel(false);
             // Restore focus to whichever element opened the drawer (the
             // hamburger by default), but only if a close actually happened
             // and the previous element is still in the DOM.
