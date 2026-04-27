@@ -339,7 +339,9 @@ function initializeCharts() {
         padding: { top: 6, bottom: 0 }
     });
 
-    // Common chart options for dark theme
+    // Common chart options driven by the current CSS theme palette —
+    // colors and fonts come from readThemePalette() above, which resolves
+    // the active --ink / --line / --sans / etc. tokens.
     const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
