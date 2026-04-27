@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS user_categories (
     UNIQUE (user_id, slug)
 );
 
+-- ── User Budgets (issue #93) ─────────────────────────────────────────
+-- Per-user monthly targets. NULL category_slug = the overall budget.
+CREATE TABLE IF NOT EXISTS user_budgets (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_slug   TEXT,
+    amount          NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+    period          TEXT NOT NULL DEFAULT 'monthly',
+    currency        TEXT NOT NULL DEFAULT 'USD',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ── Invite Codes ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS invite_codes (
     code       TEXT PRIMARY KEY,
@@ -95,6 +108,9 @@ CREATE INDEX IF NOT EXISTS idx_entries_is_couple_expense ON entries(is_couple_ex
 CREATE INDEX IF NOT EXISTS idx_entries_user_couple_month ON entries(user_id, is_couple_expense, month);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_used_by    ON invite_codes(used_by);
 CREATE INDEX IF NOT EXISTS idx_user_categories_user_id ON user_categories(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_budgets_unique
+    ON user_budgets (user_id, COALESCE(category_slug, ''), period);
+CREATE INDEX IF NOT EXISTS idx_user_budgets_user_id ON user_budgets(user_id);
 
 -- ── Idempotent column additions for existing deployments ─────────────
 ALTER TABLE users ADD COLUMN IF NOT EXISTS web_search_enabled BOOLEAN NOT NULL DEFAULT FALSE;

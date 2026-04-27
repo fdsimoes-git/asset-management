@@ -2675,6 +2675,123 @@ app.get('/api/reports/export', reportExportLimiter, requireAuth, asyncHandler(as
     });
 }));
 
+// ============ USER BUDGETS (issue #93) ============
+
+const BUDGET_OVERALL_TOKEN = '_overall';
+// Schema is NUMERIC(12,2) — bound the input far below the column limit so
+// typos don't slip into the row.
+const BUDGET_AMOUNT_MAX = 100_000_000;
+
+// Compute current-month actual spend per category + overall. Multi-tag
+// expenses are split equally across their tags so the per-category sums
+// add up to the overall, matching the dashboard's category chart.
+async function computeBudgetActuals(userId, month) {
+    const entries = await db.getEntriesByUser(userId, month);
+    let overall = 0;
+    const byCategory = new Map();
+    for (const e of entries) {
+        if (e.type !== 'expense') continue;
+        const amt = parseFloat(e.amount) || 0;
+        overall += amt;
+        const cats = Array.isArray(e.tags) && e.tags.length ? e.tags : [];
+        if (cats.length === 0) continue;
+        const share = amt / cats.length;
+        for (const c of cats) {
+            byCategory.set(c, (byCategory.get(c) || 0) + share);
+        }
+    }
+    return { overall, byCategory };
+}
+
+function currentMonthYYYYMM() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// GET /api/budgets — returns the user's budgets joined with their
+// categories and the current-month actual spend, ready for the UI to
+// render rows + progress bars without further fetches.
+app.get('/api/budgets', requireAuth, asyncHandler(async (req, res) => {
+    const month = currentMonthYYYYMM();
+    const [budgets, categories, actuals] = await Promise.all([
+        db.getUserBudgets(req.user.id),
+        db.getUserCategories(req.user.id),
+        computeBudgetActuals(req.user.id, month)
+    ]);
+
+    const budgetBySlug = new Map();
+    let overallBudget = 0;
+    for (const b of budgets) {
+        if (b.categorySlug == null) overallBudget = b.amount;
+        else budgetBySlug.set(b.categorySlug, b.amount);
+    }
+
+    const byCategory = categories.map(c => ({
+        slug: c.slug,
+        label: c.label,
+        color: c.color,
+        amount: budgetBySlug.get(c.slug) || 0,
+        actual: Math.round((actuals.byCategory.get(c.slug) || 0) * 100) / 100
+    }));
+
+    res.json({
+        month,
+        currency: 'USD',
+        overall: {
+            amount: overallBudget,
+            actual: Math.round(actuals.overall * 100) / 100
+        },
+        byCategory
+    });
+}));
+
+// PUT /api/budgets/:slug — set or update a single budget. The special
+// slug `_overall` (BUDGET_OVERALL_TOKEN) targets the user's NULL-slug
+// "overall" budget row.
+app.put('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+
+    const amount = Number(req.body && req.body.amount);
+    if (!Number.isFinite(amount) || amount < 0 || amount > BUDGET_AMOUNT_MAX) {
+        return res.status(400).json({ message: `Amount must be a number between 0 and ${BUDGET_AMOUNT_MAX}.` });
+    }
+
+    // For non-overall budgets, require the slug to be one of the user's
+    // own categories so we don't accumulate orphan rows for slugs the user
+    // doesn't have.
+    if (!isOverall) {
+        const userSlugs = await db.getUserCategorySlugs(req.user.id);
+        if (!userSlugs.includes(slugParam)) {
+            return res.status(404).json({ message: 'Category not found for this user.' });
+        }
+    }
+
+    const budget = await db.upsertUserBudget(
+        req.user.id,
+        isOverall ? null : slugParam,
+        amount
+    );
+    res.json(budget);
+}));
+
+// DELETE /api/budgets/:slug
+app.delete('/api/budgets/:slug', requireAuth, asyncHandler(async (req, res) => {
+    const slugParam = req.params.slug;
+    const isOverall = slugParam === BUDGET_OVERALL_TOKEN;
+    if (!isOverall && !SLUG_REGEX.test(slugParam || '')) {
+        return res.status(400).json({ message: 'Invalid category slug.' });
+    }
+    const removed = await db.deleteUserBudget(req.user.id, isOverall ? null : slugParam);
+    if (!removed) {
+        return res.status(404).json({ message: 'Budget not found.' });
+    }
+    res.json({ message: 'Budget removed.' });
+}));
+
 // ============ USER CATEGORIES (issue #70) ============
 
 // Per-user, per-category constraints. Slugs are short URL-safe ids; labels
