@@ -191,6 +191,7 @@ const translations = {
     'nav.afternoon': 'Good afternoon',
     'nav.evening': 'Good evening',
     'nav.openMenu': 'Open menu',
+    'nav.comingSoon': 'Coming soon',
     'nav.primaryNavigation': 'Primary navigation',
     'dash.netWorthSummary': 'Net worth summary',
 
@@ -802,6 +803,7 @@ const translations = {
     'nav.afternoon': 'Boa tarde',
     'nav.evening': 'Boa noite',
     'nav.openMenu': 'Abrir menu',
+    'nav.comingSoon': 'Em breve',
     'nav.primaryNavigation': 'Navegação principal',
     'dash.netWorthSummary': 'Resumo do patrimônio',
 
