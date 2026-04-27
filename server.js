@@ -1250,8 +1250,9 @@ app.post('/api/register', registerLimiter, asyncHandler(async (req, res) => {
 
     // Validate email format. Length + char check first so the regex never
     // sees an unbounded input (was a polynomial-ReDoS path: see issue #80
-    // / CodeQL #10). Regex itself uses non-overlapping bounded quantifiers
-    // for the same reason.
+    // / CodeQL #10). Regex itself uses bounded quantifiers as defense in
+    // depth — they overlap on `.` (the middle class still includes it),
+    // but bounding the repeats keeps any backtracking polynomial.
     if (email.length > 254 || /[<>]/.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
     }
