@@ -2512,9 +2512,17 @@ function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
     return out;
 }
 
+// CSV escaping with formula-injection mitigation: cells starting with
+// `=`, `+`, `-`, `@`, tab, or CR can be parsed as formulas by Excel /
+// Google Sheets. User-controlled fields like description could otherwise
+// execute formulas when the report is opened. Prefix with an apostrophe
+// so the spreadsheet treats the value as text. (Bounded fields like
+// month / type / amount don't match the leading-char pattern, so they
+// pass through unchanged.)
 function csvEscape(v) {
     if (v == null) return '';
-    const s = String(v);
+    let s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -2620,7 +2628,10 @@ function writePdfReport(res, { entries, summary, meta }) {
     doc.end();
 }
 
-app.get('/api/reports/export', reportExportLimiter, requireAuth, asyncHandler(async (req, res) => {
+// requireAuth before the limiter so unauthenticated requests don't burn
+// quota slots and so authenticated requests get the per-user keyGen
+// (rather than falling back to the IP key).
+app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(async (req, res) => {
     const format = String(req.query.format || '');
     if (!VALID_REPORT_FORMATS.has(format)) {
         return res.status(400).json({ message: 'Invalid format. Must be csv or pdf.' });
@@ -2629,8 +2640,21 @@ app.get('/api/reports/export', reportExportLimiter, requireAuth, asyncHandler(as
     if (!VALID_VIEW_MODES.has(viewMode)) {
         return res.status(400).json({ message: 'Invalid viewMode.' });
     }
-    const start = MONTH_FORMAT.test(req.query.start || '') ? req.query.start : null;
-    const end   = MONTH_FORMAT.test(req.query.end   || '') ? req.query.end   : null;
+    // Reject malformed start/end with 400 instead of silently dropping the
+    // bound — otherwise `start=2025-13` would quietly export the full
+    // history.
+    const rawStart = req.query.start;
+    const rawEnd = req.query.end;
+    const hasStart = rawStart != null && String(rawStart) !== '';
+    const hasEnd = rawEnd != null && String(rawEnd) !== '';
+    if (hasStart && !MONTH_FORMAT.test(String(rawStart))) {
+        return res.status(400).json({ message: 'Invalid start. Expected YYYY-MM.' });
+    }
+    if (hasEnd && !MONTH_FORMAT.test(String(rawEnd))) {
+        return res.status(400).json({ message: 'Invalid end. Expected YYYY-MM.' });
+    }
+    const start = hasStart ? String(rawStart) : null;
+    const end = hasEnd ? String(rawEnd) : null;
     if (start && end && start > end) {
         return res.status(400).json({ message: 'start must be ≤ end' });
     }

@@ -3068,10 +3068,11 @@ document.addEventListener('DOMContentLoaded', () => {
     //
     // Lightweight modal: pick format + date range + type, then trigger a
     // download by clicking a transient `<a href="/api/reports/export?…">`.
-    // The session cookie authenticates; CSRF isn't required for GET. The
-    // server respects the user's current viewMode (individual / combined /
-    // myshare) and replies with `Content-Disposition: attachment` so the
-    // browser saves the file rather than navigating to it.
+    // Authentication and any CSRF requirements are enforced by the backend
+    // export endpoint. The server respects the user's current viewMode
+    // (individual / combined / myshare) and replies with
+    // `Content-Disposition: attachment` so the browser saves the file
+    // rather than navigating to it.
     function openReportsModal() {
         const overlay = document.createElement('div');
         overlay.className = 'modal';
