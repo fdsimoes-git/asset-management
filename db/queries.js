@@ -56,13 +56,13 @@ function parseJsonField(val) {
     try {
         return JSON.parse(val);
     } catch (err) {
-        // Don't log the value (issue #83 / CodeQL #6) — this helper runs on
-        // every encrypted credential column on user reads, and the previous
-        // 50-char preview leaked encryption-format metadata; if a regression
-        // ever stored plaintext in one of those columns, it would have
-        // leaked the credential too. Length + error message is enough to
-        // triage parse failures.
-        console.error('Failed to parse JSON field:', err.message, '— value length:', String(val).length);
+        // Don't log anything derived from `val` — this helper runs on every
+        // encrypted credential column on user reads. Even the value's
+        // length flows from the credential access path and CodeQL flags it
+        // (alerts #6 / #13). The error message alone is enough to surface
+        // a parse-format regression; the column name + row id can be
+        // recovered from the calling stack trace if needed.
+        console.error('Failed to parse JSON field:', err.message);
         return null;
     }
 }

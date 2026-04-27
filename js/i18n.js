@@ -190,6 +190,8 @@ const translations = {
     'nav.afternoon': 'Good afternoon',
     'nav.evening': 'Good evening',
     'nav.openMenu': 'Open menu',
+    'nav.primaryNavigation': 'Primary navigation',
+    'dash.netWorthSummary': 'Net worth summary',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Add New Entry',
@@ -798,6 +800,8 @@ const translations = {
     'nav.afternoon': 'Boa tarde',
     'nav.evening': 'Boa noite',
     'nav.openMenu': 'Abrir menu',
+    'nav.primaryNavigation': 'Navegação principal',
+    'dash.netWorthSummary': 'Resumo do patrimônio',
 
     // ── Add/Edit entry modal ──
     'modal.addEntry': 'Nova Entrada',
