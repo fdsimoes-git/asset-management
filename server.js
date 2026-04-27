@@ -2532,17 +2532,27 @@ function csvEscape(v) {
 // summary block and a category breakdown.
 // Honors the response stream's backpressure: when res.write returns false,
 // pause until 'drain' before writing the next row. Otherwise a user with a
-// long history could buffer the entire CSV in memory.
+// long history could buffer the entire CSV in memory. We also resolve on
+// 'close' / 'error' so the loop short-circuits if the client disconnects
+// mid-export instead of hanging on a 'drain' that will never fire.
 async function writeCsvReport(res, entries) {
     const writeLine = (chunk) => new Promise((resolve, reject) => {
+        if (res.writableEnded || res.destroyed) return resolve(false);
         const ok = res.write(chunk);
-        if (ok) return resolve();
-        const onErr = (err) => { res.off('drain', onDrain); reject(err); };
-        const onDrain = () => { res.off('error', onErr); resolve(); };
+        if (ok) return resolve(true);
+        const cleanup = () => {
+            res.off('drain', onDrain);
+            res.off('close', onClose);
+            res.off('error', onErr);
+        };
+        const onDrain = () => { cleanup(); resolve(true); };
+        const onClose = () => { cleanup(); resolve(false); };
+        const onErr = (err) => { cleanup(); reject(err); };
         res.once('drain', onDrain);
+        res.once('close', onClose);
         res.once('error', onErr);
     });
-    await writeLine('month,type,amount,description,categories,is_couple_expense\n');
+    if (!(await writeLine('month,type,amount,description,categories,is_couple_expense\n'))) return;
     for (const e of entries) {
         const row = [
             csvEscape(e.month),
@@ -2552,9 +2562,9 @@ async function writeCsvReport(res, entries) {
             csvEscape(Array.isArray(e.tags) ? e.tags.join('|') : ''),
             csvEscape(e.isCoupleExpense ? 'true' : 'false')
         ].join(',');
-        await writeLine(row + '\n');
+        if (!(await writeLine(row + '\n'))) return; // client disconnected
     }
-    res.end();
+    if (!res.writableEnded) res.end();
 }
 
 function summarizeForReport(entries) {
