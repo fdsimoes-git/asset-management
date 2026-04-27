@@ -162,6 +162,7 @@ const translations = {
     'report.export': 'Export',
     'report.viewModeHint': 'View mode: {mode}',
     'report.errStartAfterEnd': 'Start month must be before or equal to end month.',
+    'report.exportError': 'Failed to generate the report. Please try again.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
@@ -772,6 +773,7 @@ const translations = {
     'report.export': 'Exportar',
     'report.viewModeHint': 'Modo de visualiza\u00e7\u00e3o: {mode}',
     'report.errStartAfterEnd': 'O m\u00eas inicial deve ser anterior ou igual ao m\u00eas final.',
+    'report.exportError': 'Falha ao gerar o relat\u00f3rio. Tente novamente.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',
