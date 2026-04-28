@@ -241,6 +241,11 @@ function setSingleChartLoading(chartName, isLoading) {
     if (!wrapper) return;
     const overlay = wrapper.querySelector('.chart-loading-overlay');
     if (overlay) overlay.hidden = !isLoading;
+    // aria-busy on the wrapper itself so screen readers get the cue too —
+    // this path skips `.charts-section` (which would imply ALL charts are
+    // loading), so the busy state lives on the specific wrapper.
+    if (isLoading) wrapper.setAttribute('aria-busy', 'true');
+    else wrapper.removeAttribute('aria-busy');
 }
 
 // Pending-rebuild timer ids. Rapid toggle clicks / theme swaps need to
