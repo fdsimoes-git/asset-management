@@ -2559,7 +2559,13 @@ async function resolveBulkDuplicates(candidates) {
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
-        setButtonLoading(confirmBulkEntriesBtn, true);
+        // This button updates its own textContent mid-flight ("Saving 1/N",
+        // "Saving 2/N", …) — that progress text IS the loading feedback,
+        // so we deliberately don't add the .loading class here (it would
+        // hide the text via `color: transparent`). Just disabling and
+        // letting the per-iteration text update do the work.
+        const originalText = confirmBulkEntriesBtn.textContent;
+        confirmBulkEntriesBtn.disabled = true;
         try {
             // Pre-flight duplicate detection — user confirms per duplicate.
             const candidates = bulkExtractedEntries.map(e => ({
@@ -2624,7 +2630,8 @@ confirmBulkEntriesBtn.addEventListener('click', async () => {
             console.error('Error saving bulk entries:', error);
             alert(t('bulk.errorSave', { message: error.message }));
         } finally {
-            setButtonLoading(confirmBulkEntriesBtn, false);
+            confirmBulkEntriesBtn.disabled = false;
+            confirmBulkEntriesBtn.textContent = originalText;
         }
     }
 });
