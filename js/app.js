@@ -232,30 +232,56 @@ function buildCategoryChart(ctx, type, colors) {
     });
 }
 
+// Toggle the chart-loading overlay for a single chart by `data-chart` name.
+// Used for surface-specific loading flashes (the bar↔doughnut toggle and
+// theme rebuilds, where only some charts rebuild) without blanket-covering
+// every chart with `setChartsLoading`.
+function setSingleChartLoading(chartName, isLoading) {
+    const wrapper = document.querySelector(`.chart-wrapper[data-chart="${chartName}"]`);
+    if (!wrapper) return;
+    const overlay = wrapper.querySelector('.chart-loading-overlay');
+    if (overlay) overlay.hidden = !isLoading;
+}
+
 function setCategoryChartType(type) {
     if (!['bar', 'doughnut'].includes(type)) return;
     if (type === currentCategoryChartType) return;
     currentCategoryChartType = type;
-    if (categoryChart) categoryChart.destroy();
-    categoryChart = buildCategoryChart(_categoryCtxRef, type, _chartThemeRef);
-    // Re-populate with whatever the current filter view is showing
-    if (Array.isArray(currentFilteredEntries)) {
-        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
-    }
+    // Show the loading skeleton on the category chart and defer the
+    // (synchronous) rebuild via setTimeout so the skeleton has a chance
+    // to paint first — otherwise the toggle feels instant-but-blank.
+    setSingleChartLoading('category', true);
+    setTimeout(() => {
+        if (categoryChart) categoryChart.destroy();
+        categoryChart = buildCategoryChart(_categoryCtxRef, type, _chartThemeRef);
+        // Re-populate with whatever the current filter view is showing
+        if (Array.isArray(currentFilteredEntries)) {
+            updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+        }
+        setSingleChartLoading('category', false);
+    }, 0);
 }
 
 // Tear down and rebuild every chart so it picks up the freshly-resolved
 // CSS palette and font tokens — used after Appearance changes (theme /
 // typography). Safe to call before charts have been initialised.
 function reapplyChartTheme() {
-    [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
-        if (c) c.destroy();
-    });
-    monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
-    initializeCharts();
-    if (Array.isArray(currentFilteredEntries)) {
-        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
-    }
+    // Flash the chart-loading skeletons across all four charts so the
+    // user gets feedback that the theme/typography swap took effect, then
+    // defer the rebuild past the current frame so the skeleton paints
+    // before the rebuild work blocks the main thread.
+    setChartsLoading(true);
+    setTimeout(() => {
+        [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
+            if (c) c.destroy();
+        });
+        monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
+        initializeCharts();
+        if (Array.isArray(currentFilteredEntries)) {
+            updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+        }
+        setChartsLoading(false);
+    }, 0);
 }
 
 // Resolves the active --sans token to a concrete font-family string for
