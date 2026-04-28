@@ -3523,7 +3523,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             };
-            input.addEventListener('blur', () => {
+            input.addEventListener('focusout', (e) => {
+                // If focus is moving to this row's Clear button, the user
+                // is about to delete the budget — let the click handler
+                // run instead. If we save() here, it'd disable Clear before
+                // the click fires and the user would end up with an
+                // unintended PUT (and potentially miss the DELETE entirely).
+                if (e.relatedTarget === clearBtn) return;
                 const original = input.defaultValue;
                 if (input.value !== original) save();
             });
