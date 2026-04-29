@@ -1296,6 +1296,53 @@
             transition: opacity 0.15s, filter 0.15s;
         }
 
+        /* ── Hero row + KPI loading state (issue #98) ──
+           Dims the live numbers and overlays a shimmer block over the
+           bignum / each KPI value while data is loading. The same
+           `.is-loading` class also gets aria-busy via JS so screen-reader
+           users get the cue. */
+        .hero-networth.is-loading .bignum,
+        .hero-networth.is-loading .delta-row,
+        .hero-networth.is-loading .period {
+            opacity: 0.35;
+            filter: blur(2px);
+            transition: opacity 0.15s, filter 0.15s;
+        }
+        .kpi.is-loading .value,
+        .kpi.is-loading .delta-pill,
+        .kpi.is-loading .spark {
+            opacity: 0.35;
+            filter: blur(2px);
+            transition: opacity 0.15s, filter 0.15s;
+        }
+        .hero-networth.is-loading,
+        .kpi.is-loading {
+            position: relative;
+        }
+        .hero-networth.is-loading::after,
+        .kpi.is-loading::after {
+            content: '';
+            position: absolute;
+            left: 18px;
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 14px;
+            background: linear-gradient(
+                90deg,
+                color-mix(in oklab, var(--line) 60%, var(--card)) 0%,
+                color-mix(in oklab, var(--primary-soft) 70%, var(--card)) 50%,
+                color-mix(in oklab, var(--line) 60%, var(--card)) 100%
+            );
+            background-size: 200% 100%;
+            border-radius: var(--radius-sm);
+            animation: skeletonShimmer 1.4s ease-in-out infinite;
+            pointer-events: none;
+        }
+        .hero-networth.is-loading::after {
+            height: 28px;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;

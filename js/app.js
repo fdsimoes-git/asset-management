@@ -232,30 +232,74 @@ function buildCategoryChart(ctx, type, colors) {
     });
 }
 
+// Toggle the chart-loading overlay for a single chart by `data-chart`
+// name. Used for targeted loading flashes on an individual chart surface
+// (currently just the category chart's bar↔doughnut toggle) without
+// blanket-covering every chart with `setChartsLoading`.
+function setSingleChartLoading(chartName, isLoading) {
+    const wrapper = document.querySelector(`.chart-wrapper[data-chart="${chartName}"]`);
+    if (!wrapper) return;
+    const overlay = wrapper.querySelector('.chart-loading-overlay');
+    if (overlay) overlay.hidden = !isLoading;
+    // aria-busy on the wrapper itself so screen readers get the cue too —
+    // this path skips `.charts-section` (which would imply ALL charts are
+    // loading), so the busy state lives on the specific wrapper.
+    if (isLoading) wrapper.setAttribute('aria-busy', 'true');
+    else wrapper.removeAttribute('aria-busy');
+}
+
+// Pending-rebuild timer ids. Rapid toggle clicks / theme swaps need to
+// coalesce so we don't queue redundant rebuilds and don't toggle the
+// loading overlay off between queued runs (which would defeat the
+// "skeleton while rebuilding" intent).
+let _categoryRebuildTimer = null;
+let _themeRebuildTimer = null;
+
 function setCategoryChartType(type) {
     if (!['bar', 'doughnut'].includes(type)) return;
     if (type === currentCategoryChartType) return;
     currentCategoryChartType = type;
-    if (categoryChart) categoryChart.destroy();
-    categoryChart = buildCategoryChart(_categoryCtxRef, type, _chartThemeRef);
-    // Re-populate with whatever the current filter view is showing
-    if (Array.isArray(currentFilteredEntries)) {
-        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
-    }
+    // Show the loading skeleton on the category chart and defer the
+    // (synchronous) rebuild via setTimeout so the skeleton has a chance
+    // to paint first — otherwise the toggle feels instant-but-blank. If
+    // the user clicks again before the prior rebuild fires, cancel the
+    // pending one and schedule fresh; the skeleton stays on until the
+    // last-scheduled rebuild completes.
+    setSingleChartLoading('category', true);
+    if (_categoryRebuildTimer) clearTimeout(_categoryRebuildTimer);
+    _categoryRebuildTimer = setTimeout(() => {
+        _categoryRebuildTimer = null;
+        if (categoryChart) categoryChart.destroy();
+        categoryChart = buildCategoryChart(_categoryCtxRef, type, _chartThemeRef);
+        // Re-populate with whatever the current filter view is showing
+        if (Array.isArray(currentFilteredEntries)) {
+            updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+        }
+        setSingleChartLoading('category', false);
+    }, 0);
 }
 
 // Tear down and rebuild every chart so it picks up the freshly-resolved
 // CSS palette and font tokens — used after Appearance changes (theme /
-// typography). Safe to call before charts have been initialised.
+// typography). Safe to call before charts have been initialised. Same
+// coalescing as the category toggle: if the user changes theme twice in
+// quick succession, only the last call's rebuild actually runs and the
+// loading skeletons stay on until then.
 function reapplyChartTheme() {
-    [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
-        if (c) c.destroy();
-    });
-    monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
-    initializeCharts();
-    if (Array.isArray(currentFilteredEntries)) {
-        updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
-    }
+    setChartsLoading(true);
+    if (_themeRebuildTimer) clearTimeout(_themeRebuildTimer);
+    _themeRebuildTimer = setTimeout(() => {
+        _themeRebuildTimer = null;
+        [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
+            if (c) c.destroy();
+        });
+        monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
+        initializeCharts();
+        if (Array.isArray(currentFilteredEntries)) {
+            updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+        }
+        setChartsLoading(false);
+    }, 0);
 }
 
 // Resolves the active --sans token to a concrete font-family string for
@@ -904,6 +948,8 @@ function setChartsLoading(isLoading) {
     document.querySelectorAll('.chart-wrapper .chart-loading-overlay').forEach(el => {
         el.hidden = !isLoading;
     });
+    const section = document.querySelector('.charts-section');
+    if (section) section.setAttribute('aria-busy', String(!!isLoading));
 }
 
 function setEntriesLoading(isLoading) {
@@ -911,11 +957,27 @@ function setEntriesLoading(isLoading) {
     if (overlay) overlay.hidden = !isLoading;
     const summary = document.querySelector('.entries-section .summary');
     if (summary) summary.classList.toggle('is-loading', isLoading);
+    const section = document.querySelector('.entries-section');
+    if (section) section.setAttribute('aria-busy', String(!!isLoading));
+}
+
+// Toggles the `is-loading` class on the hero net-worth card + each KPI
+// tile, dimming live numbers and overlaying a shimmer block via CSS while
+// data is being fetched. Also flips aria-busy so screen-reader users get
+// the cue.
+function setHeroLoading(isLoading) {
+    const hero = document.getElementById('heroRow');
+    if (!hero) return;
+    hero.setAttribute('aria-busy', String(!!isLoading));
+    const networth = hero.querySelector('.hero-networth');
+    if (networth) networth.classList.toggle('is-loading', isLoading);
+    hero.querySelectorAll('.kpi').forEach(el => el.classList.toggle('is-loading', isLoading));
 }
 
 function setViewLoading(isLoading) {
     setChartsLoading(isLoading);
     setEntriesLoading(isLoading);
+    setHeroLoading(isLoading);
 }
 
 // ============ FILTER STATE ============
@@ -2541,6 +2603,11 @@ async function resolveBulkDuplicates(candidates) {
 
 confirmBulkEntriesBtn.addEventListener('click', async () => {
     if (bulkExtractedEntries.length > 0) {
+        // This button updates its own textContent mid-flight ("Saving 1/N",
+        // "Saving 2/N", …) — that progress text IS the loading feedback,
+        // so we deliberately don't add the .loading class here (it would
+        // hide the text via `color: transparent`). Just disabling and
+        // letting the per-iteration text update do the work.
         const originalText = confirmBulkEntriesBtn.textContent;
         confirmBulkEntriesBtn.disabled = true;
         try {
@@ -3231,7 +3298,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch + blob (rather than `<a href>` navigation) so we can
             // surface 4xx/5xx errors as in-modal alerts instead of having
             // the browser navigate away from the SPA to a JSON error body.
-            exportBtn.disabled = true;
+            setButtonLoading(exportBtn, true);
             try {
                 const res = await fetch('/api/reports/export?' + params.toString(), {
                     credentials: 'include'
@@ -3263,7 +3330,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Report export failed:', e);
                 alert(t('report.exportError') || 'Export failed');
             } finally {
-                exportBtn.disabled = false;
+                setButtonLoading(exportBtn, false);
             }
         });
     }
@@ -3457,6 +3524,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 // button. Avoids stranding a 0-amount row that the UI then
                 // renders as "no target set" with a disabled Clear.
                 const shouldDelete = isEmpty || v === 0;
+                // Visual feedback while the round-trip is in flight: disable
+                // the input + Clear button and mark the row aria-busy so SR
+                // users get the cue. The row gets re-rendered on success, so
+                // we only need to restore prior state on the error path —
+                // capture Clear's pre-request disabled state up-front so we
+                // can put it back exactly as `renderRow` left it.
+                const clearWasDisabled = clearBtn ? clearBtn.disabled : false;
+                row.setAttribute('aria-busy', 'true');
+                input.disabled = true;
+                if (clearBtn) clearBtn.disabled = true;
                 try {
                     let res;
                     if (shouldDelete) {
@@ -3482,9 +3559,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.error('Budget save failed:', e);
                     alert(shouldDelete ? t('budget.deleteError') : t('budget.saveError'));
+                } finally {
+                    if (row.isConnected) {
+                        row.removeAttribute('aria-busy');
+                        input.disabled = false;
+                        if (clearBtn) clearBtn.disabled = clearWasDisabled;
+                    }
                 }
             };
-            input.addEventListener('blur', () => {
+            input.addEventListener('focusout', (e) => {
+                // If focus is moving to this row's Clear button, the user
+                // is about to delete the budget — let the click handler
+                // run instead. If we save() here, it'd disable Clear before
+                // the click fires and the user would end up with an
+                // unintended PUT (and potentially miss the DELETE entirely).
+                if (e.relatedTarget === clearBtn) return;
                 const original = input.defaultValue;
                 if (input.value !== original) save();
             });
@@ -3492,6 +3581,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
             });
             clearBtn.addEventListener('click', async () => {
+                setButtonLoading(clearBtn, true);
                 try {
                     const res = await csrfFetch('/api/budgets/' + encodeURIComponent(slug), { method: 'DELETE' });
                     if (!res.ok && res.status !== 404) {
@@ -3503,6 +3593,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.error('DELETE /api/budgets failed:', e);
                     alert(t('budget.deleteError'));
+                } finally {
+                    // The row gets re-rendered on success, so this only
+                    // matters on the error path. Guard against the button
+                    // already being detached.
+                    if (clearBtn.isConnected) setButtonLoading(clearBtn, false);
                 }
             });
         });
