@@ -44,24 +44,24 @@ Copy `.env.example` to `.env`. Required variables:
 
 ### Backend (single-file server)
 
-**`server.js`** (~5,560 lines) — monolithic Express app containing all route handlers, middleware, AI integration, and business logic. ~60 API endpoints are defined here.
+**`server.js`** (~6,080 lines) — monolithic Express app containing all route handlers, middleware, AI integration, and business logic. ~64 API endpoints are defined here.
 
 **`config.js`** — centralized env var loading with startup validation. Exports a single config object.
 
 **`db/`** — database layer:
 - `pool.js` — pg connection pool (max 10 connections), exports `{ pool, testConnection }`
-- `queries.js` — all parameterized SQL query functions (~1,270 lines)
-- `schema.sql` — PostgreSQL schema (tables: `users`, `entries`, `user_categories`, `invite_codes`, `paypal_orders`, `session`)
+- `queries.js` — all parameterized SQL query functions (~1,350 lines)
+- `schema.sql` — PostgreSQL schema (tables: `users`, `entries`, `user_categories`, `user_budgets`, `invite_codes`, `paypal_orders`, `session`)
 - `migrate-json-to-pg.js` — one-shot idempotent migration from legacy JSON storage
-- `migrate-add-*.sql` + `MIGRATION_RUNBOOK.md` — incremental schema migrations
+- `migrate-add-*.sql` + `MIGRATION_RUNBOOK.md` — incremental schema migrations (latest: `migrate-add-user-budgets.sql` for the v3.0 Budgets feature)
 
 ### Frontend (no framework, no build)
 
 All frontend code is vanilla JavaScript loaded directly by the browser:
-- `index.html` (~110 KB / ~2,840 lines) — main dashboard with inline CSS
-- `js/app.js` (~4,630 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories management
+- `index.html` (~140 KB / ~3,475 lines) — main dashboard with inline CSS, sidebar/topbar shell, hero KPI row with sparklines, Reports + Budgets modals
+- `js/app.js` (~5,610 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories, Reports/Budgets modals, theme + typography presets, mobile sidebar drawer with focus management, loading-state helpers (`setViewLoading` / `setHeroLoading` / `setChartsLoading` / `setEntriesLoading` / `setSingleChartLoading` / `setButtonLoading`)
 - `js/chat.js` (~675 lines) — AI financial advisor floating chat widget
-- `js/i18n.js` (~1,180 lines) — English + Portuguese translations (600+ keys) and `t(key, replacements)` helper
+- `js/i18n.js` (~1,310 lines) — English + Portuguese translations (~700 keys) and `t(key, replacements)` helper
 - `js/csrf.js`, `js/login.js`, `js/register.js`, `js/forgot-password.js` — page-specific modules
 
 ### API Structure
@@ -70,6 +70,8 @@ Routes are organized in `server.js` by domain:
 - `/api/login`, `/api/register`, `/api/logout`, `/api/forgot-password`, `/api/csrf-token` — auth
 - `/api/entries` — CRUD for income/expense entries
 - `/api/categories` — per-user category management (cap 100 per user)
+- `/api/budgets` — per-user monthly budget targets (cap by category count); special slug `_overall` for the no-category overall budget (issue #93)
+- `/api/reports/export` — CSV / PDF export of filtered entries, per-user rate-limited (issue #92)
 - `/api/user/*` — user settings (email, API keys, 2FA)
 - `/api/ai/*`, `/api/process-pdf` — AI chat, PDF expense extraction, model listing
 - `/api/admin/*` — user management, couple linking, invite codes
@@ -83,7 +85,7 @@ Four credential types supported (per-user, encrypted, with global env var fallba
 - **OpenAI** — `OPENAI_API_KEY`
 - **GitHub Copilot** — OAuth token (`gho_/ghu_/ghp_/github_pat_…`) routed through Copilot's OpenAI-compatible endpoint to access OpenAI/Anthropic/Google models on Copilot subscription credits
 
-AI features include PDF expense extraction (uses the user's category list) and a financial advisor chat with server-side tools (summary, search, edit entries) and optional Anthropic-native web search.
+AI features include PDF expense extraction (uses the user's category list) and a financial advisor chat with 8 server-side tools (`getFinancialSummary`, `getCategoryBreakdown`, `getMonthlyTrends`, `getTopExpenses`, `comparePeriods`, `searchEntries`, `editEntry`, `undoLastEdit`) plus optional Anthropic-native `web_search`. `editEntry` is two-phase: it returns a pending proposal that the UI surfaces as a Confirm/Cancel card and the user finalizes via `/api/ai/confirm-edit` or `/api/ai/cancel-edit`.
 
 ### Security Model
 
@@ -108,6 +110,10 @@ Capacitor 8 wraps the web app for iOS (`ios/` directory, app ID `com.assetmanage
 - Rate limiters are defined per-endpoint at the top of `server.js`
 - Frontend uses a global `t(key, replacements)` function from `i18n.js` for all user-facing strings; falls back to returning the key when missing
 - **Per-user categories**: `user_categories` table; `getCategoriesForUserSelfHeal()` seeds the 17 `DEFAULT_CATEGORIES` slugs on first read; cap of 100/user enforced via `pg_advisory_xact_lock(userId)`; default labels are rendered via i18n keys `cat.<slug>` (not the DB label)
+- **Per-user budgets** (v3.0): `user_budgets` table; `category_slug = NULL` is the user's "overall" budget; unique index uses `(user_id, (COALESCE(category_slug, '')), period)` (parens required for the COALESCE expression in both the index and the upsert's `ON CONFLICT`); `GET /api/budgets` reuses `getCategoriesForUserSelfHeal` so first-touch users see the default rows
 - **Couple entries**: when both partners are linked, entries flagged `is_couple_expense` are visible to both; `ensurePartnerCategories()` auto-imports partner-category slugs into the active user's catalog
 - **Auth middleware** caches `req.user` for 5s in `userCache`; mutating user-related queries invalidate the cache
-- **Versioning**: `APP_VERSION` is read from `package.json` at boot — bumping `package.json` is the single source of truth for the release version
+- **Localized currency in the UI**: hero / Budgets money formatting goes through `Intl.NumberFormat` keyed off `getLang()` — pt-BR → BRL/`R$`, en-US → USD/`$`. The KPI unit spans (`#kpiIncomeUnit` / `#kpiExpenseUnit`) are populated dynamically from the same locale.
+- **Theme + Typography presets** (v3.0): `<html data-theme="earthy|dark|light">` + `<html data-typography="editorial|modern|system">`, persisted in `localStorage` under `appTheme` / `appTypography`. An inline bootstrap script in every HTML entry point applies them before stylesheets resolve so there's no flash of default theme. Charts re-skin via `reapplyChartTheme()` which destroys + rebuilds with debouncing.
+- **Loading-state feedback**: `setViewLoading()` aggregates `setChartsLoading` + `setEntriesLoading` + `setHeroLoading`. Each helper toggles its CSS skeleton class AND `aria-busy` on the corresponding region. Async modal buttons go through `setButtonLoading(btn, isLoading)` (adds `.loading` class for the spinner pseudo-element + disabled). Sync chart rebuilds (`setCategoryChartType`, `reapplyChartTheme`) flash skeletons via `setTimeout(..., 0)`-deferred work with module-scope coalescing timers (`_categoryRebuildTimer` / `_themeRebuildTimer`).
+- **Versioning**: `APP_VERSION` is read from `package.json` at boot — bumping `package.json` is the single source of truth for the release version. Current line: 3.0.1.
