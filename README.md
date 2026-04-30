@@ -78,11 +78,37 @@ All sponsors are listed in the [release notes](https://github.com/fdsimoes-git/a
 8. Click "Confirm and Add Entries" to save all entries
 
 ### Data Visualization
+- **Hero KPIs (v3.0)**: Bignum net-worth + three KPI cards (income / expenses / saving rate) with inline sparklines, all with month-over-month delta pills.
 - **Asset Progression**: Line chart showing cumulative total assets over time
 - **Monthly Comparison**: Grouped bar chart of income vs expenses per month
-- **Category Distribution**: Horizontal bar chart showing expense breakdown by category
+- **Category Distribution**: Horizontal bar chart showing expense breakdown by category (toggle between bar and doughnut)
 - **Category Trends**: Stacked bar chart showing expense categories evolution per month
 - **Summary Statistics**: Total income, expenses, and net balance
+- **Loading skeletons (v3.0)**: Shimmer placeholders + `aria-busy` on every chart, hero KPI, and the entries table while data is loading.
+
+### Reports & Export (v3.0)
+- **CSV / PDF Export**: Download a report of your filtered entries from the Reports sidebar item.
+- **Format-Aware Output**: CSV is RFC-4180 quoted with formula-injection mitigation; PDF (pdfkit) includes a header, summary block (totals + saving rate), expenses-by-category breakdown, and an entries table.
+- **Filter-Respecting**: The export reuses the active dashboard date range, type, categories, and view mode (Individual / Combined / My Share).
+- **Rate Limited**: 10 exports per 15-minute window per user.
+
+### Budgets (v3.0)
+- **Per-Category Monthly Targets**: Set a monthly budget for each category and an optional Overall ceiling.
+- **Live Progress**: Progress bar per category with green / amber / negative bands at <70% / 70–100% / >100%, plus an "Over budget" pill when actual exceeds the target.
+- **Locale-Aware Money**: Currency follows the UI language (USD/$ in EN, BRL/R$ in PT).
+- **Self-Healing**: First-touch on `/api/budgets` seeds the 17 default categories so the modal is never empty.
+- **Orphan Handling**: Spend on slugs the user later removed (or no-tag entries bucketed into `other`) renders as read-only `(removed)` rows so per-category totals always sum to the overall actual.
+
+### Customizable Theme & Typography (v3.0)
+- **Three Themes**: Earthy (warm clay/sand default), Dark (warm dark with terracotta accents), and Light (clean neutral with cool blue accent). Switch from Settings → Appearance.
+- **Three Typography Presets**: Editorial (Instrument Serif + Geist), Modern (Inter), System (native fonts only).
+- **Per-Device Persistence**: Choices saved in `localStorage` and applied via an inline bootstrap script in every HTML entry point so the page paints in the chosen palette with no flash of default theme.
+- **Charts Re-Skin**: All Chart.js surfaces read CSS theme tokens and re-render automatically when the user switches.
+
+### Mobile-First UI (v3.0)
+- **Hamburger Drawer**: On viewports ≤ 980 px the sidebar collapses behind an off-canvas drawer with a backdrop, keyboard focus management (focus moves into the nav on open, returns to the toggle on close), and `aria-label` swap between "Open menu" and "Close menu".
+- **Responsive Charts**: Chart cards shrink and pad-tighten under 480 px; the hero bignum scales with the viewport.
+- **Safe-Area-Aware**: Sticky sidebar / topbar respect iOS notch and home indicator insets.
 
 ### Internationalization (i18n)
 - **Multilingual Support**: Full English and Portuguese translations across all pages
@@ -323,11 +349,12 @@ Available expense/income categories:
 ## Data Storage
 
 - **Database**: PostgreSQL with parameterized queries (no string interpolation)
-- **Tables**: `users`, `entries`, `user_categories`, `invite_codes`, `paypal_orders`
+- **Tables**: `users`, `entries`, `user_categories`, `user_budgets`, `invite_codes`, `paypal_orders`, `session`
 - **Field Encryption**: Sensitive fields (email, API keys, OAuth tokens, TOTP secret) stored as AES-256-CBC encrypted JSON `{iv, encryptedData}`
 - **User Model**: `{ id, username, password_hash, role, email, gemini_api_key, openai_api_key, anthropic_api_key, claude_oauth_token, github_copilot_token, totp_secret, totp_enabled, backup_codes, ai_provider, ai_model, web_search_enabled, partner_id, partner_linked_at, is_active, created_at, updated_at }`
 - **Entry Model**: `{ id, user_id, month, type, amount, description, tags, is_couple_expense }`
 - **User Category Model**: `{ id, user_id, slug, label, color, is_default, sort_order, imported_from_user_id, created_at }` — per-user category list, capped at 100 per user, seeded with 17 defaults on first access
+- **User Budget Model** (v3.0): `{ id, user_id, category_slug, amount, period, currency, created_at, updated_at }` — `category_slug = NULL` means the user's overall monthly budget; unique on `(user_id, COALESCE(category_slug, ''), period)`
 
 ## Technical Details
 
@@ -382,6 +409,21 @@ Available expense/income categories:
 - `POST /api/ai/cancel-edit` - Cancel a pending AI-proposed edit
 - `GET /api/ai/models` - List available models for user's AI provider (rate limited: 10/min)
 
+#### Categories (requires authentication)
+- `GET /api/categories` - List the user's categories (self-heals 17 defaults on first read)
+- `POST /api/categories` - Create a custom category (slug + label + color)
+- `PUT /api/categories/:slug` - Rename / recolor a category
+- `DELETE /api/categories/:slug` - Delete a category (entries keep the orphan slug)
+- `POST /api/categories/reset-defaults` - Restore the 17 default slugs
+
+#### Reports (v3.0, requires authentication)
+- `GET /api/reports/export?format=csv|pdf&start=YYYY-MM&end=YYYY-MM&type=&categories=&viewMode=` - Streamed CSV or pdfkit-generated PDF (rate limited: 10/15min)
+
+#### Budgets (v3.0, requires authentication)
+- `GET /api/budgets?month=YYYY-MM&viewMode=` - List budgets joined with current-month actuals
+- `PUT /api/budgets/:slug` - Set / update a budget (slug `_overall` for the overall row); amounts rounded to 2dp before validation
+- `DELETE /api/budgets/:slug` - Remove a budget row (slug `_overall` for the overall row)
+
 #### Admin (requires admin role)
 - `GET /api/admin/users` - List all users
 - `POST /api/admin/users` - Create user
@@ -395,13 +437,18 @@ Available expense/income categories:
 ```
 asset-management/
 ├── db/
-│   ├── schema.sql           # PostgreSQL schema (tables, indexes, constraints)
-│   ├── pool.js              # pg connection pool configuration
-│   ├── queries.js           # All parameterized query functions
-│   ├── migrate-json-to-pg.js # One-shot JSON→PostgreSQL migration (idempotent)
-│   └── MIGRATION_RUNBOOK.md # Step-by-step deployment & cutover guide
+│   ├── schema.sql                        # PostgreSQL schema (tables, indexes, constraints)
+│   ├── pool.js                           # pg connection pool configuration
+│   ├── queries.js                        # All parameterized query functions
+│   ├── migrate-json-to-pg.js             # One-shot JSON→PostgreSQL migration (idempotent)
+│   ├── migrate-add-user-categories.sql   # v2 — per-user categories
+│   ├── migrate-add-user-budgets.sql      # v3.0 — per-user monthly budgets
+│   ├── migrate-add-claude-oauth-token.sql
+│   ├── migrate-add-github-copilot-token.sql
+│   ├── migrate-add-indexes.sql
+│   └── MIGRATION_RUNBOOK.md              # Step-by-step deployment & cutover guide
 ├── ssl/                     # SSL certificates
-├── data/                    # Legacy encrypted JSON files (pre-migration backup)
+├── data/                    # Legacy encrypted JSON files (pre-PG-migration backup; not read by current code)
 ├── js/
 │   ├── app.js               # Main application logic
 │   ├── csrf.js              # CSRF token helper for fetch requests
@@ -414,11 +461,12 @@ asset-management/
 ├── config.js                # Centralized config with startup validation
 ├── backup.sh                # Backup script (pg_dump + R2 upload)
 ├── rotate-key.sh            # Encryption key rotation script
+├── rotate-encryption-key.js # Re-encrypts every field-level encrypted column
 ├── index.html               # Main dashboard
 ├── login.html               # Login page
 ├── register.html            # Registration page
 ├── forgot-password.html     # Self-service password reset page
-├── package.json             # Dependencies
+├── package.json             # Dependencies (incl. pdfkit for v3 Reports export)
 └── .env.example             # Environment variable template
 ```
 
