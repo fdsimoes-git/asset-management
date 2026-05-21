@@ -3624,7 +3624,7 @@ const chatToolDeclarations = [
                 description: { type: Type.STRING, description: 'Short description of the entry (max 500 characters).' },
                 amount: { type: Type.NUMBER, description: 'Positive amount (max 10000000).' },
                 type: { type: Type.STRING, enum: ['income', 'expense'], description: '"income" or "expense".' },
-                month: { type: Type.STRING, description: 'Month in YYYY-MM format. Optional — defaults to the current month if omitted.' },
+                month: { type: Type.STRING, description: 'Month in YYYY-MM format. Optional — defaults to the current UTC month on the server if omitted. Prefer sending an explicit month whenever the user mentions one (or the current local month), since server UTC may differ from the user timezone near midnight.' },
                 tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Category tags. Use any slug from the user\'s category list. Unknown well-formed slugs may be auto-created up to 3 per call only when the user already has categories.' },
                 isCoupleExpense: { type: Type.BOOLEAN, description: 'Whether this is a shared/couple expense. Only honored if the user has a linked partner.' }
             },
@@ -3794,7 +3794,7 @@ const openaiToolDeclarations = [
                     description: { type: 'string', description: 'Short description of the entry (max 500 characters).' },
                     amount: { type: 'number', description: 'Positive amount (max 10000000).' },
                     type: { type: 'string', enum: ['income', 'expense'], description: '"income" or "expense".' },
-                    month: { type: 'string', description: 'Month in YYYY-MM format. Optional — defaults to the current month if omitted.' },
+                    month: { type: 'string', description: 'Month in YYYY-MM format. Optional — defaults to the current UTC month on the server if omitted. Prefer sending an explicit month whenever the user mentions one (or the current local month), since server UTC may differ from the user timezone near midnight.' },
                     tags: { type: 'array', items: { type: 'string' }, description: 'Category tags. Use any slug from the user\'s category list. Unknown well-formed slugs may be auto-created up to 3 per call only when the user already has categories.' },
                     isCoupleExpense: { type: 'boolean', description: 'Whether this is a shared/couple expense. Only honored if the user has a linked partner.' }
                 },
@@ -4789,6 +4789,21 @@ async function toolDeleteEntry(userId, args) {
     };
 }
 
+// Canonical fingerprint for a validated create proposal. Used to dedupe
+// identical createEntry tool calls within the same chat response (see
+// handleCreateEntryCall). Tags are sorted so ['food','coffee'] and
+// ['coffee','food'] collapse to the same key.
+function createEntryFingerprint(fields) {
+    return JSON.stringify({
+        description: fields.description,
+        amount: fields.amount,
+        type: fields.type,
+        month: fields.month,
+        tags: [...(fields.tags || [])].sort(),
+        isCoupleExpense: !!fields.isCoupleExpense
+    });
+}
+
 /**
  * Validates createEntry arguments and resolves the final field values without
  * inserting the entry. Mirrors validateEditArgs for shared rules (slug shape,
@@ -5026,19 +5041,26 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
     // Shared helper: handle createEntry tool call interception.
     // Validates the proposed entry, stores it as a pending create keyed by a
     // server-generated proposalId, and surfaces it to the UI for confirmation.
+    // Dedupes against earlier identical proposals in this same chat response
+    // (a known LLM failure mode: the model occasionally emits the same tool
+    // call twice in one turn). Across distinct chat responses we let duplicate
+    // proposals through so a user who really does want two identical entries
+    // (e.g. "log two $5 coffees") can re-ask in a follow-up turn.
     async function handleCreateEntryCall(toolArgs, pendingCreatesList) {
         const validation = await validateCreateArgs(req.user, toolArgs);
         if (validation.error) return validation;
+        const fields = validation.entry;
+        const fp = createEntryFingerprint(fields);
+        const dupExisting = pendingCreatesList.find(p => createEntryFingerprint(p.fields) === fp);
+        if (dupExisting) {
+            return { pending: true, message: `Create already proposed in this turn (proposalId ${dupExisting.proposalId}). Tell the user once; do not call createEntry again with identical fields.` };
+        }
         const proposalId = ++_createProposalSeq;
-        const proposal = {
-            proposalId,
-            fields: validation.entry,
-            createdAt: Date.now()
-        };
+        const proposal = { proposalId, fields, createdAt: Date.now() };
         const existing = pendingCreates.get(req.user.id) || [];
         existing.push(proposal);
         pendingCreates.set(req.user.id, existing);
-        pendingCreatesList.push({ proposalId, fields: validation.entry });
+        pendingCreatesList.push({ proposalId, fields });
         return { pending: true, message: 'Create sent to user for UI confirmation. Tell them what you proposed and that they can use the buttons to confirm or cancel.' };
     }
 
@@ -5824,8 +5846,11 @@ app.post('/api/ai/cancel-create', requireAuth, editActionLimiter, (req, res) => 
         return res.json({ success: true });
     }
 
-    const requestedProposalId = req.body.proposalId != null ? Number(req.body.proposalId) : null;
-    if (requestedProposalId != null) {
+    if (req.body.proposalId != null) {
+        const requestedProposalId = Number(req.body.proposalId);
+        if (!Number.isInteger(requestedProposalId)) {
+            return res.status(400).json({ error: 'proposalId must be a valid integer.' });
+        }
         const idx = allPending.findIndex(c => c.proposalId === requestedProposalId);
         if (idx !== -1) allPending.splice(idx, 1);
         if (allPending.length === 0) pendingCreates.delete(userId);
