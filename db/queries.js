@@ -384,6 +384,18 @@ async function getIndividualEntries(userId, month) {
  * and `userId`, and `isCoupleExpense` is preserved so the UI can decorate
  * halved rows and disable edit/delete on them.
  */
+// Half-away-from-zero rounding used by both getMyShareEntries and
+// getEntriesForExport when splitting couple amounts. Keeps per-row
+// display via .toFixed(2) and aggregate totals consistent — the trade-
+// off being that summing many odd-cent couple entries can drift by up
+// to 1 cent per entry vs. the mathematical half, which we accept to
+// avoid sub-cent floats (e.g. 10.01 / 2 = 5.005 → "5.00" with IEEE-754
+// rounding).
+function halveCoupleAmount(amount) {
+    const halved = amount / 2;
+    return Math.round((halved + Number.EPSILON) * 100) / 100;
+}
+
 async function getMyShareEntries(userId, partnerId, month) {
     const params = month ? [userId, partnerId, month] : [userId, partnerId];
     const sql = month
@@ -403,15 +415,103 @@ async function getMyShareEntries(userId, partnerId, month) {
     return rows.map(row => {
         const entry = dbRowToEntry(row);
         if (entry.isCoupleExpense) {
-            // Round halved amounts to cents so per-row display (rendered via
-            // .toFixed(2)) and aggregate totals are always consistent. The
-            // trade-off is that summing many odd-cent couple entries can
-            // drift by up to 1 cent per entry vs. the mathematical half,
-            // which we accept as preferable to sub-cent floats that
-            // misrender in the UI (e.g. 10.01/2 = 5.005 -> "5.00" with
-            // IEEE-754 rounding). Use standard half-away-from-zero.
-            const halved = entry.amount / 2;
-            entry.amount = Math.round((halved + Number.EPSILON) * 100) / 100;
+            entry.amount = halveCoupleAmount(entry.amount);
+        }
+        return entry;
+    });
+}
+
+/**
+ * Single-query report-export fetch (issue #97).
+ *
+ * Replaces the previous "fetch full history, then filter in Node" pattern
+ * used by /api/reports/export. Builds one parametrized SQL with WHERE
+ * clauses for view-mode-derived couple/individual scoping plus the user-
+ * supplied start/end/type/categories filters, so the DB returns only the
+ * rows the report needs. The existing per-view helpers
+ * (getEntriesByUser / getCoupleEntries / getMyShareEntries /
+ * getIndividualEntries) are left in place for non-export call sites such
+ * as the budgets / dashboard paths that still pass a single `month`.
+ *
+ * View-mode dispatch matches fetchEntriesForReport() in server.js:
+ *   combined + partner   → both users' couple-flagged entries
+ *   myshare  + partner   → own non-couple + both users' couple (halved JS-side)
+ *   myshare  no partner  → own non-couple only
+ *   individual + partner → own non-couple only
+ *   individual no partner / other → all user's entries
+ *
+ * Ordering matches the previous flow: SQL ORDER BY id then JS month
+ * stable-sort produced (month ASC, id ASC); we do that directly here.
+ *
+ * @param {number}   userId
+ * @param {number|null} partnerId
+ * @param {string}   viewMode  'individual' | 'combined' | 'myshare' | other
+ * @param {object}   filters
+ * @param {string|null} filters.start         YYYY-MM (inclusive) or null
+ * @param {string|null} filters.end           YYYY-MM (inclusive) or null
+ * @param {string|null} filters.typeFilter    'income' | 'expense' | 'all' / null
+ * @param {string[]|null} filters.categorySlugs  slugs to overlap on; null/[] = no filter
+ * @returns {Promise<object[]>} entries with same shape as the per-view helpers
+ */
+async function getEntriesForExport(userId, partnerId, viewMode, filters) {
+    const { start, end, typeFilter, categorySlugs } = filters || {};
+    const params = [];
+    const hasPartner = partnerId != null;
+    let baseWhere;
+
+    if (viewMode === 'combined' && hasPartner) {
+        params.push([userId, partnerId]);
+        baseWhere = `is_couple_expense = TRUE AND user_id = ANY($${params.length}::bigint[])`;
+    } else if (viewMode === 'myshare' && hasPartner) {
+        params.push(userId);
+        const pUser = params.length;
+        params.push(partnerId);
+        const pPartner = params.length;
+        baseWhere = `((user_id = $${pUser} AND is_couple_expense = FALSE)`
+            + ` OR (user_id = ANY(ARRAY[$${pUser}, $${pPartner}]::bigint[]) AND is_couple_expense = TRUE))`;
+    } else if (viewMode === 'myshare') {
+        // myshare without a partner collapses to own non-couple only (mirrors
+        // fetchEntriesForReport → getIndividualEntries).
+        params.push(userId);
+        baseWhere = `user_id = $${params.length} AND is_couple_expense = FALSE`;
+    } else if (viewMode === 'individual' && hasPartner) {
+        params.push(userId);
+        baseWhere = `user_id = $${params.length} AND is_couple_expense = FALSE`;
+    } else {
+        // individual without a partner (or any unknown viewMode) → all of the
+        // user's entries, including legacy couple-flagged rows from a former
+        // partnership. Mirrors the getEntriesByUser fallback in
+        // fetchEntriesForReport.
+        params.push(userId);
+        baseWhere = `user_id = $${params.length}`;
+    }
+
+    const conds = [baseWhere];
+    if (start) {
+        params.push(start);
+        conds.push(`month >= $${params.length}`);
+    }
+    if (end) {
+        params.push(end);
+        conds.push(`month <= $${params.length}`);
+    }
+    if (typeFilter && typeFilter !== 'all') {
+        params.push(typeFilter);
+        conds.push(`type = $${params.length}`);
+    }
+    if (Array.isArray(categorySlugs) && categorySlugs.length > 0) {
+        params.push(categorySlugs);
+        conds.push(`tags && $${params.length}::text[]`);
+    }
+
+    const sql = `SELECT * FROM entries WHERE ${conds.join(' AND ')} ORDER BY month ASC, id ASC`;
+    const { rows } = await pool.query(sql, params);
+
+    const halveCouple = viewMode === 'myshare' && hasPartner;
+    return rows.map(row => {
+        const entry = dbRowToEntry(row);
+        if (halveCouple && entry.isCoupleExpense) {
+            entry.amount = halveCoupleAmount(entry.amount);
         }
         return entry;
     });
@@ -1298,6 +1398,7 @@ module.exports = {
     getPartnerCoupleEntries,
     getIndividualEntries,
     getMyShareEntries,
+    getEntriesForExport,
     getEntryByIdAndUser,
     findDuplicateEntry,
     findBulkDuplicateEntries,
