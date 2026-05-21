@@ -1089,6 +1089,36 @@ function renderCategoryChips() {
     });
 }
 
+// Populate a single-select <select> with the user's categories.
+// Used by the Add/Edit entry modals (#tags and #editTags). The blank
+// first option is preserved; we rebuild the rest on each open so the
+// list reflects renames, language switches, and partner-imports.
+// If currentSlug refers to an orphan (deleted category, partner-only
+// slug not yet imported), it is appended as a one-off option and
+// selected — otherwise an unchanged Edit-modal save would silently
+// drop the tag. Mirrors the pattern in generateCategorySelect().
+function populateCategorySelect(selectId, currentSlug) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    // Keep the leading "— No category —" placeholder; drop everything else.
+    const placeholder = select.querySelector('option[value=""]');
+    select.innerHTML = '';
+    if (placeholder) select.appendChild(placeholder);
+    userCategories.forEach(catRow => {
+        const opt = document.createElement('option');
+        opt.value = catRow.slug;
+        opt.textContent = categoryLabel(catRow.slug);
+        select.appendChild(opt);
+    });
+    if (currentSlug && !_userCategoriesBySlug.has(currentSlug)) {
+        const opt = document.createElement('option');
+        opt.value = currentSlug;
+        opt.textContent = categoryLabel(currentSlug);
+        select.appendChild(opt);
+    }
+    select.value = currentSlug || '';
+}
+
 function hexWithAlpha(hex, alpha) {
     const h = hex.replace('#', '');
     const r = parseInt(h.slice(0, 2), 16);
@@ -2697,6 +2727,7 @@ function openModal() {
     const modal = document.getElementById('entryModal');
     const form = document.getElementById('entryForm');
     form.reset();
+    populateCategorySelect('tags', '');
     // Reset couple expense checkbox
     const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
     if (isCoupleExpenseCheckbox) {
@@ -2757,8 +2788,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const tagsInput = document.getElementById('tags').value;
-        const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean) : [];
+        const selectedSlug = document.getElementById('tags').value;
+        const tags = selectedSlug ? [selectedSlug] : [];
         const isCoupleExpenseCheckbox = document.getElementById('isCoupleExpense');
         const isCoupleExpense = isCoupleExpenseCheckbox ? isCoupleExpenseCheckbox.checked : false;
 
@@ -2846,7 +2877,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('editType').value = entry.type;
                 document.getElementById('editAmount').value = entry.amount;
                 document.getElementById('editDescription').value = entry.description;
-                document.getElementById('editTags').value = (entry.tags || []).join(', ');
+                populateCategorySelect('editTags', (entry.tags && entry.tags[0]) || '');
                 const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
                 if (editIsCoupleExpense) {
                     editIsCoupleExpense.checked = entry.isCoupleExpense || false;
@@ -2863,8 +2894,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setButtonLoading(editSubmitBtn, true);
 
         const id = parseInt(document.getElementById('editEntryId').value);
-        const tagsInput = document.getElementById('editTags').value;
-        const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean) : [];
+        const selectedSlug = document.getElementById('editTags').value;
+        const tags = selectedSlug ? [selectedSlug] : [];
         const editIsCoupleExpense = document.getElementById('editIsCoupleExpense');
         const isCoupleExpense = editIsCoupleExpense ? editIsCoupleExpense.checked : false;
 

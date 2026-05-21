@@ -2948,8 +2948,10 @@
                             <input type="text" id="description" required>
                         </div>
                         <div class="form-group">
-                            <label for="tags" data-i18n="modal.tags">Tags (comma-separated)</label>
-                            <input type="text" id="tags" placeholder="e.g. food, subscription" data-i18n-placeholder="modal.tagsPlaceholder">
+                            <label for="tags" data-i18n="modal.category">Category</label>
+                            <select id="tags">
+                                <option value="" data-i18n="modal.noCategory">— No category —</option>
+                            </select>
                         </div>
                         <div class="couple-expense-toggle" id="coupleExpenseToggle" style="display: none;">
                             <label class="checkbox-label">
@@ -2989,8 +2991,10 @@
                             <input type="text" id="editDescription" required>
                         </div>
                         <div class="form-group">
-                            <label for="editTags" data-i18n="modal.tags">Tags (comma-separated)</label>
-                            <input type="text" id="editTags" placeholder="e.g. food, subscription" data-i18n-placeholder="modal.tagsPlaceholder">
+                            <label for="editTags" data-i18n="modal.category">Category</label>
+                            <select id="editTags">
+                                <option value="" data-i18n="modal.noCategory">— No category —</option>
+                            </select>
                         </div>
                         <div class="couple-expense-toggle" id="editCoupleExpenseToggle" style="display: none;">
                             <label class="checkbox-label">
