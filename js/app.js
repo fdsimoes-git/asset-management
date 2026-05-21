@@ -1093,6 +1093,10 @@ function renderCategoryChips() {
 // Used by the Add/Edit entry modals (#tags and #editTags). The blank
 // first option is preserved; we rebuild the rest on each open so the
 // list reflects renames, language switches, and partner-imports.
+// If currentSlug refers to an orphan (deleted category, partner-only
+// slug not yet imported), it is appended as a one-off option and
+// selected — otherwise an unchanged Edit-modal save would silently
+// drop the tag. Mirrors the pattern in generateCategorySelect().
 function populateCategorySelect(selectId, currentSlug) {
     const select = document.getElementById(selectId);
     if (!select) return;
@@ -1106,9 +1110,13 @@ function populateCategorySelect(selectId, currentSlug) {
         opt.textContent = categoryLabel(catRow.slug);
         select.appendChild(opt);
     });
-    select.value = (currentSlug && userCategories.some(c => c.slug === currentSlug))
-        ? currentSlug
-        : '';
+    if (currentSlug && !_userCategoriesBySlug.has(currentSlug)) {
+        const opt = document.createElement('option');
+        opt.value = currentSlug;
+        opt.textContent = categoryLabel(currentSlug);
+        select.appendChild(opt);
+    }
+    select.value = currentSlug || '';
 }
 
 function hexWithAlpha(hex, alpha) {
