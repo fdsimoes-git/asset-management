@@ -83,7 +83,7 @@ Four credential types supported (per-user, encrypted, with global env var fallba
 - **OpenAI** — `OPENAI_API_KEY`
 - **GitHub Copilot** — OAuth token (`gho_/ghu_/ghp_/github_pat_…`) routed through Copilot's OpenAI-compatible endpoint to access OpenAI/Anthropic/Google models on Copilot subscription credits
 
-AI features include PDF expense extraction (uses the user's category list) and a financial advisor chat with 8 server-side tools (`getFinancialSummary`, `getCategoryBreakdown`, `getMonthlyTrends`, `getTopExpenses`, `comparePeriods`, `searchEntries`, `editEntry`, `undoLastEdit`) plus optional Anthropic-native `web_search`. `editEntry` is two-phase: it returns a pending proposal that the UI surfaces as a Confirm/Cancel card and the user finalizes via `/api/ai/confirm-edit` or `/api/ai/cancel-edit`.
+AI features include PDF expense extraction (uses the user's category list) and a financial advisor chat with 10 server-side tools (`getFinancialSummary`, `getCategoryBreakdown`, `getMonthlyTrends`, `getTopExpenses`, `comparePeriods`, `searchEntries`, `editEntry`, `undoLastEdit`, `deleteEntry`, `createEntry`) plus optional Anthropic-native `web_search`. `editEntry`, `deleteEntry`, and `createEntry` are two-phase: each returns a pending proposal that the UI surfaces as a Confirm/Cancel card, and the user finalizes via the matching `/api/ai/confirm-{edit,delete,create}` / `/api/ai/cancel-{edit,delete,create}` endpoint. Edits and deletes are keyed by `entryId`; creates carry a server-generated `proposalId` since the row doesn't exist yet.
 
 ### Security Model
 
