@@ -11,6 +11,11 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Defensive: legacy pre-PG-migration data store. The folder isn't
+# generated or read by the current code, but historical deployments
+# may still have stray files in it that should never be tracked.
+data/
+
 # JSON guard (only the manifest files should be tracked)
 *.json
 !package.json
