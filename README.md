@@ -439,16 +439,8 @@ asset-management/
 ├── db/
 │   ├── schema.sql                        # PostgreSQL schema (tables, indexes, constraints)
 │   ├── pool.js                           # pg connection pool configuration
-│   ├── queries.js                        # All parameterized query functions
-│   ├── migrate-json-to-pg.js             # One-shot JSON→PostgreSQL migration (idempotent)
-│   ├── migrate-add-user-categories.sql   # v2 — per-user categories
-│   ├── migrate-add-user-budgets.sql      # v3.0 — per-user monthly budgets
-│   ├── migrate-add-claude-oauth-token.sql
-│   ├── migrate-add-github-copilot-token.sql
-│   ├── migrate-add-indexes.sql
-│   └── MIGRATION_RUNBOOK.md              # Step-by-step deployment & cutover guide
+│   └── queries.js                        # All parameterized query functions
 ├── ssl/                     # SSL certificates
-├── data/                    # Legacy encrypted JSON files (pre-PG-migration backup; not read by current code)
 ├── js/
 │   ├── app.js               # Main application logic
 │   ├── csrf.js              # CSRF token helper for fetch requests
@@ -470,16 +462,8 @@ asset-management/
 └── .env.example             # Environment variable template
 ```
 
-## Migration
+## Admin User
 
-### JSON to PostgreSQL Migration
-The app was migrated from encrypted JSON file storage to PostgreSQL. To run the migration on existing data:
-1. Set up PostgreSQL and run `db/schema.sql` to create tables
-2. Configure PG environment variables
-3. Run `node db/migrate-json-to-pg.js` (idempotent, transactional, rolls back on mismatch)
-4. See `db/MIGRATION_RUNBOOK.md` for the full step-by-step deployment guide
-
-### Admin Auto-Migration
 On first run, the system automatically creates an admin user from `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` environment variables.
 
 ## Maintenance
@@ -487,7 +471,7 @@ On first run, the system automatically creates an admin user from `ADMIN_USERNAM
 - **Logs**: Server logs available in terminal output
 - **Updates**: `npm update` to update dependencies
 - **SSL Renewal**: Regenerate certificates annually
-- **Backup**: Run `./backup.sh` to back up PostgreSQL (`pg_dump`) and legacy data files to Cloudflare R2 via rclone
+- **Backup**: Run `./backup.sh` to back up PostgreSQL (`pg_dump`) and `.env` to Cloudflare R2 via rclone
 
 ### Rotating the Encryption Key
 

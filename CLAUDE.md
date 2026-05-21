@@ -52,8 +52,6 @@ Copy `.env.example` to `.env`. Required variables:
 - `pool.js` — pg connection pool (max 10 connections), exports `{ pool, testConnection }`
 - `queries.js` — all parameterized SQL query functions (~1,350 lines)
 - `schema.sql` — PostgreSQL schema (tables: `users`, `entries`, `user_categories`, `user_budgets`, `invite_codes`, `paypal_orders`, `session`)
-- `migrate-json-to-pg.js` — one-shot idempotent migration from legacy JSON storage
-- `migrate-add-*.sql` + `MIGRATION_RUNBOOK.md` — incremental schema migrations (latest: `migrate-add-user-budgets.sql` for the v3.0 Budgets feature)
 
 ### Frontend (no framework, no build)
 
@@ -97,10 +95,6 @@ AI features include PDF expense extraction (uses the user's category list) and a
 - SQL: all queries parameterized via `db/queries.js`
 - 2FA: TOTP with bcrypt-hashed backup codes
 - Static asset exposure narrowed to `/js` only (no `express.static(__dirname)`)
-
-### iOS App
-
-Capacitor 8 wraps the web app for iOS (`ios/` directory, app ID `com.assetmanager.app`).
 
 ## Key Patterns
 

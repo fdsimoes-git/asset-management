@@ -11,12 +11,10 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
-# Data files (contains sensitive financial information)
-data/
+# JSON guard (only the manifest files should be tracked)
 *.json
 !package.json
 !package-lock.json
-!capacitor.config.json
 
 # SSL certificates (regenerate on deployment)
 ssl/
@@ -131,7 +129,3 @@ Thumbs.db
 # Backup files
 *.backup
 *.bak
-
-# Capacitor - placeholder web dir (app loads from remote server)
-www/*
-!www/.gitkeep
