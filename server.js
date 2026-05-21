@@ -2477,9 +2477,11 @@ const VALID_REPORT_FORMATS = new Set(['csv', 'pdf']);
 const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
 
 // Mirrors GET /api/entries' filtering (viewMode + couple/individual rules)
-// but with month=null so we get the full history, then applies range/type/
-// category filters in-process. Pulled out so CSV and PDF paths share the
-// exact same dataset.
+// with a per-month scope. Used by the budgets endpoint, which only ever
+// needs a single month and benefits from the existing per-view helpers.
+// The /api/reports/export path uses fetchFilteredEntriesForReport below,
+// which pushes start/end/type/category filters into a single SQL query
+// (issue #97).
 async function fetchEntriesForReport(req, viewMode, month = null) {
     let validPartner = null;
     if (req.user.partnerId) {
@@ -2504,18 +2506,25 @@ async function fetchEntriesForReport(req, viewMode, month = null) {
     return db.getEntriesByUser(req.user.id, month);
 }
 
-function applyReportFilters(entries, { start, end, typeFilter, categorySet }) {
-    let out = entries;
-    if (start) out = out.filter(e => (e.month || '') >= start);
-    if (end)   out = out.filter(e => (e.month || '') <= end);
-    if (typeFilter && typeFilter !== 'all') {
-        out = out.filter(e => e.type === typeFilter);
+// Resolves the request's partner relationship and delegates to the single-
+// query export helper so range / type / category filters are applied in
+// SQL rather than in Node. Returned rows are already ordered by
+// (month ASC, id ASC), so writeCsvReport / writePdfReport can stream them
+// directly.
+async function fetchFilteredEntriesForReport(req, viewMode, filters) {
+    let validPartner = null;
+    if (req.user.partnerId) {
+        const partner = await db.findUserById(req.user.partnerId);
+        if (partner && partner.isActive && partner.partnerId === req.user.id) {
+            validPartner = partner;
+        }
     }
-    if (categorySet) {
-        out = out.filter(e => Array.isArray(e.tags) && e.tags.some(t => categorySet.has(t)));
-    }
-    out = out.slice().sort((a, b) => (a.month || '').localeCompare(b.month || ''));
-    return out;
+    return db.getEntriesForExport(
+        req.user.id,
+        validPartner ? validPartner.id : null,
+        viewMode,
+        filters
+    );
 }
 
 // CSV escaping with formula-injection mitigation: cells whose first
@@ -2730,7 +2739,7 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
         return res.status(400).json({ message: 'Invalid type. Must be income, expense, or all.' });
     }
     const typeFilter = hasType ? String(rawType) : 'all';
-    let categorySet = null;
+    let categorySlugs = null;
     if (req.query.categories) {
         const slugs = String(req.query.categories).split(',').map(s => s.trim()).filter(Boolean);
         // Cap the category list at 50 to keep the URL/log surface bounded.
@@ -2741,11 +2750,12 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
         if (!slugs.every(s => SLUG_REGEX.test(s))) {
             return res.status(400).json({ message: 'Invalid categories. Each slug must match the expected format.' });
         }
-        if (slugs.length) categorySet = new Set(slugs);
+        if (slugs.length) categorySlugs = slugs;
     }
 
-    const allEntries = await fetchEntriesForReport(req, viewMode);
-    const entries = applyReportFilters(allEntries, { start, end, typeFilter, categorySet });
+    const entries = await fetchFilteredEntriesForReport(req, viewMode, {
+        start, end, typeFilter, categorySlugs
+    });
 
     const dateStr = new Date().toISOString().slice(0, 10);
     const usernameSlug = String(req.user.username).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'user';
@@ -2777,7 +2787,7 @@ app.get('/api/reports/export', requireAuth, reportExportLimiter, asyncHandler(as
             start,
             end,
             typeFilter,
-            categories: categorySet ? [...categorySet] : null
+            categories: categorySlugs
         }
     });
 }));
