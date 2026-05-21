@@ -384,6 +384,18 @@ async function getIndividualEntries(userId, month) {
  * and `userId`, and `isCoupleExpense` is preserved so the UI can decorate
  * halved rows and disable edit/delete on them.
  */
+// Half-away-from-zero rounding used by both getMyShareEntries and
+// getEntriesForExport when splitting couple amounts. Keeps per-row
+// display via .toFixed(2) and aggregate totals consistent — the trade-
+// off being that summing many odd-cent couple entries can drift by up
+// to 1 cent per entry vs. the mathematical half, which we accept to
+// avoid sub-cent floats (e.g. 10.01 / 2 = 5.005 → "5.00" with IEEE-754
+// rounding).
+function halveCoupleAmount(amount) {
+    const halved = amount / 2;
+    return Math.round((halved + Number.EPSILON) * 100) / 100;
+}
+
 async function getMyShareEntries(userId, partnerId, month) {
     const params = month ? [userId, partnerId, month] : [userId, partnerId];
     const sql = month
@@ -403,15 +415,7 @@ async function getMyShareEntries(userId, partnerId, month) {
     return rows.map(row => {
         const entry = dbRowToEntry(row);
         if (entry.isCoupleExpense) {
-            // Round halved amounts to cents so per-row display (rendered via
-            // .toFixed(2)) and aggregate totals are always consistent. The
-            // trade-off is that summing many odd-cent couple entries can
-            // drift by up to 1 cent per entry vs. the mathematical half,
-            // which we accept as preferable to sub-cent floats that
-            // misrender in the UI (e.g. 10.01/2 = 5.005 -> "5.00" with
-            // IEEE-754 rounding). Use standard half-away-from-zero.
-            const halved = entry.amount / 2;
-            entry.amount = Math.round((halved + Number.EPSILON) * 100) / 100;
+            entry.amount = halveCoupleAmount(entry.amount);
         }
         return entry;
     });
@@ -507,10 +511,7 @@ async function getEntriesForExport(userId, partnerId, viewMode, filters) {
     return rows.map(row => {
         const entry = dbRowToEntry(row);
         if (halveCouple && entry.isCoupleExpense) {
-            // Same half-away-from-zero rounding as getMyShareEntries so per-
-            // row display via .toFixed(2) and aggregate totals stay consistent.
-            const halved = entry.amount / 2;
-            entry.amount = Math.round((halved + Number.EPSILON) * 100) / 100;
+            entry.amount = halveCoupleAmount(entry.amount);
         }
         return entry;
     });

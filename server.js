@@ -2476,6 +2476,21 @@ app.delete('/api/entries/:id', requireAuth, asyncHandler(async (req, res) => {
 const VALID_REPORT_FORMATS = new Set(['csv', 'pdf']);
 const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
 
+// Resolves req.user's partner relationship to a usable partner row, or
+// null. "Valid" means the partner exists, is active, AND the link is
+// mutual (partner.partnerId === req.user.id) so a one-sided link can't
+// leak entries between accounts. Several other server.js call sites
+// reproduce this exact 3-clause check — they could migrate to this
+// helper in a follow-up PR; for now scope stays within issue #97.
+async function resolveValidPartner(req) {
+    if (!req.user.partnerId) return null;
+    const partner = await db.findUserById(req.user.partnerId);
+    if (partner && partner.isActive && partner.partnerId === req.user.id) {
+        return partner;
+    }
+    return null;
+}
+
 // Mirrors GET /api/entries' filtering (viewMode + couple/individual rules)
 // with a per-month scope. Used by the budgets endpoint, which only ever
 // needs a single month and benefits from the existing per-view helpers.
@@ -2483,13 +2498,7 @@ const REPORT_TYPE_FILTERS = new Set(['all', 'income', 'expense']);
 // which pushes start/end/type/category filters into a single SQL query
 // (issue #97).
 async function fetchEntriesForReport(req, viewMode, month = null) {
-    let validPartner = null;
-    if (req.user.partnerId) {
-        const partner = await db.findUserById(req.user.partnerId);
-        if (partner && partner.isActive && partner.partnerId === req.user.id) {
-            validPartner = partner;
-        }
-    }
+    const validPartner = await resolveValidPartner(req);
     if (viewMode === 'combined' && validPartner) {
         return db.getCoupleEntries(req.user.id, validPartner.id, month);
     }
@@ -2512,13 +2521,7 @@ async function fetchEntriesForReport(req, viewMode, month = null) {
 // (month ASC, id ASC), so writeCsvReport / writePdfReport can stream them
 // directly.
 async function fetchFilteredEntriesForReport(req, viewMode, filters) {
-    let validPartner = null;
-    if (req.user.partnerId) {
-        const partner = await db.findUserById(req.user.partnerId);
-        if (partner && partner.isActive && partner.partnerId === req.user.id) {
-            validPartner = partner;
-        }
-    }
+    const validPartner = await resolveValidPartner(req);
     return db.getEntriesForExport(
         req.user.id,
         validPartner ? validPartner.id : null,
