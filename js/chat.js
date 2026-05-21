@@ -326,6 +326,9 @@
             if (data.pendingDeletes && data.pendingDeletes.length > 0) {
                 renderDeleteConfirmationCard(data.pendingDeletes);
             }
+            if (data.pendingCreates && data.pendingCreates.length > 0) {
+                renderCreateConfirmationCard(data.pendingCreates);
+            }
         } catch (err) {
             hideLoading();
             appendMessage('assistant', t('chat.errorGeneric'));
@@ -648,6 +651,124 @@
                 }
             } catch (e) { /* ignore */ }
             const msg = isBulk ? t('chat.allDeletesCancelled') : t('chat.deleteCancelled');
+            replaceCardWithMessage(card, msg, 'info');
+            chatMessages.push({ role: 'assistant', content: msg });
+        });
+
+        scrollToBottom();
+    }
+
+    function renderCreateConfirmationCard(pendingCreates) {
+        const isBulk = pendingCreates.length > 1;
+        const card = document.createElement('div');
+        card.className = 'chat-confirm-card';
+
+        const titleText = isBulk
+            ? t('chat.confirmCreateTitleCount', { count: pendingCreates.length })
+            : t('chat.confirmCreateTitle');
+        let html = '<div class="chat-confirm-title">' + escapeHtml(titleText) + '</div>';
+
+        for (const pc of pendingCreates) {
+            const f = pc.fields;
+            html += '<div class="chat-confirm-entry-group">';
+            html += '<div class="chat-confirm-entry">';
+            html += '<strong>' + escapeHtml(f.description) + '</strong><br>';
+            html += escapeHtml(f.type) + ' &middot; ' + escapeHtml(f.month) + ' &middot; ' + escapeHtml(parseFloat(f.amount).toFixed(2));
+            if (f.tags && f.tags.length) {
+                html += ' &middot; ' + escapeHtml(f.tags.join(', '));
+            }
+            if (f.isCoupleExpense) {
+                html += ' &middot; ' + escapeHtml(t('chat.couplePill') || 'couple');
+            }
+            html += '</div>';
+            html += '</div>';
+        }
+
+        const confirmLabel = isBulk ? t('chat.confirmAllCreates') : t('chat.confirmCreate');
+        html += '<div class="chat-confirm-actions">';
+        html += '<button class="chat-confirm-btn" data-action="confirm">' + escapeHtml(confirmLabel) + '</button>';
+        html += '<button class="chat-cancel-btn" data-action="cancel">' + escapeHtml(t('chat.cancelCreate')) + '</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        messagesEl.appendChild(card);
+
+        const confirmBtn = card.querySelector('[data-action="confirm"]');
+        const cancelBtn = card.querySelector('[data-action="cancel"]');
+
+        confirmBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+
+            let progressEl = null;
+            if (isBulk) {
+                progressEl = document.createElement('div');
+                progressEl.className = 'chat-confirm-progress';
+                progressEl.setAttribute('aria-live', 'polite');
+                progressEl.setAttribute('role', 'status');
+                progressEl.setAttribute('aria-atomic', 'true');
+                progressEl.textContent = t('chat.bulkCreateProgress', { current: 1, total: pendingCreates.length });
+                card.appendChild(progressEl);
+            }
+
+            try {
+                let succeeded = 0;
+                let failed = 0;
+                let expired = false;
+                for (let i = 0; i < pendingCreates.length; i++) {
+                    const pc = pendingCreates[i];
+                    if (progressEl) {
+                        progressEl.textContent = t('chat.bulkCreateProgress', { current: i + 1, total: pendingCreates.length });
+                    }
+                    const res = await csrfFetch('/api/ai/confirm-create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ proposalId: pc.proposalId })
+                    });
+                    if (res.status === 410) { failed++; expired = true; }
+                    else if (!res.ok) { failed++; }
+                    else { succeeded++; }
+                }
+                if (failed > 0 && succeeded === 0) {
+                    const errorMsg = expired ? t('chat.createExpired') : t('chat.errorGeneric');
+                    replaceCardWithMessage(card, errorMsg, 'error');
+                } else if (failed > 0 && succeeded > 0) {
+                    const msg = t('chat.partialCreatesConfirmed', { succeeded, failed });
+                    replaceCardWithMessage(card, msg, 'error');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                } else {
+                    const msg = isBulk ? t('chat.allCreatesConfirmed') : t('chat.createConfirmed');
+                    replaceCardWithMessage(card, msg, 'success');
+                    chatMessages.push({ role: 'assistant', content: msg });
+                    if (typeof window.loadEntries === 'function') window.loadEntries();
+                }
+            } catch (e) {
+                replaceCardWithMessage(card, t('chat.errorGeneric'), 'error');
+            }
+        });
+
+        cancelBtn.addEventListener('click', async function () {
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                if (isBulk) {
+                    // Server clears all pending creates for this user when
+                    // proposalId is omitted — one request avoids the rate limiter.
+                    await csrfFetch('/api/ai/cancel-create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                } else {
+                    await csrfFetch('/api/ai/cancel-create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ proposalId: pendingCreates[0].proposalId })
+                    });
+                }
+            } catch (e) { /* ignore */ }
+            const msg = isBulk ? t('chat.allCreatesCancelled') : t('chat.createCancelled');
             replaceCardWithMessage(card, msg, 'info');
             chatMessages.push({ role: 'assistant', content: msg });
         });
