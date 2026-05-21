@@ -1,6 +1,6 @@
 #!/bin/bash
 # Asset Management Backup Script
-# Backs up data folder (and .env if present) to Cloudflare R2 via rclone
+# Backs up .env (if present) and a PostgreSQL dump to Cloudflare R2 via rclone
 
 set -eo pipefail
 
@@ -9,14 +9,6 @@ SOURCE_DIR="$HOME/projects/asset-management"
 REMOTE="r2:asset-management-backups"
 DATETIME=$(date +"%Y-%m-%d_%H-%M-%S")
 BACKUP_DIR="$REMOTE/$DATETIME"
-
-# Copy data folder
-if [ -d "$SOURCE_DIR/data" ]; then
-    rclone copy "$SOURCE_DIR/data" "$BACKUP_DIR/data"
-    echo "Backed up: data folder"
-else
-    echo "Warning: data folder not found"
-fi
 
 # Copy .env file
 if [ -f "$SOURCE_DIR/.env" ]; then
@@ -40,8 +32,6 @@ if command -v pg_dump &> /dev/null; then
 else
     echo "Warning: pg_dump not found — skipping PostgreSQL backup"
 fi
-
-# NOTE: data/ folder backup can be removed after 30 days post-migration
 
 echo "Backup completed: $BACKUP_DIR at $(date)"
 

@@ -909,8 +909,8 @@ app.use((req, res, next) => {
     // Block sensitive files and directories
     const blocked = [
         '/server.js', '/config.js', '/package.json', '/package-lock.json',
-        '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js', '/capacitor.config.json',
-        '/data', '/db', '/ssl', '/certs', '/node_modules', '/ios', '/www'
+        '/backup.sh', '/deploy.sh', '/rotate-key.sh', '/rotate-encryption-key.js',
+        '/db', '/ssl', '/certs', '/node_modules'
     ];
     if (blocked.some(p => requestPath === p || requestPath.startsWith(p + '/'))) {
         return res.status(404).end();
