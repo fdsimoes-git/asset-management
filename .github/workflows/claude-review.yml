@@ -1,0 +1,81 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  # Comment events fire on every comment — the job's `if:` clause below
+  # filters to @claude mentions only so we don't spin up a fresh review
+  # (~$0.50-1.50 each) for every CodeQL / Copilot / bot comment.
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          # Auth for the `gh pr comment` call Claude makes via the Bash
+          # tool. The action's own posting paths (use_sticky_comment,
+          # MCP inline-comment buffer) both completed `success` but
+          # posted nothing visible across multiple iterations — see
+          # PRs #8 / #9 / #10 — so we shell out to `gh` instead.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Reveal Claude's tool calls in the run log. Without this the
+          # SDK hides everything and silent failures are invisible.
+          show_full_output: true
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} of
+            ${{ github.repository }}. Read CLAUDE.md and
+            .github/CODE_REVIEW.md if present and follow their
+            standards. Focus on: correctness bugs, security issues,
+            missing error handling, missing tests, and breaking
+            changes for callers. Be specific and terse.
+
+            POST the review by running this exact command via the Bash
+            tool (no other path will reach the PR — the action's
+            built-in posting mechanism does not work for us):
+
+              cat <<'REVIEW_EOF' > /tmp/review.md
+              <YOUR MARKDOWN REVIEW HERE>
+              REVIEW_EOF
+              gh pr comment ${{ github.event.pull_request.number }} \
+                --body-file /tmp/review.md
+
+            Format the review body as either:
+              - "## Blocking issues" followed by a bulleted list:
+                `path:line` — the problem, the fix (one bullet per
+                issue, under 4 lines each), OR
+              - "No blocking issues." on its own line.
+            Then a one-paragraph summary of what the PR does plus
+            any non-blocking observations.
+
+            Always post the comment, even when there are no blocking
+            issues — silence is not acceptable; the PR author needs
+            to see that the review ran.
+          claude_args: |
+            --model claude-opus-4-7
+            --max-turns 30
+            --allowedTools Read,Grep,Glob,Bash
