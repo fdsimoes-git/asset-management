@@ -41,13 +41,17 @@ jobs:
           # posted nothing visible across multiple iterations — see
           # PRs #8 / #9 / #10 — so we shell out to `gh` instead.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `pull_request.number` is only present on pull_request events;
+          # `issue.number` is what carries the PR number on
+          # issue_comment / pull_request_review_comment events.
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Reveal Claude's tool calls in the run log. Without this the
           # SDK hides everything and silent failures are invisible.
           show_full_output: true
           prompt: |
-            Review PR #${{ github.event.pull_request.number }} of
+            Review PR #${{ env.PR_NUMBER }} of
             ${{ github.repository }}. Read CLAUDE.md and
             .github/CODE_REVIEW.md if present and follow their
             standards. Focus on: correctness bugs, security issues,
@@ -61,8 +65,7 @@ jobs:
               cat <<'REVIEW_EOF' > /tmp/review.md
               <YOUR MARKDOWN REVIEW HERE>
               REVIEW_EOF
-              gh pr comment ${{ github.event.pull_request.number }} \
-                --body-file /tmp/review.md
+              gh pr comment "$PR_NUMBER" --body-file /tmp/review.md
 
             Format the review body as either:
               - "## Blocking issues" followed by a bulleted list:
