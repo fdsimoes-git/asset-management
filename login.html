@@ -49,16 +49,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        @keyframes float {
-            0%, 100% { transform: translateY(0) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(5deg); }
-        }
-
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 60px color-mix(in oklab, var(--primary) 20%, transparent); }
-            50% { box-shadow: 0 0 100px color-mix(in oklab, var(--primary) 35%, transparent); }
-        }
-
         /* Design tokens live in /css/theme.css — shared by every page. */
 
         * {
@@ -83,45 +73,10 @@
             overflow-y: auto;
         }
 
-        /* Ambient background orbs */
-        .orb {
-            position: fixed;
-            border-radius: 50%;
-            filter: blur(90px);
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.55;
-        }
-
-        .orb-1 {
-            width: 500px;
-            height: 500px;
-            background: radial-gradient(circle, var(--primary-soft) 0%, transparent 70%);
-            top: -150px;
-            right: -100px;
-            animation: float 15s ease-in-out infinite;
-        }
-
-        .orb-2 {
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, color-mix(in oklab, var(--accent-1) 50%, transparent) 0%, transparent 70%);
-            bottom: -100px;
-            left: -100px;
-            animation: float 18s ease-in-out infinite reverse;
-        }
-
-        .orb-3 {
-            width: 300px;
-            height: 300px;
-            background: radial-gradient(circle, rgba(168, 85, 247, 0.08) 0%, transparent 70%);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            animation: float 12s ease-in-out infinite;
-        }
-
-        /* ── Landing Split Layout ── */
+        /* ── Landing Split Layout ──
+           The hero side sits on the same graphite chrome as the app shell's
+           sidebar/topbar, so the landing page and the dashboard read as one
+           product in both themes. */
         .landing-wrapper {
             display: flex;
             min-height: calc(100vh - env(safe-area-inset-top, 0px));
@@ -135,6 +90,7 @@
             align-items: center;
             justify-content: center;
             padding: 3rem;
+            background: var(--chrome-bg);
         }
 
         .hero-content {
@@ -143,18 +99,18 @@
         }
 
         .hero-title {
-            font-family: var(--font-display);
-            font-size: 3.5rem;
+            font-family: var(--display);
+            font-size: 3.25rem;
             font-weight: 700;
-            color: var(--color-accent-primary);
+            color: var(--chrome-ink);
             margin: 0 0 1rem 0;
-            letter-spacing: -0.03em;
+            letter-spacing: -0.02em;
             line-height: 1.1;
         }
 
         .hero-tagline {
-            color: var(--color-text-secondary);
-            font-size: 1.15rem;
+            color: var(--chrome-ink-dim);
+            font-size: 1.1rem;
             margin: 0 0 2.5rem 0;
             line-height: 1.7;
         }
@@ -166,37 +122,36 @@
         }
 
         .feature-card {
-            background: var(--color-bg-elevated);
-            border: 1px solid var(--color-border);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--chrome-line);
             border-radius: var(--radius-md);
             padding: 1.25rem;
-            transition: all var(--transition-base);
+            transition: border-color var(--transition-base), background var(--transition-base);
         }
 
         .feature-card:hover {
-            background: var(--color-bg-deep);
-            border-color: color-mix(in oklab, var(--color-accent-primary) 30%, var(--color-bg-elevated));
-            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: color-mix(in oklab, var(--chrome-accent) 40%, var(--chrome-line));
         }
 
         .feature-icon {
             width: 36px;
             height: 36px;
             margin-bottom: 0.75rem;
-            color: var(--color-accent-primary);
+            color: var(--chrome-accent);
         }
 
         .feature-card h3 {
-            font-family: var(--font-body);
+            font-family: var(--sans);
             font-size: 0.9rem;
             font-weight: 600;
-            color: var(--color-text-primary);
+            color: var(--chrome-ink);
             margin: 0 0 0.35rem 0;
         }
 
         .feature-card p {
             font-size: 0.8rem;
-            color: var(--color-text-muted);
+            color: var(--chrome-ink-dim);
             margin: 0;
             line-height: 1.5;
         }
@@ -208,7 +163,7 @@
             align-items: center;
             justify-content: center;
             padding: 2rem;
-            border-left: 1px solid var(--color-border);
+            background: var(--bg);
         }
 
         .login-container {
@@ -217,25 +172,26 @@
         }
 
         .login-form {
-            background: var(--color-bg-elevated);
+            background: var(--card);
             padding: 3rem 2.5rem;
             border-radius: var(--radius-xl);
             box-shadow: var(--shadow-lg);
-            border: 1px solid var(--color-border);
+            border: 1px solid var(--line);
             text-align: center;
-            animation: fadeInUp 0.8s ease 0.15s backwards, pulse-glow 4s ease-in-out infinite;
+            animation: fadeInUp 0.8s ease 0.15s backwards;
             position: relative;
             overflow: hidden;
         }
 
+        /* Ledger tick — same motif as the dashboard section headings */
         .login-form::before {
             content: '';
             position: absolute;
             top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 50%, var(--color-accent-tertiary) 100%);
+            left: 2.5rem;
+            width: 24px;
+            height: 2px;
+            background: var(--primary);
         }
 
         .login-form h2 {
@@ -294,27 +250,25 @@
         button {
             width: 100%;
             padding: 1.1rem;
-            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
-            color: var(--color-bg-deep);
+            background: var(--primary);
+            color: #fff;
             border: none;
             border-radius: var(--radius-md);
             font-size: 0.9rem;
-            font-family: var(--font-body);
-            font-weight: 700;
+            font-family: var(--sans);
+            font-weight: 600;
             cursor: pointer;
-            transition: all var(--transition-base);
+            transition: background var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
             margin-top: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            box-shadow: 0 4px 24px color-mix(in oklab, var(--primary) 30%, transparent);
+            letter-spacing: 0.02em;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px color-mix(in oklab, var(--primary) 40%, transparent);
+            background: color-mix(in oklab, var(--primary) 88%, black);
+            box-shadow: 0 4px 16px var(--ring);
         }
 
         button:active {
@@ -325,7 +279,7 @@
             margin-top: 1.5rem;
             padding: 1rem 1.25rem;
             background: var(--color-danger-muted);
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            border: 1px solid color-mix(in oklab, var(--negative) 35%, var(--card));
             border-radius: var(--radius-md);
             color: var(--color-danger);
             font-size: 0.875rem;
@@ -356,8 +310,8 @@
             left: 50%;
             margin-top: -10px;
             margin-left: -10px;
-            border: 2.5px solid rgba(255, 255, 255, 0.3);
-            border-top: 2.5px solid var(--color-text-primary);
+            border: 2.5px solid rgba(255, 255, 255, 0.35);
+            border-top: 2.5px solid #fff;
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
         }
@@ -461,11 +415,7 @@
             .login-form button {
                 font-size: 0.8rem;
                 padding: 0.9rem;
-                letter-spacing: 0.04em;
-            }
-
-            .orb-1, .orb-2 {
-                opacity: 0.5;
+                letter-spacing: 0.02em;
             }
         }
 
@@ -501,9 +451,6 @@
 </head>
 <body>
     <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
 
     <div class="landing-wrapper">
         <!-- Hero / Features Side -->
@@ -513,26 +460,6 @@
                 <p class="hero-tagline" data-i18n="login.heroTagline">Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.</p>
 
                 <div class="feature-grid">
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                            <path d="M9 12l2 2 4-4"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.encryption">AES-256 Encryption</h3>
-                        <p data-i18n="login.feature.encryptionDesc">Your data encrypted at rest with bank-grade security</p>
-                    </div>
-
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/>
-                            <path d="M7 17v-4"/>
-                            <path d="M12 17v-8"/>
-                            <path d="M17 17v-6"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.analytics">Visual Analytics</h3>
-                        <p data-i18n="login.feature.analyticsDesc">Interactive charts for income, expenses, and categories</p>
-                    </div>
-
                     <div class="feature-card">
                         <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
@@ -559,51 +486,11 @@
 
                     <div class="feature-card">
                         <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                            <path d="M12 18h.01"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.mobile">Mobile Native</h3>
-                        <p data-i18n="login.feature.mobileDesc">Full iOS app for managing finances on the go</p>
-                    </div>
-
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                            <line x1="7" y1="7" x2="7.01" y2="7"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.categories">Smart Categories</h3>
-                        <p data-i18n="login.feature.categoriesDesc">17 built-in tags for granular categorization</p>
-                    </div>
-
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                            <circle cx="12" cy="16" r="1"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.twoFactor">Two-Factor Auth (2FA)</h3>
-                        <p data-i18n="login.feature.twoFactorDesc">Protect your account with TOTP authenticator apps and backup codes</p>
-                    </div>
-
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                             <path d="M8 10h.01"/><path d="M12 10h.01"/><path d="M16 10h.01"/>
                         </svg>
                         <h3 data-i18n="login.feature.aiChat">AI Financial Advisor</h3>
                         <p data-i18n="login.feature.aiChatDesc">Chat with an AI advisor that analyzes your real financial data</p>
-                    </div>
-
-                    <div class="feature-card">
-                        <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                            <line x1="8" y1="13" x2="16" y2="13"/>
-                            <line x1="8" y1="17" x2="16" y2="17"/>
-                            <polyline points="10 9 9 9 8 9"/>
-                        </svg>
-                        <h3 data-i18n="login.feature.reports">Reports &amp; Export</h3>
-                        <p data-i18n="login.feature.reportsDesc">Download CSV or PDF reports of your filtered entries with summary, category breakdown, and totals</p>
                     </div>
 
                     <div class="feature-card">

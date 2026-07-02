@@ -2189,7 +2189,7 @@
             background: var(--card);
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
-            box-shadow: 0 12px 32px rgba(38, 32, 26, 0.16);
+            box-shadow: var(--shadow-lg);
             flex-direction: column;
             overflow: hidden;
         }
@@ -2204,10 +2204,10 @@
             border-bottom: 1px solid var(--line);
         }
         .chat-header-title {
-            font-family: var(--serif);
-            font-size: 18px;
+            font-family: var(--display);
+            font-size: 15px;
             line-height: 1;
-            font-weight: 400;
+            font-weight: 600;
             color: var(--ink);
             letter-spacing: -0.01em;
         }
@@ -2222,7 +2222,7 @@
             border-radius: 0.25rem;
             transition: color 0.15s;
         }
-        .chat-close-btn:hover { color: var(--color-text-primary, #e0e0e8); }
+        .chat-close-btn:hover { color: var(--ink); }
 
         .chat-messages {
             flex: 1;
@@ -2244,31 +2244,34 @@
         }
         .chat-message-user {
             align-self: flex-end;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #1a1a2e;
+            background: var(--primary);
+            color: #fff;
         }
         .chat-message-assistant {
             align-self: flex-start;
-            background: var(--color-bg-surface, #2a2a3e);
-            color: var(--color-text-primary, #e0e0e8);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            color: var(--ink);
+            border: 1px solid var(--line);
         }
         .chat-message-assistant h3,
         .chat-message-assistant h4 {
             margin: 0.4rem 0 0.2rem;
             font-size: 0.88rem;
-            color: var(--color-accent-primary, #f59e0b);
+            font-weight: 600;
+            color: var(--ink);
         }
         .chat-message-assistant h4 { font-size: 0.82rem; }
-        .chat-message-assistant strong { color: var(--color-accent-primary, #f59e0b); }
+        .chat-message-assistant strong { color: var(--ink); font-weight: 600; }
+        .chat-message-assistant a { color: var(--primary); }
         .chat-message-assistant ul,
         .chat-message-assistant ol { margin: 0.3rem 0; padding-left: 1.25rem; }
         .chat-message-assistant li { margin-bottom: 0.15rem; }
         .chat-message-assistant code {
-            background: rgba(0,0,0,0.3);
+            background: var(--chip);
             padding: 0.1rem 0.35rem;
             border-radius: 0.2rem;
             font-size: 0.8rem;
+            font-family: var(--mono);
         }
         /* Markdown tables inside chat */
         .chat-md-table-wrap {
@@ -2282,37 +2285,38 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.78rem;
-            border: 1px solid rgba(148, 163, 184, 0.15);
-            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--line);
+            background: var(--card);
         }
         .chat-md-table th {
-            background: rgba(245, 158, 11, 0.12);
-            color: var(--color-accent-primary, #f59e0b);
+            background: var(--bg-2);
+            color: var(--ink-2);
+            font-family: var(--mono);
             padding: 0.4rem 0.65rem;
             text-align: left;
             font-weight: 600;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+            border-bottom: 1px solid var(--line);
             white-space: nowrap;
         }
         .chat-md-table td {
             padding: 0.35rem 0.65rem;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.07);
-            color: var(--color-text-primary, #e0e0e8);
+            border-bottom: 1px solid color-mix(in oklab, var(--line) 55%, var(--card));
+            color: var(--ink);
             white-space: nowrap;
         }
         .chat-md-table tr:last-child td {
             border-bottom: none;
         }
         .chat-md-table tr:hover td {
-            background: rgba(245, 158, 11, 0.04);
+            background: rgba(0, 0, 0, 0.02);
         }
         /* Fenced code blocks inside chat */
         .chat-message-assistant pre {
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(148, 163, 184, 0.1);
+            background: var(--chip);
+            border: 1px solid var(--line);
             border-radius: 0.4rem;
             padding: 0.65rem 0.85rem;
             overflow-x: auto;
@@ -2323,8 +2327,8 @@
             background: none;
             padding: 0;
             font-size: 0.78rem;
-            font-family: 'Courier New', Courier, monospace;
-            color: var(--color-text-primary, #e0e0e8);
+            font-family: var(--mono);
+            color: var(--ink);
         }
 
         .chat-input-area {
@@ -2374,14 +2378,14 @@
             display: flex;
             gap: 0.3rem;
             padding: 0.6rem 0.85rem;
-            background: var(--color-bg-surface, #2a2a3e);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            border: 1px solid var(--line);
             border-radius: 0.75rem;
         }
         .chat-loading-dot {
             width: 0.45rem;
             height: 0.45rem;
-            background: var(--color-text-secondary, #a0a0b0);
+            background: var(--ink-3);
             border-radius: 50%;
             animation: chatDotBounce 1.2s infinite;
         }
@@ -2395,9 +2399,9 @@
         .chat-confirm-card {
             align-self: flex-start;
             max-width: 85%;
-            border: 1px solid var(--color-accent-primary, #f59e0b);
+            border: 1px solid color-mix(in oklab, var(--primary) 45%, var(--line));
             border-radius: 0.75rem;
-            background: var(--color-bg-surface, #2a2a3e);
+            background: var(--card);
             padding: 0.85rem 1rem;
             font-size: 0.82rem;
             line-height: 1.45;
@@ -2405,21 +2409,22 @@
         .chat-confirm-title {
             text-transform: uppercase;
             font-size: 0.7rem;
-            font-weight: 700;
+            font-weight: 600;
+            font-family: var(--mono);
             letter-spacing: 0.05em;
-            color: var(--color-accent-primary, #f59e0b);
+            color: var(--primary);
             margin-bottom: 0.6rem;
         }
         .chat-confirm-entry {
-            background: rgba(0,0,0,0.2);
+            background: var(--bg-2);
             border-radius: 0.4rem;
             padding: 0.5rem 0.65rem;
             margin-bottom: 0.6rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             font-size: 0.78rem;
         }
         .chat-confirm-entry strong {
-            color: var(--color-text-primary, #e0e0e8);
+            color: var(--ink);
         }
         .chat-confirm-changes {
             display: flex;
@@ -2436,24 +2441,23 @@
         }
         .chat-confirm-change-label {
             font-weight: 600;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             min-width: 5rem;
         }
         .chat-confirm-change-current {
             text-decoration: line-through;
-            color: var(--color-text-secondary, #a0a0b0);
-            opacity: 0.7;
+            color: var(--ink-3);
         }
         .chat-confirm-change-arrow {
-            color: var(--color-text-secondary, #a0a0b0);
-            opacity: 0.5;
+            color: var(--ink-3);
+            opacity: 0.6;
         }
         .chat-confirm-change-new {
-            color: #34d399;
+            color: var(--positive);
             font-weight: 600;
         }
         .chat-confirm-entry-group + .chat-confirm-entry-group {
-            border-top: 1px solid var(--color-border, #333);
+            border-top: 1px solid var(--line);
             margin-top: 0.6rem;
             padding-top: 0.6rem;
         }
@@ -2466,7 +2470,7 @@
             padding: 0.45rem 0.75rem;
             border: none;
             border-radius: 0.4rem;
-            background: linear-gradient(135deg, #34d399, #059669);
+            background: var(--positive);
             color: #fff;
             font-weight: 600;
             font-size: 0.78rem;
@@ -2476,11 +2480,11 @@
         .chat-confirm-btn:hover { opacity: 0.9; }
         .chat-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .chat-confirm-btn--danger {
-            background: linear-gradient(135deg, #f87171, #dc2626);
+            background: var(--negative);
         }
         .chat-confirm-warning {
             font-size: 0.72rem;
-            color: #fca5a5;
+            color: var(--negative);
             margin-top: 0.4rem;
             display: flex;
             align-items: center;
@@ -2489,7 +2493,7 @@
         .chat-confirm-progress {
             margin-top: 0.45rem;
             font-size: 0.75rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-3);
             font-style: italic;
             text-align: center;
         }
@@ -2498,16 +2502,16 @@
             max-width: 90%;
             margin: 0.25rem 0 0.1rem;
             padding: 0.4rem 0.6rem;
-            background: rgba(99, 102, 241, 0.08);
-            border: 1px solid rgba(99, 102, 241, 0.25);
+            background: color-mix(in oklab, var(--info) 7%, var(--card));
+            border: 1px solid color-mix(in oklab, var(--info) 30%, var(--card));
             border-radius: 0.5rem;
             font-size: 0.72rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
         }
         .chat-tools-summary {
             cursor: pointer;
             font-weight: 600;
-            color: #818cf8;
+            color: var(--info);
             list-style: none;
             display: flex;
             align-items: center;
@@ -2536,36 +2540,36 @@
             align-items: baseline;
             gap: 0.3rem;
             padding: 0.2rem 0.35rem;
-            border-left: 2px solid #818cf8;
-            background: rgba(255, 255, 255, 0.02);
+            border-left: 2px solid var(--info);
+            background: var(--bg-2);
             border-radius: 0.25rem;
         }
-        .chat-tools-item--error { border-left-color: #ef4444; }
-        .chat-tools-item--pending { border-left-color: #f59e0b; }
+        .chat-tools-item--error { border-left-color: var(--negative); }
+        .chat-tools-item--pending { border-left-color: var(--warning); }
         .chat-tools-name {
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            color: #c7d2fe;
+            font-family: var(--mono);
+            color: var(--info);
             font-weight: 600;
         }
         .chat-tools-args {
-            color: var(--color-text-secondary, #a0a0b0);
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--ink-3);
+            font-family: var(--mono);
             font-size: 0.68rem;
         }
-        .chat-tools-result { color: #86efac; }
-        .chat-tools-error { color: #fca5a5; }
+        .chat-tools-result { color: var(--positive); }
+        .chat-tools-error { color: var(--negative); }
         .chat-tools-duration {
             margin-left: auto;
-            color: #6b7280;
+            color: var(--ink-3);
             font-size: 0.65rem;
         }
         .chat-cancel-btn {
             flex: 1;
             padding: 0.45rem 0.75rem;
-            border: 1px solid var(--color-border, #333);
+            border: 1px solid var(--line);
             border-radius: 0.4rem;
             background: transparent;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             font-weight: 600;
             font-size: 0.78rem;
             cursor: pointer;
@@ -2582,19 +2586,19 @@
             font-weight: 500;
         }
         .chat-confirm-result--success {
-            background: rgba(52, 211, 153, 0.15);
-            color: #34d399;
-            border: 1px solid rgba(52, 211, 153, 0.3);
+            background: color-mix(in oklab, var(--positive) 14%, var(--card));
+            color: var(--positive);
+            border: 1px solid color-mix(in oklab, var(--positive) 35%, var(--card));
         }
         .chat-confirm-result--error {
-            background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            background: color-mix(in oklab, var(--negative) 14%, var(--card));
+            color: var(--negative);
+            border: 1px solid color-mix(in oklab, var(--negative) 35%, var(--card));
         }
         .chat-confirm-result--info {
-            background: rgba(160, 160, 176, 0.1);
-            color: var(--color-text-secondary, #a0a0b0);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            color: var(--ink-2);
+            border: 1px solid var(--line);
         }
 
         @media (max-width: 768px) {
@@ -2702,7 +2706,7 @@
     <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
 
     <!-- AI Chat Widget -->
-    <button id="chatFab" class="chat-fab" data-i18n-title="chat.title" data-i18n-aria-label="chat.title">
+    <button id="chatFab" class="chat-fab" aria-expanded="false" aria-controls="chatWindow" data-i18n-title="chat.title" data-i18n-aria-label="chat.title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </button>
     <div id="chatWindow" class="chat-window">

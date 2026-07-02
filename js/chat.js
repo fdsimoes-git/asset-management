@@ -29,6 +29,7 @@
     function openChat() {
         chatOpen = true;
         win.classList.add('open');
+        if (fab) fab.setAttribute('aria-expanded', 'true');
         input.focus();
 
         if (!welcomeSent) {
@@ -41,6 +42,7 @@
     function closeChat() {
         chatOpen = false;
         win.classList.remove('open');
+        if (fab) fab.setAttribute('aria-expanded', 'false');
     }
 
     function appendMessage(role, content) {
