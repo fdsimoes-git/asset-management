@@ -5368,13 +5368,14 @@ app.post('/api/ai/chat', requireAuth, chatRateLimiter, asyncHandler(async (req, 
             // and reject the request — we transparently fall back to
             // 4096 in the catch block below.
             let chatMaxTokens = 8192;
+            // No `temperature`: Opus 4.7+ / Sonnet 5 / Fable 5 reject sampling
+            // params with a 400; older models just use their default.
             const callAnthropic = async () => anthropicClient.messages.create({
                 model: resolveModel(req.user, 'anthropic', 'chat'),
                 max_tokens: chatMaxTokens,
                 system: anthropicSystem,
                 messages: currentMessages,
-                tools: currentTools,
-                temperature: 0.7
+                tools: currentTools
             });
 
             for (let i = 0; i < maxIterations; i++) {
@@ -6060,13 +6061,14 @@ ${text}`;
             console.log('Starting Anthropic API call...');
             const anthropicClient = createAnthropicClient(anthropicAuth);
             try {
+                // No `temperature`: Opus 4.7+ / Sonnet 5 / Fable 5 reject sampling
+                // params with a 400; the system prompt already pins the output format.
                 const response = await anthropicClient.messages.create({
                     model: resolveModel(req.user, 'anthropic', 'pdf'),
                     max_tokens: 4096,
                     system: buildAnthropicSystemPrompt(anthropicAuth,
                         'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.'),
-                    messages: [{ role: 'user', content: prompt }],
-                    temperature: 0.2
+                    messages: [{ role: 'user', content: prompt }]
                 });
                 aiResponse = response.content
                     .filter(b => b.type === 'text')

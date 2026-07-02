@@ -12,6 +12,9 @@ Secure multi-user asset management web app with AI-powered expense tracking. Nod
 # Install dependencies (Node.js 18.18+, 20.9+, or 22+ required by connect-pg-simple)
 npm install
 
+# Apply the database schema (no migration framework; DDL is idempotent via IF NOT EXISTS)
+psql -U asset_app -d asset_management -f db/schema.sql
+
 # Run dev server (port 3000 by default; override with PORT env var)
 npm start
 
@@ -44,22 +47,22 @@ Copy `.env.example` to `.env`. Required variables:
 
 ### Backend (single-file server)
 
-**`server.js`** (~6,080 lines) — monolithic Express app containing all route handlers, middleware, AI integration, and business logic. ~64 API endpoints are defined here.
+**`server.js`** (~6,400 lines) — monolithic Express app containing all route handlers, middleware, AI integration, and business logic. ~65 API endpoints are defined here.
 
 **`config.js`** — centralized env var loading with startup validation. Exports a single config object.
 
 **`db/`** — database layer:
 - `pool.js` — pg connection pool (max 10 connections), exports `{ pool, testConnection }`
-- `queries.js` — all parameterized SQL query functions (~1,350 lines)
+- `queries.js` — all parameterized SQL query functions (~1,450 lines)
 - `schema.sql` — PostgreSQL schema (tables: `users`, `entries`, `user_categories`, `user_budgets`, `invite_codes`, `paypal_orders`, `session`)
 
 ### Frontend (no framework, no build)
 
 All frontend code is vanilla JavaScript loaded directly by the browser:
 - `index.html` (~140 KB / ~3,475 lines) — main dashboard with inline CSS, sidebar/topbar shell, hero KPI row with sparklines, Reports + Budgets modals
-- `js/app.js` (~5,610 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories, Reports/Budgets modals, theme + typography presets, mobile sidebar drawer with focus management, loading-state helpers (`setViewLoading` / `setHeroLoading` / `setChartsLoading` / `setEntriesLoading` / `setSingleChartLoading` / `setButtonLoading`)
-- `js/chat.js` (~675 lines) — AI financial advisor floating chat widget
-- `js/i18n.js` (~1,310 lines) — English + Portuguese translations (~700 keys) and `t(key, replacements)` helper
+- `js/app.js` (~5,640 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories, Reports/Budgets modals, theme + typography presets, mobile sidebar drawer with focus management, loading-state helpers (`setViewLoading` / `setHeroLoading` / `setChartsLoading` / `setEntriesLoading` / `setSingleChartLoading` / `setButtonLoading`)
+- `js/chat.js` (~800 lines) — AI financial advisor floating chat widget
+- `js/i18n.js` (~1,350 lines) — English + Portuguese translations (~700 keys) and `t(key, replacements)` helper
 - `js/csrf.js`, `js/login.js`, `js/register.js`, `js/forgot-password.js` — page-specific modules
 
 ### API Structure
@@ -84,6 +87,16 @@ Four credential types supported (per-user, encrypted, with global env var fallba
 - **GitHub Copilot** — OAuth token (`gho_/ghu_/ghp_/github_pat_…`) routed through Copilot's OpenAI-compatible endpoint to access OpenAI/Anthropic/Google models on Copilot subscription credits
 
 AI features include PDF expense extraction (uses the user's category list) and a financial advisor chat with 10 server-side tools (`getFinancialSummary`, `getCategoryBreakdown`, `getMonthlyTrends`, `getTopExpenses`, `comparePeriods`, `searchEntries`, `editEntry`, `undoLastEdit`, `deleteEntry`, `createEntry`) plus optional Anthropic-native `web_search`. `editEntry`, `deleteEntry`, and `createEntry` are two-phase: each returns a pending proposal that the UI surfaces as a Confirm/Cancel card, and the user finalizes via the matching `/api/ai/confirm-{edit,delete,create}` / `/api/ai/cancel-{edit,delete,create}` endpoint. Edits and deletes are keyed by `entryId`; creates carry a server-generated `proposalId` since the row doesn't exist yet.
+
+### Operational Scripts (repo root)
+
+- `rotate-encryption-key.js` (run via `sudo bash rotate-key.sh` on the systemd host) — decrypts every encrypted field (`email`, the five AI credential columns, `totp_secret`) with the current `ENCRYPTION_KEY` and re-encrypts with a freshly generated one, in a transaction. Any new encrypted column must be added to this script too.
+- `backup.sh` — dumps PostgreSQL + `.env` to Cloudflare R2 via rclone
+- `deploy.sh` — first-time setup helper (dirs, npm install, SSL certs)
+
+### CI
+
+`.github/workflows/claude-review.yml` runs a Claude review on every PR (opened/synchronize) and on `@claude` comment mentions. Review standards live in `.github/CODE_REVIEW.md`, which defers to this file for project conventions.
 
 ### Security Model
 
