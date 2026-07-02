@@ -1056,60 +1056,88 @@
             display: block;
         }
 
-        .summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 18px;
-            margin-bottom: 22px;
+        /* ── Budget status panel (4th slot of the charts grid) ── */
+        .budget-panel {
+            display: flex;
+            flex-direction: column;
         }
-
-        .summary-item {
-            background: var(--card);
-            padding: 22px;
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--line);
-            position: relative;
+        .budget-panel-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .budget-panel-head h3 {
+            margin: 0;
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .budget-panel-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .budget-row { display: flex; flex-direction: column; gap: 5px; }
+        .budget-row--overall {
+            padding-bottom: 12px;
+            border-bottom: 1px dashed var(--line);
+        }
+        .budget-row-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+        }
+        .budget-row-name {
+            font-size: 12.5px;
+            color: var(--ink-2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
             overflow: hidden;
-            transition: border-color var(--transition-base);
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-
-        .summary-item:hover {
-            border-color: var(--line-2);
+        .budget-row-name .budget-dot {
+            width: 7px; height: 7px;
+            border-radius: 2px;
+            background: var(--budget-dot-color, var(--ink-3));
+            flex: none;
         }
-
-        .summary-item::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--primary);
-            opacity: 0;
-            transition: opacity var(--transition-base);
-        }
-
-        .summary-item:hover::before { opacity: 1; }
-
-        .summary-item span:first-child {
-            display: block;
+        .budget-row-nums {
             font-family: var(--mono);
             font-size: 11px;
-            color: var(--ink-2);
-            font-weight: 500;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
+            font-feature-settings: "tnum";
+            color: var(--ink-3);
+            white-space: nowrap;
         }
-
-        .summary-item span:last-child {
-            display: block;
-            font-family: var(--serif);
-            font-size: 38px;
-            line-height: 1;
-            font-weight: 400;
-            color: var(--ink);
-            letter-spacing: -0.02em;
+        .budget-row-track {
+            height: 6px;
+            border-radius: 9999px;
+            background: var(--bg-2);
+            overflow: hidden;
+        }
+        .budget-row-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.4s ease;
+        }
+        .budget-panel-empty {
+            font-size: 12.5px;
+            color: var(--ink-3);
+            margin: auto 0;
+            text-align: center;
+        }
+        .budget-panel-manage {
+            margin-top: 14px;
+            align-self: flex-start;
         }
 
         .entries-table {
@@ -1194,12 +1222,6 @@
             0%, 100% { opacity: 0.3; transform: scale(0.85); }
             50%      { opacity: 1;   transform: scale(1.15); }
         }
-        .summary.is-loading .summary-item span:last-child {
-            opacity: 0.35;
-            filter: blur(2px);
-            transition: opacity 0.15s, filter 0.15s;
-        }
-
         /* ── Hero row + KPI loading state (issue #98) ──
            Dims the live numbers and overlays a shimmer block over the
            bignum / each KPI value while data is loading. The same
@@ -1370,9 +1392,13 @@
             animation: spin 0.6s linear infinite;
         }
 
-        /* Tag badge styles */
+        /* Tag badge styles — theme-neutral chip with a per-category color dot
+           (the dot color is the user's stored category color, set inline by
+           displayEntries via --tag-dot-color). */
         .tag {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             padding: 0.25rem 0.6rem;
             border-radius: 9999px;
             font-size: 0.65rem;
@@ -1380,26 +1406,17 @@
             margin: 0.1rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            border: 1px solid transparent;
+            background: var(--chip);
+            color: var(--ink-2);
+            border: 1px solid var(--line);
         }
-
-        .tag-food { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
-        .tag-groceries { background: rgba(34, 197, 94, 0.15); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
-        .tag-transport { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
-        .tag-travel { background: rgba(6, 182, 212, 0.15); color: #06b6d4; border-color: rgba(6, 182, 212, 0.3); }
-        .tag-entertainment { background: rgba(168, 85, 247, 0.15); color: #a855f7; border-color: rgba(168, 85, 247, 0.3); }
-        .tag-utilities { background: rgba(99, 102, 241, 0.15); color: #6366f1; border-color: rgba(99, 102, 241, 0.3); }
-        .tag-healthcare { background: rgba(236, 72, 153, 0.15); color: #ec4899; border-color: rgba(236, 72, 153, 0.3); }
-        .tag-education { background: rgba(20, 184, 166, 0.15); color: #14b8a6; border-color: rgba(20, 184, 166, 0.3); }
-        .tag-shopping { background: rgba(249, 115, 22, 0.15); color: #f97316; border-color: rgba(249, 115, 22, 0.3); }
-        .tag-subscription { background: rgba(132, 204, 22, 0.15); color: #84cc16; border-color: rgba(132, 204, 22, 0.3); }
-        .tag-housing { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border-color: rgba(148, 163, 184, 0.3); }
-        .tag-salary { background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
-        .tag-freelance { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; border-color: rgba(45, 212, 191, 0.3); }
-        .tag-investment { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
-        .tag-transfer { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
-        .tag-wedding { background: rgba(244, 114, 182, 0.15); color: #f472b6; border-color: rgba(244, 114, 182, 0.3); }
-        .tag-other { background: rgba(100, 116, 139, 0.15); color: #64748b; border-color: rgba(100, 116, 139, 0.3); }
+        .tag::before {
+            content: "";
+            width: 7px; height: 7px;
+            border-radius: 2px;
+            background: var(--tag-dot-color, var(--ink-3));
+            flex: none;
+        }
 
         /* Preview table selects */
         .preview-select {
@@ -1540,15 +1557,7 @@
                 height: 340px;
             }
 
-            .chart-wrapper[data-chart="categoryStacked"] {
-                height: 400px;
-            }
-
             .charts-container {
-                grid-template-columns: 1fr;
-            }
-
-            .summary {
                 grid-template-columns: 1fr;
             }
 
@@ -1603,7 +1612,6 @@
             .hero-networth { padding: 18px; min-height: 0; }
             .hero-networth .bignum { font-size: clamp(40px, 11vw, 64px); }
             .chart-wrapper { height: 280px; padding: 12px; }
-            .chart-wrapper[data-chart="categoryStacked"] { height: 320px; }
             .charts-container { gap: 1rem; }
         }
 
@@ -3151,26 +3159,6 @@
                                 <button type="button" id="manageCategoriesBtn" class="link-btn" data-i18n="category.manage">Manage</button>
                             </div>
                             <div id="categoryChips" class="category-chips" role="group" data-i18n-aria-label="dash.category" aria-label="Categories"></div>
-                            <!-- Hidden native select kept for backwards-compat / testing; populated from chips -->
-                            <select id="categoryFilter" multiple hidden aria-hidden="true" tabindex="-1">
-                                <option value="food">Food</option>
-                                <option value="groceries">Groceries</option>
-                                <option value="transport">Transport</option>
-                                <option value="travel">Travel</option>
-                                <option value="entertainment">Entertainment</option>
-                                <option value="utilities">Utilities</option>
-                                <option value="healthcare">Healthcare</option>
-                                <option value="education">Education</option>
-                                <option value="shopping">Shopping</option>
-                                <option value="subscription">Subscription</option>
-                                <option value="housing">Housing</option>
-                                <option value="salary">Salary</option>
-                                <option value="freelance">Freelance</option>
-                                <option value="investment">Investment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="wedding">Wedding</option>
-                                <option value="other">Other</option>
-                            </select>
                         </div>
                         <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                     </div>
@@ -3268,34 +3256,25 @@
                         <div class="chart-type-toggle" role="group" data-i18n-aria-label="filter.chartType" aria-label="Chart type">
                             <button type="button" class="chart-type-btn active" data-type="bar" aria-pressed="true" data-i18n="filter.chartBar" data-i18n-title="filter.chartBar" title="Bar">Bar</button>
                             <button type="button" class="chart-type-btn" data-type="doughnut" aria-pressed="false" data-i18n="filter.chartDoughnut" data-i18n-title="filter.chartDoughnut" title="Doughnut">Doughnut</button>
+                            <button type="button" class="chart-type-btn" data-type="stacked" aria-pressed="false" data-i18n="filter.chartStacked" data-i18n-title="filter.chartStacked" title="Trend">Trend</button>
                         </div>
                         <canvas id="categoryChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
-                    <div class="chart-wrapper" data-chart="categoryStacked">
-                        <canvas id="categoryStackedChart"></canvas>
-                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                    <div class="chart-wrapper budget-panel" data-chart="budget" data-i18n-title="budget.panelHelp" title="Current calendar month, your budgets only — filters don't apply.">
+                        <div class="budget-panel-head">
+                            <h3 data-i18n="dash.budgetStatus">Budget status</h3>
+                            <span class="mono tiny muted" id="budgetPanelMonth"></span>
+                        </div>
+                        <div id="budgetStatusBody" class="budget-panel-body"></div>
+                        <button type="button" id="budgetPanelManageBtn" class="btn ghost budget-panel-manage" data-i18n="budget.manageLink">Manage budgets</button>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                 </div>
             </section>
             <section class="entries-section">
                 <h2 data-i18n="dash.registeredEntries">Registered Entries</h2>
-                <div class="summary">
-                    <div class="summary-item">
-                        <span data-i18n="dash.totalIncome">Total Income</span>
-                        <span id="totalIncome">$0.00</span>
-                    </div>
-                    <div class="summary-item">
-                        <span data-i18n="dash.totalExpenses">Total Expenses</span>
-                        <span id="totalExpenses">$0.00</span>
-                    </div>
-                    <div class="summary-item">
-                        <span data-i18n="dash.netBalance">Net Balance</span>
-                        <span id="netBalance">$0.00</span>
-                    </div>
-                </div>
                 <div class="entries-table">
                     <div id="entriesTableLoadingOverlay" class="table-loading-overlay" hidden role="status" aria-live="polite">
                         <span class="spinner-dot" aria-hidden="true"></span>

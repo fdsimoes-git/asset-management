@@ -85,8 +85,8 @@ let entries = [];
 let monthlyBalanceChart = null;
 let incomeVsExpenseChart = null;
 let categoryChart = null;
-let categoryStackedChart = null;
-// Category chart supports two presentations: horizontal bar (default) and doughnut.
+// Categories chart supports three presentations: horizontal bar (default),
+// doughnut, and stacked monthly bars ('stacked').
 let currentCategoryChartType = 'bar';
 let _categoryCtxRef = null; // kept so setCategoryChartType can rebuild without re-running initializeCharts
 let _chartThemeRef = null;  // theme/color palette reference for rebuilds
@@ -107,12 +107,13 @@ let currentPage = 1;
 let currentViewMode = 'individual';
 let hasPartner = false;
 
-// Build the category-distribution chart as either horizontal bar or doughnut.
-// Colors are applied in updateCharts() (sorted by value) so they stay consistent
-// with CATEGORY_COLORS regardless of sort order.
+// Build the categories chart in one of three presentations: horizontal bar
+// (aggregate distribution, default), doughnut (same data as shares) or
+// stacked monthly bars (trend over time). Colors/data are applied in
+// updateCharts() so they stay consistent regardless of presentation.
 function buildCategoryChart(ctx, type, colors) {
     const commonTooltip = {
-        backgroundColor: colors.cardBg || '#FBF6EC',
+        backgroundColor: colors.cardBg || '#FFFFFF',
         titleColor: colors.textPrimary,
         bodyColor: colors.textSecondary,
         borderColor: colors.gridColor,
@@ -122,11 +123,79 @@ function buildCategoryChart(ctx, type, colors) {
     };
     const title = {
         display: true,
-        text: t('chart.expensesByCategory'),
+        text: type === 'stacked' ? t('chart.expenseCatByMonth') : t('chart.expensesByCategory'),
         color: colors.textPrimary,
-        font: { size: 14, weight: '500', family: _chartSerifFamily() },
+        font: { size: 14, weight: '600', family: _chartSerifFamily() },
         padding: { bottom: 20 }
     };
+    const axisTitle = (text) => ({
+        display: true,
+        text: text,
+        color: colors.textSecondary,
+        font: { family: _chartFontFamily(), size: 11, weight: '500' },
+        padding: { top: 6, bottom: 0 }
+    });
+    if (type === 'stacked') {
+        // Stacked monthly bars — expenses by category per month. Datasets are
+        // rebuilt on every updateCharts() call from the user's category list
+        // (plus any orphan slugs in the filtered data).
+        return new Chart(ctx, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: colors.textSecondary,
+                            font: { size: 10, family: _chartFontFamily() },
+                            boxWidth: 12,
+                            padding: 10
+                        }
+                    },
+                    title,
+                    tooltip: {
+                        ...commonTooltip,
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.dataset.label || '';
+                                const value = context.parsed.y;
+                                return `${label}: $${value.toFixed(2)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: axisTitle(t('chart.axisMonth')),
+                        grid: { color: colors.gridColor, drawBorder: false },
+                        ticks: {
+                            color: colors.textMuted,
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { family: _chartFontFamily() }
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        title: axisTitle(t('chart.axisAmount')),
+                        grid: { color: colors.gridColor, drawBorder: false },
+                        ticks: {
+                            color: colors.textMuted,
+                            font: { family: _chartFontFamily() },
+                            callback: function(value) {
+                                return '$' + value.toFixed(0);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
     if (type === 'doughnut') {
         return new Chart(ctx, {
             type: 'doughnut',
@@ -256,7 +325,7 @@ let _categoryRebuildTimer = null;
 let _themeRebuildTimer = null;
 
 function setCategoryChartType(type) {
-    if (!['bar', 'doughnut'].includes(type)) return;
+    if (!['bar', 'doughnut', 'stacked'].includes(type)) return;
     if (type === currentCategoryChartType) return;
     currentCategoryChartType = type;
     // Show the loading skeleton on the category chart and defer the
@@ -290,10 +359,10 @@ function reapplyChartTheme() {
     if (_themeRebuildTimer) clearTimeout(_themeRebuildTimer);
     _themeRebuildTimer = setTimeout(() => {
         _themeRebuildTimer = null;
-        [monthlyBalanceChart, incomeVsExpenseChart, categoryChart, categoryStackedChart].forEach(c => {
+        [monthlyBalanceChart, incomeVsExpenseChart, categoryChart].forEach(c => {
             if (c) c.destroy();
         });
-        monthlyBalanceChart = incomeVsExpenseChart = categoryChart = categoryStackedChart = null;
+        monthlyBalanceChart = incomeVsExpenseChart = categoryChart = null;
         initializeCharts();
         if (Array.isArray(currentFilteredEntries)) {
             updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
@@ -354,7 +423,7 @@ function readThemePalette() {
         gridColor: v('--line', '#E3E3DE'),
         cardBg: v('--card', '#FFFFFF'),
         accent: primary,
-        accentGlow: hexToRgba(primary, 0.22),
+        accentGlow: hexToRgba(primary, 0.10),
         success: positive,
         danger: negative,
         olive: accent1,
@@ -371,7 +440,6 @@ function initializeCharts() {
     const monthlyBalanceCtx = document.getElementById('monthlyBalanceChart').getContext('2d');
     const incomeVsExpenseCtx = document.getElementById('incomeVsExpenseChart').getContext('2d');
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
-    const categoryStackedCtx = document.getElementById('categoryStackedChart').getContext('2d');
 
     const colors = readThemePalette();
 
@@ -524,9 +592,11 @@ function initializeCharts() {
                 pointBackgroundColor: colors.accent,
                 pointBorderColor: colors.cardBg,
                 pointBorderWidth: 2,
-                pointRadius: 5,
-                pointHoverRadius: 7,
-                borderWidth: 3
+                // Quiet line: no dots along the series, one marker on the
+                // latest point so the current position stays anchored.
+                pointRadius: (ctx) => ctx.dataIndex === ctx.dataset.data.length - 1 ? 4 : 0,
+                pointHoverRadius: 6,
+                borderWidth: 2
             }]
         },
         options: {
@@ -569,19 +639,19 @@ function initializeCharts() {
                 {
                     label: t('chart.income'),
                     data: [],
-                    backgroundColor: colors.olive,
-                    borderColor: colors.olive,
-                    borderWidth: 2,
-                    borderRadius: 6,
+                    backgroundColor: colors.success + 'cc',
+                    borderColor: colors.success,
+                    borderWidth: 1,
+                    borderRadius: 4,
                     hoverBackgroundColor: colors.success
                 },
                 {
                     label: t('chart.expenses'),
                     data: [],
-                    backgroundColor: colors.accent,
-                    borderColor: colors.accent,
-                    borderWidth: 2,
-                    borderRadius: 6,
+                    backgroundColor: colors.danger + 'cc',
+                    borderColor: colors.danger,
+                    borderWidth: 1,
+                    borderRadius: 4,
                     hoverBackgroundColor: colors.danger
                 }
             ]
@@ -589,90 +659,12 @@ function initializeCharts() {
         options: incomeExpenseOptions
     });
 
-    // Category distribution chart — supports bar (horizontal) or doughnut view.
+    // Categories chart — bar (aggregate), doughnut, or stacked monthly view.
     // The type can be toggled by the user via the overlay buttons; we rebuild
     // the chart on toggle because Chart.js does not allow changing `type` in place.
     _categoryCtxRef = categoryCtx;
     _chartThemeRef = colors;
     categoryChart = buildCategoryChart(categoryCtx, currentCategoryChartType, colors);
-
-    // Stacked bar chart for entry categories by month. Datasets are rebuilt
-    // dynamically on every updateCharts() call from the user's current
-    // category list (plus any orphan slugs in the filtered data), so adding
-    // / removing categories at runtime updates this chart automatically.
-    const stackedDatasets = [];
-
-    categoryStackedChart = new Chart(categoryStackedCtx, {
-        type: 'bar',
-        data: {
-            labels: [],
-            datasets: stackedDatasets
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: colors.textSecondary,
-                        font: { size: 10, family: _chartFontFamily() },
-                        boxWidth: 12,
-                        padding: 10
-                    }
-                },
-                title: {
-                    display: true,
-                    text: t('chart.expenseCatByMonth'),
-                    color: colors.textPrimary,
-                    font: { size: 14, weight: '600', family: _chartSerifFamily() },
-                    padding: { bottom: 15 }
-                },
-                tooltip: {
-                    backgroundColor: '#1e293b',
-                    titleColor: colors.textPrimary,
-                    bodyColor: colors.textSecondary,
-                    borderColor: 'rgba(148, 163, 184, 0.2)',
-                    borderWidth: 1,
-                    padding: 12,
-                    cornerRadius: 8,
-                    callbacks: {
-                        label: function(context) {
-                            const label = context.dataset.label || '';
-                            const value = context.parsed.y;
-                            return `${label}: $${value.toFixed(2)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    stacked: true,
-                    title: axisTitle(t('chart.axisMonth')),
-                    grid: { color: colors.gridColor, drawBorder: false },
-                    ticks: {
-                        color: colors.textMuted,
-                        maxRotation: 45,
-                        minRotation: 45,
-                        font: { family: _chartFontFamily() }
-                    }
-                },
-                y: {
-                    stacked: true,
-                    beginAtZero: true,
-                    title: axisTitle(t('chart.axisAmount')),
-                    grid: { color: colors.gridColor, drawBorder: false },
-                    ticks: {
-                        color: colors.textMuted,
-                        font: { family: _chartFontFamily() },
-                        callback: function(value) {
-                            return '$' + value.toFixed(0);
-                        }
-                    }
-                }
-            }
-        }
-    });
 }
 
 function getMonthLabelsAroundCurrent() {
@@ -793,14 +785,14 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgIncome,
                 yMax: avgIncome,
-                borderColor: themePalette.olive,
+                borderColor: themePalette.success,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgIncome', { value: avgIncome.toFixed(0) }),
                     position: 'start',
-                    backgroundColor: themePalette.olive,
+                    backgroundColor: themePalette.success,
                     color: themePalette.cardBg,
                     font: { size: 11, family: _chartFontFamily() },
                     padding: 4
@@ -813,14 +805,14 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
                 type: 'line',
                 yMin: avgExpense,
                 yMax: avgExpense,
-                borderColor: themePalette.accent,
+                borderColor: themePalette.danger,
                 borderWidth: 2,
                 borderDash: [6, 4],
                 label: {
                     display: true,
                     content: t('chart.avgExpenses', { value: avgExpense.toFixed(0) }),
                     position: 'end',
-                    backgroundColor: themePalette.accent,
+                    backgroundColor: themePalette.danger,
                     color: themePalette.cardBg,
                     font: { size: 11, family: _chartFontFamily() },
                     padding: 4
@@ -836,105 +828,109 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
 
     incomeVsExpenseChart.update();
 
-    // Update category doughnut chart
-    const tagTotals = {};
-    entriesToShow
-        .filter(e => e.type === 'expense')
-        .forEach(entry => {
-            const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
-            const perTagAmount = parseFloat(entry.amount) / entryTags.length;
-            entryTags.forEach(tag => {
-                tagTotals[tag] = (tagTotals[tag] || 0) + perTagAmount;
+    // Update the categories chart in whichever presentation is active.
+    // The chart instance always matches currentCategoryChartType because
+    // setCategoryChartType rebuilds it before re-running updateCharts.
+    let hasCategoryData;
+    if (currentCategoryChartType === 'stacked') {
+        // Stacked monthly view — expenses by category per month. Categories
+        // axis = user's current category list ∪ orphan slugs found in the
+        // filtered data. Orphans get the neutral fallback color.
+        const userSlugs = categorySlugList();
+        const orphanSlugs = new Set();
+        entriesToShow
+            .filter(e => e.type === 'expense')
+            .forEach(entry => {
+                const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
+                entryTags.forEach(tag => {
+                    if (!_userCategoriesBySlug.has(tag)) orphanSlugs.add(tag);
+                });
             });
+        const stackedCategories = [...userSlugs, ...Array.from(orphanSlugs).sort()];
+
+        const categoryMonthlyData = {};
+        months.forEach(month => {
+            categoryMonthlyData[month] = {};
+            stackedCategories.forEach(cat => { categoryMonthlyData[month][cat] = 0; });
         });
-    const sortedTags = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
-    const sortedCategoryKeys = sortedTags.map(([tag]) => tag);
-    const sortedColors = sortedCategoryKeys.map(categoryColor);
-    categoryChart.data.labels = sortedTags.map(([tag]) => categoryLabel(tag));
-    const categoryValues = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
-    categoryChart.data.datasets[0].data = categoryValues;
-    categoryChart.data.datasets[0].backgroundColor = sortedColors.map(c => c + 'cc');
-    categoryChart.data.datasets[0].borderColor = sortedColors;
-    categoryChart.data.datasets[0].hoverBackgroundColor = sortedColors;
+
+        // Aggregate expense entries by month and category — preserve raw tag
+        // (including orphans) so deleted-then-recreated categories render
+        // correctly without bucketing into 'other'.
+        entriesToShow
+            .filter(e => e.type === 'expense')
+            .forEach(entry => {
+                const month = entry.month;
+                if (!categoryMonthlyData[month]) return;
+                const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
+                const perTagAmount = parseFloat(entry.amount) / entryTags.length;
+                entryTags.forEach(tag => {
+                    if (categoryMonthlyData[month][tag] != null) {
+                        categoryMonthlyData[month][tag] += perTagAmount;
+                    }
+                });
+            });
+
+        categoryChart.data.labels = months;
+
+        const categoriesWithData = stackedCategories.filter(category =>
+            months.some(month => categoryMonthlyData[month][category] > 0)
+        );
+
+        // Rebuild datasets from scratch on every update so adding/removing
+        // categories at runtime stays in sync without re-creating the chart.
+        categoryChart.data.datasets = stackedCategories.map(category => {
+            const color = categoryColor(category);
+            return {
+                label: categoryLabel(category),
+                _category: category,
+                data: months.map(month => {
+                    const value = categoryMonthlyData[month]?.[category] || 0;
+                    return Math.round(value * 100) / 100;
+                }),
+                backgroundColor: color + 'cc',
+                borderColor: color,
+                borderWidth: 1,
+                borderRadius: 3,
+                hoverBackgroundColor: color,
+                hidden: !categoriesWithData.includes(category),
+            };
+        });
+        hasCategoryData = categoriesWithData.length > 0;
+    } else {
+        // Aggregate view (horizontal bar or doughnut) — expense totals per
+        // category across the window, sorted descending.
+        const tagTotals = {};
+        entriesToShow
+            .filter(e => e.type === 'expense')
+            .forEach(entry => {
+                const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
+                const perTagAmount = parseFloat(entry.amount) / entryTags.length;
+                entryTags.forEach(tag => {
+                    tagTotals[tag] = (tagTotals[tag] || 0) + perTagAmount;
+                });
+            });
+        const sortedTags = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+        const sortedCategoryKeys = sortedTags.map(([tag]) => tag);
+        const sortedColors = sortedCategoryKeys.map(categoryColor);
+        categoryChart.data.labels = sortedTags.map(([tag]) => categoryLabel(tag));
+        const categoryValues = sortedTags.map(([, amount]) => Math.round(amount * 100) / 100);
+        categoryChart.data.datasets[0].data = categoryValues;
+        categoryChart.data.datasets[0].backgroundColor = sortedColors.map(c => c + 'cc');
+        categoryChart.data.datasets[0].borderColor = sortedColors;
+        categoryChart.data.datasets[0].hoverBackgroundColor = sortedColors;
+        hasCategoryData = categoryValues.length > 0 && categoryValues.some(v => v > 0);
+    }
     categoryChart.update();
-
-    // Update stacked category chart — expenses by category per month.
-    // Categories axis = user's current category list ∪ orphan slugs found
-    // in the filtered data. Orphans get the neutral fallback color.
-    const userSlugs = categorySlugList();
-    const orphanSlugs = new Set();
-    entriesToShow
-        .filter(e => e.type === 'expense')
-        .forEach(entry => {
-            const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
-            entryTags.forEach(tag => {
-                if (!_userCategoriesBySlug.has(tag)) orphanSlugs.add(tag);
-            });
-        });
-    const stackedCategories = [...userSlugs, ...Array.from(orphanSlugs).sort()];
-
-    const categoryMonthlyData = {};
-    months.forEach(month => {
-        categoryMonthlyData[month] = {};
-        stackedCategories.forEach(cat => { categoryMonthlyData[month][cat] = 0; });
-    });
-
-    // Aggregate expense entries by month and category — preserve raw tag
-    // (including orphans) so deleted-then-recreated categories render
-    // correctly without bucketing into 'other'.
-    entriesToShow
-        .filter(e => e.type === 'expense')
-        .forEach(entry => {
-            const month = entry.month;
-            if (!categoryMonthlyData[month]) return;
-            const entryTags = (entry.tags && entry.tags.length > 0) ? entry.tags : ['other'];
-            const perTagAmount = parseFloat(entry.amount) / entryTags.length;
-            entryTags.forEach(tag => {
-                if (categoryMonthlyData[month][tag] != null) {
-                    categoryMonthlyData[month][tag] += perTagAmount;
-                }
-            });
-        });
-
-    categoryStackedChart.data.labels = months;
-
-    const categoriesWithData = stackedCategories.filter(category =>
-        months.some(month => categoryMonthlyData[month][category] > 0)
-    );
-
-    // Rebuild datasets from scratch on every update so adding/removing
-    // categories at runtime stays in sync without re-creating the chart.
-    categoryStackedChart.data.datasets = stackedCategories.map(category => {
-        const color = categoryColor(category);
-        return {
-            label: categoryLabel(category),
-            _category: category,
-            data: months.map(month => {
-                const value = categoryMonthlyData[month]?.[category] || 0;
-                return Math.round(value * 100) / 100;
-            }),
-            backgroundColor: color + 'cc',
-            borderColor: color,
-            borderWidth: 1,
-            borderRadius: 3,
-            hoverBackgroundColor: color,
-            hidden: !categoriesWithData.includes(category),
-        };
-    });
-
-    categoryStackedChart.update();
 
     // Empty-state overlays: show when a chart has no meaningful data for the
     // current filter window. Base "monthly balance" emptiness on whether any
     // income/expense activity exists — a cumulative series summing to zero
     // (e.g. matched income and expense) is still meaningful data.
     const hasIncomeExpenseData = incomeValues.some(v => v > 0) || expenseValues.some(v => v > 0);
-    const hasCategoryData = categoryValues.length > 0 && categoryValues.some(v => v > 0);
-    const hasStackedData = categoriesWithData.length > 0;
     setChartEmpty('monthlyBalance', !hasIncomeExpenseData);
     setChartEmpty('incomeVsExpense', !hasIncomeExpenseData);
     setChartEmpty('category', !hasCategoryData);
-    setChartEmpty('categoryStacked', !hasStackedData);
 }
 
 function setChartEmpty(chartName, isEmpty) {
@@ -957,8 +953,6 @@ function setChartsLoading(isLoading) {
 function setEntriesLoading(isLoading) {
     const overlay = document.getElementById('entriesTableLoadingOverlay');
     if (overlay) overlay.hidden = !isLoading;
-    const summary = document.querySelector('.entries-section .summary');
-    if (summary) summary.classList.toggle('is-loading', isLoading);
     const section = document.querySelector('.entries-section');
     if (section) section.setAttribute('aria-busy', String(!!isLoading));
 }
@@ -1046,7 +1040,6 @@ function applyFilterStateToDOM() {
     document.getElementById('monthFilterEnd').value = filterState.end || '';
     document.getElementById('typeFilter').value = filterState.type || 'all';
     renderCategoryChips();
-    syncHiddenCategorySelect();
     document.querySelectorAll('.quick-range-btn').forEach(btn => {
         const isActive = btn.dataset.range === filterState.quickRange;
         btn.classList.toggle('active', isActive);
@@ -1084,7 +1077,6 @@ function renderCategoryChips() {
             const pressed = filterState.categories.includes(cat);
             chip.classList.toggle('active', pressed);
             chip.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-            syncHiddenCategorySelect();
             onFilterChanged();
         });
         container.appendChild(chip);
@@ -1127,36 +1119,6 @@ function hexWithAlpha(hex, alpha) {
     const g = parseInt(h.slice(2, 4), 16);
     const b = parseInt(h.slice(4, 6), 16);
     return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function syncHiddenCategorySelect() {
-    const select = document.getElementById('categoryFilter');
-    if (!select) return;
-    // Rebuild option list from runtime user categories so the hidden
-    // <select> stays in sync as categories are added/removed.
-    const desired = userCategories.map(c => c.slug);
-    const existing = Array.from(select.options).map(o => o.value);
-    const slugListChanged = desired.length !== existing.length || desired.some((s, i) => s !== existing[i]);
-    if (slugListChanged) {
-        select.innerHTML = '';
-        userCategories.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.slug;
-            opt.textContent = categoryLabel(c.slug);
-            select.appendChild(opt);
-        });
-    } else {
-        // Slug list unchanged — but labels can still drift (rename, language
-        // switch affecting default labels, imported badge changes). Refresh
-        // each option's textContent so the hidden select stays consistent.
-        Array.from(select.options).forEach(opt => {
-            const fresh = categoryLabel(opt.value);
-            if (opt.textContent !== fresh) opt.textContent = fresh;
-        });
-    }
-    Array.from(select.options).forEach(opt => {
-        opt.selected = filterState.categories.includes(opt.value);
-    });
 }
 
 function readFilterStateFromInputs() {
@@ -1248,7 +1210,7 @@ function renderActiveFiltersBar() {
     filterState.categories.forEach(cat => {
         chips.push({ label: categoryLabel(cat), onRemove: () => {
             filterState.categories = filterState.categories.filter(c => c !== cat);
-            renderCategoryChips(); syncHiddenCategorySelect(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
+            renderCategoryChips(); saveFilterState(); renderActiveFiltersBar(); filterEntries();
         }});
     });
 
@@ -1421,13 +1383,11 @@ function displayEntries(entriesToShow) {
     pageEntries.forEach(entry => {
         const row = document.createElement('tr');
         const escapedDescription = escapeHtml(entry.description);
+        // Theme-neutral chip; the user's stored category color renders as a
+        // small dot (--tag-dot-color) instead of tinting the whole chip, so
+        // chips stay readable in both themes regardless of the stored hex.
         const tags = (entry.tags || []).map(tag =>
-            (() => {
-                const _col = categoryColor(tag);
-                const _bg = hexWithAlpha(_col, 0.15);
-                const _bd = hexWithAlpha(_col, 0.3);
-                return `<span class="tag tag-${escapeHtml(tag)}" style="background:${_bg};color:${_col};border-color:${_bd}">${escapeHtml(categoryLabel(tag))}</span>`;
-            })()
+            `<span class="tag" style="--tag-dot-color:${escapeHtml(categoryColor(tag))}">${escapeHtml(categoryLabel(tag))}</span>`
         ).join(' ');
         const coupleBadge = entry.isCoupleExpense ? `<span class="couple-badge">${t('dash.couple')}</span>` : '';
         const inMyShare = currentViewMode === 'myshare';
@@ -1456,7 +1416,7 @@ function displayEntries(entriesToShow) {
             <td><span class="entry-type entry-type-${escapeHtml(entry.type)}">${escapeHtml(entry.type)}</span></td>
             <td>$${parseFloat(entry.amount).toFixed(2)}</td>
             <td>${halfBadge}${coupleBadge}${escapedDescription}</td>
-            <td>${tags || '<span class="tag tag-other">-</span>'}</td>
+            <td>${tags || '<span class="tag">-</span>'}</td>
             <td>${actionButtons}</td>
         `;
         tbody.appendChild(row);
@@ -1497,7 +1457,8 @@ function renderEntriesPagination(totalEntries, totalPages) {
     `;
 }
 
-// Update summary statistics
+// Update summary statistics (hero net-worth + KPI row; the old 3-stat
+// summary bar above the entries table was removed — it duplicated the hero).
 function updateSummary(entriesToShow) {
     const totalIncome = entriesToShow
         .filter(entry => entry.type === 'income')
@@ -1509,24 +1470,6 @@ function updateSummary(entriesToShow) {
 
     const netBalance = totalIncome - totalExpenses;
 
-    const incomeEl = document.getElementById('totalIncome');
-    const expensesEl = document.getElementById('totalExpenses');
-    const netEl = document.getElementById('netBalance');
-
-    if (incomeEl) {
-        incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
-        incomeEl.style.color = 'var(--positive)';
-    }
-    if (expensesEl) {
-        expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
-        expensesEl.style.color = 'var(--negative)';
-    }
-    if (netEl) {
-        netEl.textContent = `$${netBalance.toFixed(2)}`;
-        netEl.style.color = netBalance >= 0 ? 'var(--ink)' : 'var(--negative)';
-    }
-
-    // Hero / KPI row
     updateHeroKpis(entriesToShow, { totalIncome, totalExpenses, netBalance });
 }
 
@@ -1688,11 +1631,11 @@ function updateHeroKpis(entriesToShow, totals) {
         const sparkEl = document.getElementById(idSpark);
         if (sparkEl) sparkEl.innerHTML = renderSparkline(series, opts.color);
     };
-    setKpi('kpiIncomeValue', 'kpiIncomeDelta', 'kpiIncomeSpark', latestM.income, prevM.income, incomeSeries, { color: 'var(--accent-1)' });
-    setKpi('kpiExpenseValue', 'kpiExpenseDelta', 'kpiExpenseSpark', latestM.expense, prevM.expense, expenseSeries, { color: 'var(--primary)', invert: true });
+    setKpi('kpiIncomeValue', 'kpiIncomeDelta', 'kpiIncomeSpark', latestM.income, prevM.income, incomeSeries, { color: 'var(--positive)' });
+    setKpi('kpiExpenseValue', 'kpiExpenseDelta', 'kpiExpenseSpark', latestM.expense, prevM.expense, expenseSeries, { color: 'var(--negative)', invert: true });
     const latestRate = latestM.income > 0 ? ((latestM.income - latestM.expense) / latestM.income) * 100 : 0;
     const prevRate = prevM.income > 0 ? ((prevM.income - prevM.expense) / prevM.income) * 100 : 0;
-    setKpi('kpiSavingValue', 'kpiSavingDelta', 'kpiSavingSpark', latestRate, prevRate, savingSeries, { color: 'var(--accent-2)', percent: true });
+    setKpi('kpiSavingValue', 'kpiSavingDelta', 'kpiSavingSpark', latestRate, prevRate, savingSeries, { color: 'var(--primary)', percent: true });
 }
 
 // Pure-SVG sparkline. Mirrors the shape used by the design prototype
@@ -1937,7 +1880,6 @@ function renderCategoryManageList() {
                     await loadUserCategories();
                     renderCategoryManageList();
                     renderCategoryChips();
-                    syncHiddenCategorySelect();
                     filterEntries({ resetPage: false });
                 }
             } catch (e) { console.error(e); }
@@ -1970,7 +1912,6 @@ function renderCategoryManageList() {
                         await loadUserCategories();
                         renderCategoryManageList();
                         renderCategoryChips();
-                        syncHiddenCategorySelect();
                         filterEntries({ resetPage: false });
                     }
                 } catch (e) { console.error(e); }
@@ -2007,7 +1948,6 @@ function renderCategoryManageList() {
                     await loadUserCategories();
                     renderCategoryManageList();
                     renderCategoryChips();
-                    syncHiddenCategorySelect();
                     filterEntries({ resetPage: false });
                 }
             } catch (e) { console.error(e); }
@@ -2110,7 +2050,6 @@ if (addCategoryBtn) {
             await loadUserCategories();
             renderCategoryManageList();
             renderCategoryChips();
-            syncHiddenCategorySelect();
             filterEntries({ resetPage: false });
             newCategorySlugInput.value = '';
             newCategoryLabelInput.value = '';
@@ -2130,7 +2069,6 @@ if (resetCategoriesBtn) {
                 await loadUserCategories();
                 renderCategoryManageList();
                 renderCategoryChips();
-                syncHiddenCategorySelect();
                 filterEntries({ resetPage: false });
             } else if (res.status === 409) {
                 // Restoring would push the user past the cap (deleted defaults
@@ -3222,7 +3160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (mq.addListener) mq.addListener(handleBreakpoint);
     }
 
-    // Category chart type toggle (bar ↔ doughnut)
+    // Categories chart type toggle (bar / doughnut / stacked)
     document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(btn => {
         // Sync initial aria-pressed from the pre-set .active class in HTML.
         btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
@@ -3399,6 +3337,34 @@ document.addEventListener('DOMContentLoaded', () => {
         return res.json();
     }
 
+    // Shared by the Budgets modal and the dashboard budget panel.
+    // Safe progress: null pct when no target. Cap at 100% for the bar fill
+    // but keep the raw ratio so callers can surface an "over budget" pill.
+    const budgetProgressFor = (amount, actual) => {
+        if (!amount || amount <= 0) return { pct: null, over: false };
+        const ratio = actual / amount;
+        return { pct: Math.min(ratio, 1) * 100, over: ratio > 1, raw: ratio * 100 };
+    };
+    const budgetBarColor = (p) => {
+        if (!p || p.pct == null) return 'var(--ink-3)';
+        if (p.over) return 'var(--negative)';
+        if (p.pct >= 70) return 'var(--warning)';
+        return 'var(--positive)';
+    };
+    // Locale-aware currency formatter (pt-BR → BRL/R$, en-US → USD/$).
+    // Matches the hero-KPI formatting introduced in PR #91; we don't honor
+    // `data.currency` from the API because the server intentionally doesn't
+    // dictate it (currency follows the client's language).
+    const budgetMoneyFmt = () => {
+        const isPt = (typeof getLang === 'function' && getLang() === 'pt');
+        return new Intl.NumberFormat(isPt ? 'pt-BR' : 'en-US', {
+            style: 'currency',
+            currency: isPt ? 'BRL' : 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    };
+
     async function openBudgetsModal() {
         const overlay = document.createElement('div');
         overlay.className = 'modal';
@@ -3414,7 +3380,12 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         document.body.appendChild(overlay);
-        const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+        const cleanup = () => {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            // Targets may have changed while the modal was open — sync the
+            // dashboard budget panel.
+            refreshBudgetPanel();
+        };
         overlay.querySelector('#closeBudgetsModal').addEventListener('click', cleanup);
         overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
 
@@ -3436,31 +3407,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const overall = data.overall || { amount: 0, actual: 0 };
         const rows = data.byCategory || [];
 
-        // Locale-aware currency formatter (pt-BR → BRL/R$, en-US → USD/$).
-        // Matches the hero-KPI formatting introduced in PR #91; we don't
-        // honor `data.currency` from the API because the server intentionally
-        // doesn't dictate it (currency follows the client's language).
-        const isPt = (typeof getLang === 'function' && getLang() === 'pt');
-        const moneyFmt = new Intl.NumberFormat(isPt ? 'pt-BR' : 'en-US', {
-            style: 'currency',
-            currency: isPt ? 'BRL' : 'USD',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
+        const moneyFmt = budgetMoneyFmt();
         const fmtMoney = (n) => moneyFmt.format(Number(n) || 0);
-        // Safe progress: 0 if no budget. Cap at 100% for the bar fill but
-        // surface a separate "over budget" pill when actual > budget.
-        const progressFor = (amount, actual) => {
-            if (!amount || amount <= 0) return { pct: null, over: false };
-            const ratio = actual / amount;
-            return { pct: Math.min(ratio, 1) * 100, over: ratio > 1, raw: ratio * 100 };
-        };
-        const barColor = (p) => {
-            if (!p) return 'var(--ink-3)';
-            if (p.over) return 'var(--negative)';
-            if (p.pct >= 70) return 'var(--accent-2)';
-            return 'var(--positive)';
-        };
+        const progressFor = budgetProgressFor;
+        const barColor = budgetBarColor;
 
         const renderRow = (slug, label, color, amount, actual, isOverall, isOrphan) => {
             const p = progressFor(amount, actual);
@@ -3635,6 +3585,77 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
+
+    // ── Budget status panel (dashboard) ──
+    // Read-only mirror of the Budgets modal for the current calendar month:
+    // the overall budget plus the top budgeted categories by spend. It is
+    // intentionally independent of the dashboard filters (the wrapper's
+    // tooltip says so); "Manage budgets" opens the full modal.
+    async function refreshBudgetPanel() {
+        const body = document.getElementById('budgetStatusBody');
+        if (!body) return;
+        const month = currentClientMonth();
+        const monthEl = document.getElementById('budgetPanelMonth');
+        if (monthEl) monthEl.textContent = month;
+        setSingleChartLoading('budget', true);
+        try {
+            const data = await loadBudgets(month);
+            renderBudgetPanel(body, data);
+        } catch (e) {
+            console.error('Failed to load the budget panel:', e);
+            body.innerHTML = `<div class="budget-panel-empty">${escapeHtml(t('budget.loadError'))}</div>`;
+        } finally {
+            setSingleChartLoading('budget', false);
+        }
+    }
+
+    function renderBudgetPanel(container, data) {
+        const overall = data.overall || { amount: 0, actual: 0 };
+        const budgeted = (data.byCategory || []).filter(r => Number(r.amount) > 0);
+        const hasOverall = Number(overall.amount) > 0;
+        if (!hasOverall && budgeted.length === 0) {
+            container.innerHTML = `<div class="budget-panel-empty">${escapeHtml(t('budget.emptyPanel'))}</div>`;
+            return;
+        }
+        const moneyFmt = budgetMoneyFmt();
+        const fmtMoney = (n) => moneyFmt.format(Number(n) || 0);
+        const rowHtml = (label, color, amount, actual, isOverall) => {
+            const p = budgetProgressFor(Number(amount), Number(actual));
+            const width = p.pct == null ? 0 : p.pct;
+            const fill = budgetBarColor(p);
+            const overPill = p.over ? ` <span class="delta-pill down">${escapeHtml(t('budget.overBudget'))}</span>` : '';
+            const pct = p.pct == null ? '' : ' · ' + (p.over ? p.raw : p.pct).toFixed(0) + '%';
+            const dot = isOverall ? '' : '<i class="budget-dot" aria-hidden="true"></i>';
+            const dotColor = color ? ` style="--budget-dot-color: ${escapeHtml(color)}"` : '';
+            return `
+                <div class="budget-row${isOverall ? ' budget-row--overall' : ''}">
+                    <div class="budget-row-top">
+                        <span class="budget-row-name"${dotColor}>${dot}<span>${escapeHtml(label)}</span>${overPill}</span>
+                        <span class="budget-row-nums">${fmtMoney(actual)} / ${fmtMoney(amount)}${pct}</span>
+                    </div>
+                    <div class="budget-row-track"><div class="budget-row-fill" style="width: ${width}%; background: ${fill};"></div></div>
+                </div>`;
+        };
+        // Same slug → localized-label resolution as the Budgets modal.
+        const panelRowLabel = (r) => {
+            if (!r || !r.slug) return (r && r.label) || '';
+            if (typeof categoryLabel !== 'function') return r.label || r.slug;
+            const localized = categoryLabel(r.slug);
+            return localized && localized !== r.slug ? localized : (r.label || r.slug);
+        };
+        // Fullest budgets surface first; cap the list so the panel stays
+        // scannable (the modal has the complete set).
+        budgeted.sort((a, b) => Number(b.actual) - Number(a.actual));
+        const parts = [];
+        if (hasOverall) parts.push(rowHtml(t('budget.overallLabel'), null, overall.amount, overall.actual, true));
+        budgeted.slice(0, 6).forEach(r => {
+            parts.push(rowHtml(panelRowLabel(r), r.color, r.amount, r.actual, false));
+        });
+        container.innerHTML = parts.join('');
+    }
+
+    const budgetPanelManageBtn = document.getElementById('budgetPanelManageBtn');
+    if (budgetPanelManageBtn) budgetPanelManageBtn.addEventListener('click', openBudgetsModal);
 
     // ============ SETTINGS MODAL ============
 
@@ -5145,7 +5166,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (seq !== loadEntriesSeq) return;
                         if (currentViewMode === 'individual') return;
                         renderCategoryChips();
-                        syncHiddenCategorySelect();
                         // Re-apply filters/charts with the freshly known palette.
                         filterEntries({ resetPage: false });
                     });
@@ -5626,14 +5646,17 @@ document.addEventListener('DOMContentLoaded', () => {
         myShareBtn.addEventListener('click', () => setViewMode('myshare'));
     }
 
-    // Restore saved category chart type
+    // Restore saved category chart type ('bar' is the built-in default)
     try {
         const savedType = localStorage.getItem('assetmgmt.categoryChartType');
-        if (savedType === 'doughnut') {
-            const doughBtn = document.querySelector('.chart-type-toggle .chart-type-btn[data-type="doughnut"]');
-            if (doughBtn) doughBtn.click();
+        if (savedType === 'doughnut' || savedType === 'stacked') {
+            const savedBtn = document.querySelector(`.chart-type-toggle .chart-type-btn[data-type="${savedType}"]`);
+            if (savedBtn) savedBtn.click();
         }
     } catch {}
+
+    // Initial fill of the dashboard budget panel (current calendar month)
+    refreshBudgetPanel();
 
     // Fetch current user on load
     fetchCurrentUser();

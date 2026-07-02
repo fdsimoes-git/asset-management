@@ -121,6 +121,7 @@ const translations = {
     'filter.chartType': 'Chart type',
     'filter.chartBar': 'Bar',
     'filter.chartDoughnut': 'Doughnut',
+    'filter.chartStacked': 'Trend',
     'chart.noData': 'No data for current filters',
 
     // ── Couple share ──
@@ -178,6 +179,10 @@ const translations = {
     'budget.deleteError': 'Failed to delete budget.',
     'budget.invalidAmount': 'Please enter a non-negative number.',
     'budget.orphanLabel': '(removed)',
+    'dash.budgetStatus': 'Budget status',
+    'budget.manageLink': 'Manage budgets',
+    'budget.emptyPanel': 'No budgets set. Add monthly targets to see progress here.',
+    'budget.panelHelp': 'Current calendar month, your budgets only — filters don\'t apply.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Registered Entries',
@@ -764,6 +769,7 @@ const translations = {
     'filter.chartType': 'Tipo de gr\u00e1fico',
     'filter.chartBar': 'Barra',
     'filter.chartDoughnut': 'Rosca',
+    'filter.chartStacked': 'Tend\u00eancia',
     'chart.noData': 'Sem dados para os filtros atuais',
 
     // ── Couple share ──
@@ -821,6 +827,10 @@ const translations = {
     'budget.deleteError': 'Falha ao remover or\u00e7amento.',
     'budget.invalidAmount': 'Informe um n\u00famero n\u00e3o-negativo.',
     'budget.orphanLabel': '(removida)',
+    'dash.budgetStatus': 'Or\u00e7amentos do m\u00eas',
+    'budget.manageLink': 'Gerenciar or\u00e7amentos',
+    'budget.emptyPanel': 'Nenhum or\u00e7amento definido. Adicione metas mensais para ver o progresso aqui.',
+    'budget.panelHelp': 'M\u00eas corrente, apenas seus or\u00e7amentos \u2014 os filtros n\u00e3o se aplicam.',
 
     // ── Entries table ──
     'dash.registeredEntries': 'Entradas Registradas',
