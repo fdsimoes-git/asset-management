@@ -416,12 +416,10 @@ const translations = {
     // ── Appearance settings ──
     'settings.appearanceSection': 'Appearance',
     'settings.themeLabel': 'Theme',
-    'settings.themeEarthy': 'Earthy (default)',
-    'settings.themeDark': 'Dark',
-    'settings.themeLight': 'Light',
+    'settings.themePaper': 'Paper — light (default)',
+    'settings.themeDark': 'Graphite — dark',
     'settings.typographyLabel': 'Typography',
-    'settings.typographyEditorial': 'Editorial (default)',
-    'settings.typographyModern': 'Modern',
+    'settings.typographyDefault': 'Ledger (default)',
     'settings.typographySystem': 'System',
     'settings.appearanceHelp': 'Saved on this device. Charts and the auth pages adopt the same look.',
 
@@ -1069,12 +1067,10 @@ const translations = {
     // ── Appearance settings ──
     'settings.appearanceSection': 'Aparência',
     'settings.themeLabel': 'Tema',
-    'settings.themeEarthy': 'Terroso (padrão)',
-    'settings.themeDark': 'Escuro',
-    'settings.themeLight': 'Claro',
+    'settings.themePaper': 'Paper — claro (padrão)',
+    'settings.themeDark': 'Graphite — escuro',
     'settings.typographyLabel': 'Tipografia',
-    'settings.typographyEditorial': 'Editorial (padrão)',
-    'settings.typographyModern': 'Moderna',
+    'settings.typographyDefault': 'Ledger (padrão)',
     'settings.typographySystem': 'Sistema',
     'settings.appearanceHelp': 'Salvo neste dispositivo. Gráficos e páginas de autenticação seguem o mesmo estilo.',
 

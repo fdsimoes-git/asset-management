@@ -6,17 +6,27 @@
     <title>Asset Management Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/theme.css">
     <script>
         // Apply persisted theme + typography before stylesheets resolve so
         // the page paints in the chosen palette (no flash of default theme).
+        // Themes: Paper (light, default) / Graphite (dark). No stored choice
+        // follows the OS preference; the legacy 'light' value migrates to
+        // 'paper' once. Legacy typography presets ('modern'/'editorial') are
+        // cleared — presets are now default (Ledger) or 'system'.
         // Mirrored on every HTML entry point — keep these blocks in sync.
         (function () {
             try {
                 var t = localStorage.getItem('appTheme');
+                if (t === 'light') { t = 'paper'; try { localStorage.setItem('appTheme', 'paper'); } catch (e) {} }
+                if (t !== 'paper' && t !== 'dark') {
+                    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'paper';
+                }
+                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
                 var f = localStorage.getItem('appTypography');
-                if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
-                if (f === 'modern' || f === 'system') document.documentElement.setAttribute('data-typography', f);
+                if (f === 'modern' || f === 'editorial') { f = null; try { localStorage.removeItem('appTypography'); } catch (e) {} }
+                if (f === 'system') document.documentElement.setAttribute('data-typography', 'system');
             } catch (e) { /* localStorage may be unavailable in private mode */ }
         })();
     </script>
@@ -39,132 +49,8 @@
             }
         }
 
-        :root {
-            /* Warm earthy palette — Clay & Sand */
-            --bg: #F3ECE0;
-            --bg-2: #EAE0CE;
-            --card: #FBF6EC;
-            --ink: #26201A;
-            --ink-2: #5A4E3F;
-            --ink-3: #8A7A65;
-            --line: #DDD0B8;
-            --line-2: #C9B99C;
-            --primary: #B8593A;       /* terracotta */
-            --primary-soft: #E8BFAB;
-            --accent-1: #7A8450;      /* olive */
-            --accent-2: #C89A3E;      /* ochre */
-            --positive: #6B8248;
-            --negative: #B8593A;
-            --chip: #E8DDC8;
-            --ring: rgba(184, 89, 58, 0.22);
-
-            /* Typography */
-            --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-            --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-            /* Backwards-compatible aliases (legacy --color-* / --font-* names
-               still referenced throughout this file) so the cascade keeps
-               resolving without touching every single rule. */
-            --font-display: var(--serif);
-            --font-body: var(--sans);
-
-            --color-bg-deep: var(--bg-2);
-            --color-bg-base: var(--bg);
-            --color-bg-elevated: var(--card);
-            --color-bg-surface: var(--bg-2);
-
-            --color-accent-primary: var(--primary);
-            --color-accent-secondary: var(--accent-2);
-            --color-accent-tertiary: var(--accent-1);
-            --color-accent-danger: var(--negative);
-
-            --color-success: var(--positive);
-            --color-success-muted: color-mix(in oklab, var(--positive) 18%, var(--card));
-            --color-danger: var(--negative);
-            --color-danger-muted: color-mix(in oklab, var(--negative) 18%, var(--card));
-            --color-info: #3F6E8C;
-
-            --color-text-primary: var(--ink);
-            --color-text-secondary: var(--ink-2);
-            --color-text-muted: var(--ink-3);
-
-            --color-border: var(--line);
-            --color-border-subtle: color-mix(in oklab, var(--line) 60%, var(--card));
-
-            --shadow-sm: 0 2px 8px rgba(38, 32, 26, 0.06);
-            --shadow-md: 0 8px 24px rgba(38, 32, 26, 0.08);
-            --shadow-lg: 0 16px 48px rgba(38, 32, 26, 0.12);
-            --shadow-glow: 0 0 40px var(--ring);
-
-            --radius-sm: 8px;
-            --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-xl: 18px;
-
-            --transition-fast: 0.15s ease;
-            --transition-base: 0.25s ease;
-            --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* Dark — warm dark with terracotta accents */
-        html[data-theme="dark"] {
-            --bg: #1A1612;
-            --bg-2: #221C16;
-            --card: #2A231C;
-            --ink: #F0E6D6;
-            --ink-2: #C9B99C;
-            --ink-3: #8A7A65;
-            --line: #3A302A;
-            --line-2: #4A3F36;
-            --primary: #D67A5C;
-            --primary-soft: #5A2E20;
-            --accent-1: #9CA868;
-            --accent-2: #D9B05A;
-            --positive: #8FA866;
-            --negative: #D67A5C;
-            --chip: #3A302A;
-            --ring: rgba(214, 122, 92, 0.28);
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.30);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
-            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
-        }
-
-        /* Light — clean modern light with cool blue accent */
-        html[data-theme="light"] {
-            --bg: #FFFFFF;
-            --bg-2: #F5F5F5;
-            --card: #FAFAFA;
-            --ink: #1A1A1A;
-            --ink-2: #4A4A4A;
-            --ink-3: #888888;
-            --line: #E5E5E5;
-            --line-2: #D0D0D0;
-            --primary: #2563EB;
-            --primary-soft: #BFDBFE;
-            --accent-1: #059669;
-            --accent-2: #D97706;
-            --positive: #059669;
-            --negative: #DC2626;
-            --chip: #F0F0F0;
-            --ring: rgba(37, 99, 235, 0.18);
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.07);
-            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.10);
-        }
-
-        /* Typography presets — override font stacks; loaded fonts come from
-           the Google Fonts URL above (Editorial uses Instrument+Geist;
-           Modern uses Inter; System uses no Google Fonts). */
-        html[data-typography="modern"] {
-            --serif: "Inter", ui-sans-serif, system-ui, sans-serif;
-            --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        }
-        html[data-typography="system"] {
-            --serif: ui-serif, Georgia, "Iowan Old Style", serif;
-            --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
+        /* Design tokens (palettes, chrome, typography presets, radii,
+           shadows) live in /css/theme.css — shared by every page. */
 
         * {
             box-sizing: border-box;

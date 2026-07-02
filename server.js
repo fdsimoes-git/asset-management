@@ -958,12 +958,18 @@ Object.entries(htmlPages).forEach(([route, file]) => {
     });
 });
 
-// Only the /js directory is served statically. Every HTML page is rendered
-// through an explicit route above (htmlPages), and there are no other
-// browser-served assets at the project root. Mounting express.static at
-// __dirname previously exposed server.js, config.js, db/*, package*.json
+// Only the /js and /css directories are served statically. Every HTML page
+// is rendered through an explicit route above (htmlPages), and there are no
+// other browser-served assets at the project root. Mounting express.static
+// at __dirname previously exposed server.js, config.js, db/*, package*.json
 // and node_modules/** to anonymous GET requests (CodeQL alert #5).
 app.use('/js', express.static(path.join(__dirname, 'js'), {
+    maxAge: '1h',
+    dotfiles: 'deny',
+    index: false,
+    redirect: false
+}));
+app.use('/css', express.static(path.join(__dirname, 'css'), {
     maxAge: '1h',
     dotfiles: 'deny',
     index: false,

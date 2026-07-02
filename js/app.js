@@ -310,15 +310,15 @@ function _chartFontFamily() {
     return (v && v.trim()) || "Geist, ui-sans-serif, system-ui, sans-serif";
 }
 
-// Serif counterpart for chart titles — tracks --serif so editorial vs.
-// modern vs. system typography presets reach the chart titles too.
+// Display-face counterpart for chart titles — tracks --display so the
+// default (Ledger) vs. system typography presets reach the chart titles too.
 function _chartSerifFamily() {
-    const v = getComputedStyle(document.documentElement).getPropertyValue('--serif');
-    return (v && v.trim()) || "'Instrument Serif', Georgia, serif";
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--display');
+    return (v && v.trim()) || "'Bricolage Grotesque', ui-sans-serif, sans-serif";
 }
 
 // Read theme palette from CSS custom properties so chart colors track the
-// active design system (warm earthy "Clay & Sand"). Falls back to the
+// active design system (Ledger — Paper/Graphite). Falls back to the
 // hard-coded defaults if a variable is missing — keeps Chart.js happy when
 // the page is rendered before the stylesheet has fully resolved.
 function readThemePalette() {
@@ -331,7 +331,7 @@ function readThemePalette() {
     // accent fill ourselves by parsing the hex token to rgba.
     const hexToRgba = (hex, alpha) => {
         const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || '').trim());
-        if (!m) return 'rgba(184, 89, 58, ' + alpha + ')';
+        if (!m) return 'rgba(15, 107, 79, ' + alpha + ')';
         let h = m[1];
         if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
         const r = parseInt(h.slice(0, 2), 16);
@@ -339,27 +339,29 @@ function readThemePalette() {
         const b = parseInt(h.slice(4, 6), 16);
         return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
     };
-    const primary = v('--primary', '#B8593A');
-    const negative = v('--negative', primary);
-    const positive = v('--positive', '#6B8248');
-    const accent1 = v('--accent-1', '#7A8450');
-    const accent2 = v('--accent-2', '#C89A3E');
+    const primary = v('--primary', '#0F6B4F');
+    const negative = v('--negative', '#C2452D');
+    const positive = v('--positive', '#1B7A57');
+    const accent1 = v('--accent-1', positive);
+    const accent2 = v('--accent-2', '#B07A1F');
     // Chart.js wants a concrete font-family string — pull it from --sans so
     // chart legends/ticks track the active typography preset.
     const sansFamily = v('--sans', "'Geist', sans-serif");
     return {
-        textPrimary: v('--ink', '#26201A'),
-        textSecondary: v('--ink-2', '#5A4E3F'),
-        textMuted: v('--ink-3', '#8A7A65'),
-        gridColor: v('--line', '#DDD0B8'),
-        cardBg: v('--card', '#FBF6EC'),
+        textPrimary: v('--ink', '#191C21'),
+        textSecondary: v('--ink-2', '#50555E'),
+        textMuted: v('--ink-3', '#6E747F'),
+        gridColor: v('--line', '#E3E3DE'),
+        cardBg: v('--card', '#FFFFFF'),
         accent: primary,
         accentGlow: hexToRgba(primary, 0.22),
         success: positive,
         danger: negative,
         olive: accent1,
         ochre: accent2,
-        primarySoft: v('--primary-soft', '#E8BFAB'),
+        warning: v('--warning', '#B07A1F'),
+        info: v('--info', '#3B6E8F'),
+        primarySoft: v('--primary-soft', '#D7EBE2'),
         fontFamily: sansFamily,
     };
 }
@@ -3891,16 +3893,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <label style="display: flex; flex-direction: column; gap: 0.35rem;">
                             <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.themeLabel')}</span>
                             <select id="settingsThemeSelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
-                                <option value="earthy">${t('settings.themeEarthy')}</option>
+                                <option value="paper">${t('settings.themePaper')}</option>
                                 <option value="dark">${t('settings.themeDark')}</option>
-                                <option value="light">${t('settings.themeLight')}</option>
                             </select>
                         </label>
                         <label style="display: flex; flex-direction: column; gap: 0.35rem;">
                             <span style="font-size: 0.85rem; color: var(--color-text-muted);">${t('settings.typographyLabel')}</span>
                             <select id="settingsTypographySelect" style="padding: 0.5rem; background: var(--color-bg-base); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); font-family: var(--font-body);">
-                                <option value="editorial">${t('settings.typographyEditorial')}</option>
-                                <option value="modern">${t('settings.typographyModern')}</option>
+                                <option value="default">${t('settings.typographyDefault')}</option>
                                 <option value="system">${t('settings.typographySystem')}</option>
                             </select>
                         </label>
@@ -3934,28 +3934,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const typoSel = overlay.querySelector('#settingsTypographySelect');
         if (!themeSel || !typoSel) return;
         // Default values match the dataset attributes the early-bootstrap
-        // script applied to <html> on page load.
-        themeSel.value = document.documentElement.getAttribute('data-theme') || 'earthy';
-        typoSel.value = document.documentElement.getAttribute('data-typography') || 'editorial';
+        // script applied to <html> on page load. An explicit choice is always
+        // persisted so the OS-preference fallback stops applying once the
+        // user has picked a theme.
+        themeSel.value = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'paper';
+        typoSel.value = document.documentElement.getAttribute('data-typography') === 'system' ? 'system' : 'default';
 
         themeSel.addEventListener('change', () => {
             const v = themeSel.value;
-            try {
-                if (v === 'earthy') localStorage.removeItem('appTheme');
-                else localStorage.setItem('appTheme', v);
-            } catch (e) {}
-            if (v === 'earthy') document.documentElement.removeAttribute('data-theme');
-            else document.documentElement.setAttribute('data-theme', v);
+            try { localStorage.setItem('appTheme', v); } catch (e) {}
+            if (v === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+            else document.documentElement.removeAttribute('data-theme');
             reapplyChartTheme();
         });
 
         typoSel.addEventListener('change', () => {
             const v = typoSel.value;
             try {
-                if (v === 'editorial') localStorage.removeItem('appTypography');
+                if (v === 'default') localStorage.removeItem('appTypography');
                 else localStorage.setItem('appTypography', v);
             } catch (e) {}
-            if (v === 'editorial') document.documentElement.removeAttribute('data-typography');
+            if (v === 'default') document.documentElement.removeAttribute('data-typography');
             else document.documentElement.setAttribute('data-typography', v);
             reapplyChartTheme();
         });
