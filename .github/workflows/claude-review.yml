@@ -21,8 +21,13 @@ jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Dependabot-triggered runs don't receive Actions secrets (GitHub only
+    # passes "Dependabot secrets" to them), so CLAUDE_CODE_OAUTH_TOKEN is
+    # empty and the action fails. Skip those PRs — a version bump doesn't
+    # need an AI review; CodeQL still runs on them.
     if: |
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' &&
+        github.actor != 'dependabot[bot]') ||
       (github.event_name == 'issue_comment' &&
         github.event.issue.pull_request != null &&
         contains(github.event.comment.body, '@claude')) ||
