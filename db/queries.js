@@ -1377,6 +1377,18 @@ async function deleteUserBudget(userId, categorySlug) {
     return rowCount > 0;
 }
 
+async function deleteSessionsByUserId(userId) {
+    // Revoke all server-side sessions for a user — e.g. after a password
+    // reset — so a stolen or still-active session cookie stops working.
+    // connect-pg-simple stores the logged-in user under sess->'user', with
+    // the id as a JSON value, so compare it as text.
+    const { rowCount } = await pool.query(
+        `DELETE FROM "session" WHERE sess->'user'->>'id' = $1`,
+        [String(userId)]
+    );
+    return rowCount;
+}
+
 module.exports = {
     // Users
     findUserByUsername,
@@ -1391,6 +1403,7 @@ module.exports = {
     getActiveAdminCount,
     getAdminCount,
     registerWithInviteCode,
+    deleteSessionsByUserId,
 
     // Entries
     getEntriesByUser,
