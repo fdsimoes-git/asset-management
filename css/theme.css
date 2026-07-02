@@ -36,11 +36,15 @@
     --chip: #ECECE7;
     --ring: rgba(15, 107, 79, 0.25);
 
-    /* Chrome — sidebar/topbar shell, identical in both themes */
+    /* Chrome — sidebar/topbar shell, identical in both themes.
+       --chrome-accent is the bright evergreen used for accents sitting ON
+       the dark chrome (active nav dot, primary chrome button); the theme's
+       own --primary would be too dark against it in the Paper theme. */
     --chrome-bg: #15181D;
     --chrome-ink: #E7E9EC;
     --chrome-ink-dim: #9AA0AA;
     --chrome-line: #262B33;
+    --chrome-accent: #3DBE8B;
     --chrome-active: rgba(61, 190, 139, 0.14);
 
     /* Typography */
