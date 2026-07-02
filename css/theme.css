@@ -24,7 +24,7 @@
     --card-elevated: #FFFFFF;
     --ink: #191C21;
     --ink-2: #50555E;
-    --ink-3: #6E747F;
+    --ink-3: #61666F; /* AA (≥4.5:1) on --bg and --bg-2 at the 10–11px label sizes */
     --line: #E3E3DE;
     --line-2: #CFCFC8;
     --primary: #0F6B4F;       /* evergreen */
@@ -109,7 +109,7 @@ html[data-theme="dark"] {
     --card-elevated: #22262D;
     --ink: #E9EAE6;
     --ink-2: #A7ABB3;
-    --ink-3: #7D828C;
+    --ink-3: #878C96; /* AA (≥4.5:1) on --card at the 10–11px label sizes */
     --line: #2A2E36;
     --line-2: #3A3F49;
     --primary: #3DBE8B;
@@ -130,4 +130,28 @@ html[data-typography="system"] {
     --display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Accessibility floor (shared by every page) ── */
+
+/* Visible keyboard focus on every interactive element. Inputs that draw
+   their own --ring box-shadow set outline: none on :focus and keep it;
+   everything else gets this. Elements sitting on the graphite chrome
+   should override outline-color to --chrome-accent (see index.html). */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Neutralize decorative motion (entrance fades, shimmer skeletons,
+   spinners, bouncing dots, hover transforms) for users who ask for it. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }

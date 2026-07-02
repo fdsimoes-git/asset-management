@@ -1740,7 +1740,7 @@ function updateCoupleShare(entriesToShow) {
 
         settlementEl.textContent = `$${owedAmount.toFixed(2)}`;
         settlementEl.className = 'settlement-amount';
-        settlementEl.style.color = '#f59e0b';
+        settlementEl.style.color = 'var(--warning)';
         directionEl.textContent = t('dash.owes', { underpayer: underpayer, overpayer: overpayer });
     }
 }
@@ -2995,6 +2995,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lastFocused = document.activeElement;
             sidebar.classList.add('open');
             backdrop.classList.add('open');
+            document.body.classList.add('drawer-open');
             toggle.setAttribute('aria-expanded', 'true');
             setToggleLabel(true);
             // Move focus into the drawer so SR users land on the nav.
@@ -3005,6 +3006,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const wasOpen = sidebar.classList.contains('open');
             sidebar.classList.remove('open');
             backdrop.classList.remove('open');
+            document.body.classList.remove('drawer-open');
             toggle.setAttribute('aria-expanded', 'false');
             setToggleLabel(false);
             // Restore focus to whichever element opened the drawer (the

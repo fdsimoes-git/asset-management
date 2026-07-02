@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Asset Management Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%230F6B4F'/%3E%3Crect x='30' y='46' width='40' height='8' rx='2' fill='%23fff'/%3E%3C/svg%3E">
+    <meta name="theme-color" content="#15181D">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -51,6 +53,27 @@
 
         /* Design tokens (palettes, chrome, typography presets, radii,
            shadows) live in /css/theme.css — shared by every page. */
+
+        /* Skip link: visually hidden until focused via keyboard */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 300;
+            background: var(--primary);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 0 0 var(--radius-md) 0;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .skip-link:focus { left: 0; }
+
+        /* On the graphite chrome the theme --primary can be too dark for a
+           visible focus ring — use the bright chrome accent there. */
+        .sidebar :focus-visible,
+        .topbar :focus-visible { outline-color: var(--chrome-accent); }
 
         * {
             box-sizing: border-box;
@@ -456,6 +479,9 @@
             }
             .sidebar.open { transform: translateX(0); }
             .topbar-hamburger { display: inline-flex; }
+            /* Lock the page scroll while the drawer is open (class toggled
+               by openSidebar/closeSidebar in app.js). */
+            body.drawer-open { overflow: hidden; }
         }
         @media (max-width: 640px) {
             .hero-kpis { grid-template-columns: 1fr; }
@@ -2703,6 +2729,7 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#mainContent" data-i18n="a11y.skipToContent">Skip to content</a>
     <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
 
     <!-- AI Chat Widget -->
@@ -2798,7 +2825,7 @@
                 <button type="button" id="topbarAddEntryBtn" class="btn primary" data-i18n-title="dash.addEntry" title="Add New Entry"><span aria-hidden="true">+</span> <span data-i18n="dash.addEntry">Add New Entry</span></button>
             </div>
         </div>
-        <main>
+        <main id="mainContent" tabindex="-1">
             <!-- Add Entry Modal -->
             <div id="entryModal" class="modal">
                 <div class="modal-content">

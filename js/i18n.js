@@ -154,6 +154,9 @@ const translations = {
     'kpi.expenseHelp': 'Total expenses recorded in the latest month in view. The percentage is the month-over-month change vs the previous month.',
     'kpi.savingRateHelp': '(Income − Expenses) ÷ Income × 100 for the latest month. The "pts" value is the point change vs the previous month, not a percent of a percent.',
 
+    // ── Accessibility ──
+    'a11y.skipToContent': 'Skip to content',
+
     // ── Reports (issue #92) ──
     'report.title': 'Export report',
     'report.help': 'Download a CSV or PDF of your entries. The report respects your current view mode and category filter.',
@@ -488,24 +491,12 @@ const translations = {
     // ── Login page ──
     'login.title': 'Asset Manager',
     'login.heroTagline': 'Take control of your finances with a secure, intelligent platform built for individuals and couples who want real visibility into their money.',
-    'login.feature.encryption': 'AES-256 Encryption',
-    'login.feature.encryptionDesc': 'Your data encrypted at rest with bank-grade security',
-    'login.feature.analytics': 'Visual Analytics',
-    'login.feature.analyticsDesc': 'Interactive charts for income, expenses, and categories',
     'login.feature.ai': 'AI-Powered Import',
     'login.feature.aiDesc': 'Upload bank statements and let AI extract transactions',
     'login.feature.couples': 'Couples Mode',
     'login.feature.couplesDesc': 'Link accounts with your partner for shared tracking',
-    'login.feature.mobile': 'Mobile Native',
-    'login.feature.mobileDesc': 'Full iOS app for managing finances on the go',
-    'login.feature.categories': 'Smart Categories',
-    'login.feature.categoriesDesc': '17 built-in tags for granular categorization',
-    'login.feature.twoFactor': 'Two-Factor Auth (2FA)',
-    'login.feature.twoFactorDesc': 'Protect your account with TOTP authenticator apps and backup codes',
     'login.feature.aiChat': 'AI Financial Advisor',
     'login.feature.aiChatDesc': 'Chat with an AI advisor that analyzes your real financial data',
-    'login.feature.reports': 'Reports & Export',
-    'login.feature.reportsDesc': 'Download CSV or PDF reports of your filtered entries with summary, category breakdown, and totals',
     'login.feature.budgets': 'Monthly Budgets',
     'login.feature.budgetsDesc': 'Set per-category monthly targets and track real-time progress against an overall ceiling',
     'login.welcome': 'Welcome Back',
@@ -801,6 +792,9 @@ const translations = {
     'kpi.incomeHelp': 'Receita registrada no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
     'kpi.expenseHelp': 'Despesas registradas no \u00faltimo m\u00eas do per\u00edodo. A porcentagem \u00e9 a varia\u00e7\u00e3o m\u00eas-a-m\u00eas em rela\u00e7\u00e3o ao m\u00eas anterior.',
     'kpi.savingRateHelp': '(Receita \u2212 Despesas) \u00f7 Receita \u00d7 100 para o \u00faltimo m\u00eas. O valor em "pts" \u00e9 a varia\u00e7\u00e3o em pontos vs o m\u00eas anterior, n\u00e3o uma porcentagem de uma porcentagem.',
+
+    // \u2500\u2500 Accessibility \u2500\u2500
+    'a11y.skipToContent': 'Pular para o conte\u00fado',
 
     // \u2500\u2500 Reports (issue #92) \u2500\u2500
     'report.title': 'Exportar relat\u00f3rio',
@@ -1136,24 +1130,12 @@ const translations = {
     // ── Login page ──
     'login.title': 'Asset Manager',
     'login.heroTagline': 'Assuma o controle das suas finan\u00e7as com uma plataforma segura e inteligente, feita para pessoas e casais que querem ter visibilidade real sobre seu dinheiro.',
-    'login.feature.encryption': 'Criptografia AES-256',
-    'login.feature.encryptionDesc': 'Seus dados criptografados em repouso com seguran\u00e7a banc\u00e1ria',
-    'login.feature.analytics': 'An\u00e1lise Visual',
-    'login.feature.analyticsDesc': 'Gr\u00e1ficos interativos para receitas, despesas e categorias',
     'login.feature.ai': 'Importa\u00e7\u00e3o com IA',
     'login.feature.aiDesc': 'Envie extratos banc\u00e1rios e deixe a IA extrair as transa\u00e7\u00f5es',
     'login.feature.couples': 'Modo Casal',
     'login.feature.couplesDesc': 'Vincule contas com seu parceiro(a) para acompanhamento compartilhado',
-    'login.feature.mobile': 'App Nativo',
-    'login.feature.mobileDesc': 'App iOS completo para gerenciar finan\u00e7as em qualquer lugar',
-    'login.feature.categories': 'Categorias Inteligentes',
-    'login.feature.categoriesDesc': '17 tags integradas para categorização detalhada',
-    'login.feature.twoFactor': 'Autenticação em Dois Fatores (2FA)',
-    'login.feature.twoFactorDesc': 'Proteja sua conta com apps autenticadores TOTP e códigos de backup',
     'login.feature.aiChat': 'Consultor Financeiro IA',
     'login.feature.aiChatDesc': 'Converse com um consultor IA que analisa seus dados financeiros reais',
-    'login.feature.reports': 'Relatórios & Exportação',
-    'login.feature.reportsDesc': 'Baixe relatórios em CSV ou PDF dos seus lançamentos filtrados com resumo, divisão por categoria e totais',
     'login.feature.budgets': 'Orçamentos Mensais',
     'login.feature.budgetsDesc': 'Defina metas mensais por categoria e acompanhe o progresso em tempo real contra um teto geral',
     'login.welcome': 'Bem-vindo de Volta',
