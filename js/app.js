@@ -123,6 +123,9 @@ function buildCategoryChart(ctx, type, colors) {
     };
     const title = {
         display: true,
+        // Left-aligned so the centered default doesn't collide with the
+        // absolutely-positioned Bar/Doughnut/Trend toggle in the top-right.
+        align: 'start',
         text: type === 'stacked' ? t('chart.expenseCatByMonth') : t('chart.expensesByCategory'),
         color: colors.textPrimary,
         font: { size: 14, weight: '600', family: _chartSerifFamily() },

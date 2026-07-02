@@ -28,6 +28,7 @@
     --line: #E3E3DE;
     --line-2: #CFCFC8;
     --primary: #0F6B4F;       /* evergreen */
+    --on-primary: #FFFFFF;    /* text/icons sitting on --primary or --positive fills */
     --primary-soft: #D7EBE2;
     --positive: #1B7A57;
     --negative: #C2452D;
@@ -113,6 +114,7 @@ html[data-theme="dark"] {
     --line: #2A2E36;
     --line-2: #3A3F49;
     --primary: #3DBE8B;
+    --on-primary: #0E2A1F;    /* dark ink — the bright primary needs dark text */
     --primary-soft: #133528;
     --positive: #46C08A;
     --negative: #E2674C;
