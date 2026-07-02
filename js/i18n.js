@@ -122,6 +122,9 @@ const translations = {
     'filter.chartBar': 'Bar',
     'filter.chartDoughnut': 'Doughnut',
     'filter.chartStacked': 'Trend',
+    'filter.selectAllCats': 'All Categories',
+    'chart.avgToggle': 'Avg',
+    'chart.avgToggleHelp': 'Show or hide the average lines',
     'chart.noData': 'No data for current filters',
 
     // ── Couple share ──
@@ -761,6 +764,9 @@ const translations = {
     'filter.chartBar': 'Barra',
     'filter.chartDoughnut': 'Rosca',
     'filter.chartStacked': 'Tend\u00eancia',
+    'filter.selectAllCats': 'Todas as Categorias',
+    'chart.avgToggle': 'M\u00e9dia',
+    'chart.avgToggleHelp': 'Mostrar ou ocultar as linhas de m\u00e9dia',
     'chart.noData': 'Sem dados para os filtros atuais',
 
     // ── Couple share ──

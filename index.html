@@ -3191,6 +3191,7 @@
                             </div>
                             <div id="categoryChips" class="category-chips" role="group" data-i18n-aria-label="dash.category" aria-label="Categories"></div>
                         </div>
+                        <button id="selectAllCategories" class="filter-btn" data-i18n="filter.selectAllCats">All Categories</button>
                         <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                     </div>
                     <div id="activeFiltersBar" class="active-filters-bar" hidden>
@@ -3279,6 +3280,9 @@
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                     <div class="chart-wrapper" data-chart="incomeVsExpense">
+                        <div class="chart-type-toggle" role="group" data-i18n-aria-label="chart.avgToggleHelp" aria-label="Average lines">
+                            <button type="button" class="chart-type-btn active" id="avgLinesToggle" aria-pressed="true" data-i18n="chart.avgToggle" data-i18n-title="chart.avgToggleHelp" title="Show or hide the average lines">Avg</button>
+                        </div>
                         <canvas id="incomeVsExpenseChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>

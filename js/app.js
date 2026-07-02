@@ -88,6 +88,9 @@ let categoryChart = null;
 // Categories chart supports three presentations: horizontal bar (default),
 // doughnut, and stacked monthly bars ('stacked').
 let currentCategoryChartType = 'bar';
+// Average-line annotations on the income/expense chart (user-toggleable,
+// persisted under 'assetmgmt.showAvgLines'; default on).
+let showAvgLines = true;
 let _categoryCtxRef = null; // kept so setCategoryChartType can rebuild without re-running initializeCharts
 let _chartThemeRef = null;  // theme/color palette reference for rebuilds
 // Add a variable to track currently filtered entries
@@ -776,7 +779,8 @@ function updateCharts(entriesToShow = entries, forceDefaultMonths = false, filte
     incomeVsExpenseChart.data.datasets[1].data = expenseValues;
 
     // Add average lines when 2+ months are selected (only show if average > 0)
-    if (months.length >= 2) {
+    // and the user hasn't toggled them off via the Avg button on the chart.
+    if (months.length >= 2 && showAvgLines) {
         const avgIncome = incomeValues.reduce((a, b) => a + b, 0) / months.length;
         const avgExpense = expenseValues.reduce((a, b) => a + b, 0) / months.length;
 
@@ -2888,6 +2892,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Select every category chip at once — useful for "all except a few":
+    // select all, then untick the unwanted ones.
+    const selectAllCatsBtn = document.getElementById('selectAllCategories');
+    if (selectAllCatsBtn) {
+        selectAllCatsBtn.addEventListener('click', () => {
+            filterState.categories = categorySlugList().slice();
+            renderCategoryChips();
+            saveFilterState();
+            renderActiveFiltersBar();
+            filterEntries();
+        });
+    }
+
     // Filter controls - only clear button now, apply is handled by dynamic listeners
     document.getElementById('clearFilters').addEventListener('click', () => {
         filterState = freshFilterState();
@@ -3165,14 +3182,16 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (mq.addListener) mq.addListener(handleBreakpoint);
     }
 
-    // Categories chart type toggle (bar / doughnut / stacked)
-    document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(btn => {
+    // Categories chart type toggle (bar / doughnut / stacked). Scoped to
+    // [data-type] buttons and to the button's own group so it doesn't
+    // interfere with the standalone Avg toggle on the cash-flow chart.
+    document.querySelectorAll('.chart-type-toggle .chart-type-btn[data-type]').forEach(btn => {
         // Sync initial aria-pressed from the pre-set .active class in HTML.
         btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
         btn.addEventListener('click', () => {
             const type = btn.dataset.type;
             setCategoryChartType(type);
-            document.querySelectorAll('.chart-type-toggle .chart-type-btn').forEach(b => {
+            btn.parentElement.querySelectorAll('.chart-type-btn').forEach(b => {
                 const isActive = b === btn;
                 b.classList.toggle('active', isActive);
                 b.setAttribute('aria-pressed', String(isActive));
@@ -3180,6 +3199,26 @@ document.addEventListener('DOMContentLoaded', () => {
             try { localStorage.setItem('assetmgmt.categoryChartType', type); } catch {}
         });
     });
+
+    // Avg-lines toggle on the income/expense chart — an on/off switch, not
+    // a mutually-exclusive group like the category toggle above.
+    const avgLinesToggleBtn = document.getElementById('avgLinesToggle');
+    if (avgLinesToggleBtn) {
+        try {
+            if (localStorage.getItem('assetmgmt.showAvgLines') === '0') showAvgLines = false;
+        } catch {}
+        avgLinesToggleBtn.classList.toggle('active', showAvgLines);
+        avgLinesToggleBtn.setAttribute('aria-pressed', String(showAvgLines));
+        avgLinesToggleBtn.addEventListener('click', () => {
+            showAvgLines = !showAvgLines;
+            avgLinesToggleBtn.classList.toggle('active', showAvgLines);
+            avgLinesToggleBtn.setAttribute('aria-pressed', String(showAvgLines));
+            try { localStorage.setItem('assetmgmt.showAvgLines', showAvgLines ? '1' : '0'); } catch {}
+            if (Array.isArray(currentFilteredEntries)) {
+                updateCharts(currentFilteredEntries, false, filterState.start, filterState.end);
+            }
+        });
+    }
 
     // ============ REPORTS MODAL (issue #92) ============
     //
