@@ -45,7 +45,14 @@ function setUserCategories(list) {
 
 function categoryColor(slug) {
     const c = _userCategoriesBySlug.get(slug);
-    return c ? c.color : ORPHAN_CATEGORY_COLOR;
+    // Render-boundary validation (defense in depth): colors are validated
+    // server-side at write time, but the value is interpolated into style
+    // attributes (tag/chip dots) and concatenated with an alpha suffix for
+    // Chart.js datasets — both assume a clean 6-digit hex. Anything else
+    // falls back to the neutral orphan color.
+    return (c && typeof c.color === 'string' && HEX_REGEX_FE.test(c.color))
+        ? c.color
+        : ORPHAN_CATEGORY_COLOR;
 }
 
 function categoryLabel(slug) {
@@ -3382,6 +3389,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Shared by the Budgets modal and the dashboard budget panel.
+    // Only interpolate server-provided category colors into style attributes
+    // when they're a clean 6-digit hex — escapeHtml alone doesn't stop CSS
+    // injection (a payload needs no quotes or angle brackets inside style).
+    const safeCategoryHex = (color) =>
+        (typeof color === 'string' && HEX_REGEX_FE.test(color)) ? color : null;
     // Safe progress: null pct when no target. Cap at 100% for the bar fill
     // but keep the raw ratio so callers can surface an "over budget" pill.
     const budgetProgressFor = (amount, actual) => {
@@ -3475,7 +3487,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : '';
             const swatch = isOverall
                 ? `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: var(--ink); margin-right: 6px;"></span>`
-                : `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: ${escapeHtml(color || 'var(--ink-3)')}; margin-right: 6px;"></span>`;
+                : `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; background: ${safeCategoryHex(color) || 'var(--ink-3)'}; margin-right: 6px;"></span>`;
             const inputDisabled = isOrphan ? 'disabled' : '';
             const clearDisabled = (amount > 0) ? '' : 'disabled';
 
@@ -3670,7 +3682,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const overPill = p.over ? ` <span class="delta-pill down">${escapeHtml(t('budget.overBudget'))}</span>` : '';
             const pct = p.pct == null ? '' : ' · ' + (p.over ? p.raw : p.pct).toFixed(0) + '%';
             const dot = isOverall ? '' : '<i class="budget-dot" aria-hidden="true"></i>';
-            const dotColor = color ? ` style="--budget-dot-color: ${escapeHtml(color)}"` : '';
+            const safeColor = safeCategoryHex(color);
+            const dotColor = safeColor ? ` style="--budget-dot-color: ${safeColor}"` : '';
             return `
                 <div class="budget-row${isOverall ? ' budget-row--overall' : ''}">
                     <div class="budget-row-top">
