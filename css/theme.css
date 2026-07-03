@@ -1,0 +1,159 @@
+/* ============================================================
+   Ledger design tokens — single source of truth for every page
+   (index.html, login.html, register.html, forgot-password.html).
+
+   Themes:
+     - Paper (light)   → default, no attribute
+     - Graphite (dark) → html[data-theme="dark"]
+   The sidebar/topbar chrome uses the theme-invariant --chrome-*
+   tokens and stays graphite in both themes.
+
+   Typography presets:
+     - Ledger (default) → Bricolage Grotesque / Geist / JetBrains Mono
+     - System           → html[data-typography="system"]
+
+   Pages load this via <link href="/css/theme.css"> BEFORE their
+   inline <style> block; component CSS stays per-page.
+   ============================================================ */
+
+:root {
+    /* Paper — porcelain light canvas */
+    --bg: #F6F6F4;
+    --bg-2: #EFEFEB;
+    --card: #FFFFFF;
+    --card-elevated: #FFFFFF;
+    --ink: #191C21;
+    --ink-2: #50555E;
+    --ink-3: #61666F; /* AA (≥4.5:1) on --bg and --bg-2 at the 10–11px label sizes */
+    --line: #E3E3DE;
+    --line-2: #CFCFC8;
+    --primary: #0F6B4F;       /* evergreen */
+    --on-primary: #FFFFFF;    /* text/icons sitting on --primary or --positive fills */
+    --primary-soft: #D7EBE2;
+    --positive: #1B7A57;
+    --negative: #C2452D;
+    --warning: #B07A1F;
+    --info: #3B6E8F;
+    --chip: #ECECE7;
+    --ring: rgba(15, 107, 79, 0.25);
+
+    /* Chrome — sidebar/topbar shell, identical in both themes.
+       --chrome-accent is the bright evergreen used for accents sitting ON
+       the dark chrome (active nav dot, primary chrome button); the theme's
+       own --primary would be too dark against it in the Paper theme. */
+    --chrome-bg: #15181D;
+    --chrome-ink: #E7E9EC;
+    --chrome-ink-dim: #9AA0AA;
+    --chrome-line: #262B33;
+    --chrome-accent: #3DBE8B;
+    --chrome-active: rgba(61, 190, 139, 0.14);
+
+    /* Typography */
+    --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+    --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Backwards-compatible aliases (legacy --serif / --color-* / --font-* /
+       --accent-* names still referenced by per-page component CSS and by
+       runtime reads in js/app.js) so the cascade keeps resolving without
+       touching every single rule. */
+    --serif: var(--display);
+    --font-display: var(--display);
+    --font-body: var(--sans);
+
+    --accent-1: var(--positive);
+    --accent-2: var(--warning);
+
+    --color-bg-deep: var(--bg-2);
+    --color-bg-base: var(--bg);
+    --color-bg-elevated: var(--card-elevated);
+    --color-bg-surface: var(--bg-2);
+
+    --color-accent-primary: var(--primary);
+    --color-accent-secondary: var(--warning);
+    --color-accent-tertiary: var(--positive);
+    --color-accent-danger: var(--negative);
+
+    --color-success: var(--positive);
+    --color-success-muted: color-mix(in oklab, var(--positive) 18%, var(--card));
+    --color-danger: var(--negative);
+    --color-danger-muted: color-mix(in oklab, var(--negative) 18%, var(--card));
+    --color-info: var(--info);
+
+    --color-text-primary: var(--ink);
+    --color-text-secondary: var(--ink-2);
+    --color-text-muted: var(--ink-3);
+
+    --color-border: var(--line);
+    --color-border-subtle: color-mix(in oklab, var(--line) 60%, var(--card));
+
+    --shadow-sm: 0 2px 8px rgba(25, 28, 33, 0.05);
+    --shadow-md: 0 8px 24px rgba(25, 28, 33, 0.07);
+    --shadow-lg: 0 16px 48px rgba(25, 28, 33, 0.11);
+    --shadow-glow: 0 0 40px var(--ring);
+
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+
+    --transition-fast: 0.15s ease;
+    --transition-base: 0.25s ease;
+    --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Graphite — dark canvas (chrome tokens unchanged on purpose) */
+html[data-theme="dark"] {
+    --bg: #131519;
+    --bg-2: #1B1E24;
+    --card: #1B1E24;
+    --card-elevated: #22262D;
+    --ink: #E9EAE6;
+    --ink-2: #A7ABB3;
+    --ink-3: #878C96; /* AA (≥4.5:1) on --card at the 10–11px label sizes */
+    --line: #2A2E36;
+    --line-2: #3A3F49;
+    --primary: #3DBE8B;
+    --on-primary: #0E2A1F;    /* dark ink — the bright primary needs dark text */
+    --primary-soft: #133528;
+    --positive: #46C08A;
+    --negative: #E2674C;
+    --warning: #D9A94E;
+    --info: #6FA3C4;
+    --chip: #262A31;
+    --ring: rgba(61, 190, 139, 0.3);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.30);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* Typography preset: System — no webfonts */
+html[data-typography="system"] {
+    --display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Accessibility floor (shared by every page) ── */
+
+/* Visible keyboard focus on every interactive element. Inputs that draw
+   their own --ring box-shadow set outline: none on :focus and keep it;
+   everything else gets this. Elements sitting on the graphite chrome
+   should override outline-color to --chrome-accent (see index.html). */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Neutralize decorative motion (entrance fades, shimmer skeletons,
+   spinners, bouncing dots, hover transforms) for users who ask for it. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

@@ -59,8 +59,9 @@ Copy `.env.example` to `.env`. Required variables:
 ### Frontend (no framework, no build)
 
 All frontend code is vanilla JavaScript loaded directly by the browser:
-- `index.html` (~140 KB / ~3,475 lines) — main dashboard with inline CSS, sidebar/topbar shell, hero KPI row with sparklines, Reports + Budgets modals
-- `js/app.js` (~5,640 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories, Reports/Budgets modals, theme + typography presets, mobile sidebar drawer with focus management, loading-state helpers (`setViewLoading` / `setHeroLoading` / `setChartsLoading` / `setEntriesLoading` / `setSingleChartLoading` / `setButtonLoading`)
+- `css/theme.css` — the single source of design tokens (Paper light / Graphite dark palettes, theme-invariant `--chrome-*` shell tokens, typography stacks, legacy `--color-*` aliases, `:focus-visible` + `prefers-reduced-motion` floor), linked by all four HTML pages before their inline component CSS
+- `index.html` (~3,400 lines) — main dashboard with inline component CSS, graphite sidebar/topbar shell, hero KPI row with sparklines, 3 chart panels + a budget status panel, Reports + Budgets modals
+- `js/app.js` (~5,600 lines) — dashboard logic, charts (Chart.js), CRUD, admin panel, categories, Reports/Budgets modals + dashboard budget panel (`refreshBudgetPanel`), theme + typography presets, mobile sidebar drawer with focus management + scroll lock, loading-state helpers (`setViewLoading` / `setHeroLoading` / `setChartsLoading` / `setEntriesLoading` / `setSingleChartLoading` / `setButtonLoading`)
 - `js/chat.js` (~800 lines) — AI financial advisor floating chat widget
 - `js/i18n.js` (~1,350 lines) — English + Portuguese translations (~700 keys) and `t(key, replacements)` helper
 - `js/csrf.js`, `js/login.js`, `js/register.js`, `js/forgot-password.js` — page-specific modules
@@ -107,7 +108,7 @@ AI features include PDF expense extraction (uses the user's category list) and a
 - Rate limiting: per-endpoint (login 5/15min, chat 30/15min, PDF 10/15min, plus register/forgot/totp/paypal/aiModels/general limiters)
 - SQL: all queries parameterized via `db/queries.js`
 - 2FA: TOTP with bcrypt-hashed backup codes
-- Static asset exposure narrowed to `/js` only (no `express.static(__dirname)`)
+- Static asset exposure narrowed to `/js` and `/css` only (no `express.static(__dirname)`)
 
 ## Key Patterns
 
@@ -121,6 +122,9 @@ AI features include PDF expense extraction (uses the user's category list) and a
 - **Couple entries**: when both partners are linked, entries flagged `is_couple_expense` are visible to both; `ensurePartnerCategories()` auto-imports partner-category slugs into the active user's catalog
 - **Auth middleware** caches `req.user` for 5s in `userCache`; mutating user-related queries invalidate the cache
 - **Localized currency in the UI**: hero / Budgets money formatting goes through `Intl.NumberFormat` keyed off `getLang()` — pt-BR → BRL/`R$`, en-US → USD/`$`. The KPI unit spans (`#kpiIncomeUnit` / `#kpiExpenseUnit`) are populated dynamically from the same locale.
-- **Theme + Typography presets** (v3.0): `<html data-theme="earthy|dark|light">` + `<html data-typography="editorial|modern|system">`, persisted in `localStorage` under `appTheme` / `appTypography`. An inline bootstrap script in every HTML entry point applies them before stylesheets resolve so there's no flash of default theme. Charts re-skin via `reapplyChartTheme()` which destroys + rebuilds with debouncing.
+- **Theme + Typography presets** ("Ledger" design system): Paper light is the default (no attribute); Graphite dark is `<html data-theme="dark">`. Typography is the Ledger stack (Bricolage Grotesque display / Geist body+numerals / JetBrains Mono labels) by default, or `<html data-typography="system">`. Persisted in `localStorage` under `appTheme` (`'paper' | 'dark'`; legacy `'light'` migrates to `'paper'`, no key follows `prefers-color-scheme`) / `appTypography` (`'system'` only; legacy `'modern'`/`'editorial'` are cleared). An inline bootstrap script in every HTML entry point applies them before stylesheets resolve so there's no flash of default theme. All tokens live in `css/theme.css`; the sidebar/topbar use theme-invariant `--chrome-*` tokens (graphite in both themes). Charts re-skin via `reapplyChartTheme()` which destroys + rebuilds with debouncing.
+- **Charts**: 3 Chart.js canvases (net-balance line, monthly cash-flow bars, categories) + an HTML budget status panel in the 4th grid slot. The categories chart has a 3-way toggle — `bar | doughnut | stacked` — persisted under `assetmgmt.categoryChartType`; `buildCategoryChart()` builds all three presentations and `updateCharts()` branches on the active mode. Money figures use `font-variant-numeric: tabular-nums`; entry tag chips are theme-neutral with a per-category color dot (`--tag-dot-color`).
+- **Dev note**: `server.js` pre-renders HTML into an in-memory cache at startup (`htmlCache`) — restart `npm start` after editing any HTML file to see the change.
+- **Hidden action bus**: the invisible `header.legacy-header` in index.html holds `#addEntryBtn`/`#settingsBtn`/`#logoutBtn`/`#adminPanelBtn`/`#openBulkUploadModal`, which app.js wires without null guards and the visible topbar/sidebar proxy clicks to. Do not delete it.
 - **Loading-state feedback**: `setViewLoading()` aggregates `setChartsLoading` + `setEntriesLoading` + `setHeroLoading`. Each helper toggles its CSS skeleton class AND `aria-busy` on the corresponding region. Async modal buttons go through `setButtonLoading(btn, isLoading)` (adds `.loading` class for the spinner pseudo-element + disabled). Sync chart rebuilds (`setCategoryChartType`, `reapplyChartTheme`) flash skeletons via `setTimeout(..., 0)`-deferred work with module-scope coalescing timers (`_categoryRebuildTimer` / `_themeRebuildTimer`).
 - **Versioning**: `APP_VERSION` is read from `package.json` at boot — bumping `package.json` is the single source of truth for the release version. Current line: 3.1.2.

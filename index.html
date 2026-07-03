@@ -4,19 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Asset Management Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%230F6B4F'/%3E%3Crect x='30' y='46' width='40' height='8' rx='2' fill='%23fff'/%3E%3C/svg%3E">
+    <meta name="theme-color" content="#15181D">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/theme.css">
     <script>
         // Apply persisted theme + typography before stylesheets resolve so
         // the page paints in the chosen palette (no flash of default theme).
+        // Themes: Paper (light, default) / Graphite (dark). No stored choice
+        // follows the OS preference; the legacy 'light' value migrates to
+        // 'paper' once. Legacy typography presets ('modern'/'editorial') are
+        // cleared — presets are now default (Ledger) or 'system'.
         // Mirrored on every HTML entry point — keep these blocks in sync.
         (function () {
             try {
                 var t = localStorage.getItem('appTheme');
+                if (t === 'light') { t = 'paper'; try { localStorage.setItem('appTheme', 'paper'); } catch (e) {} }
+                if (t !== 'paper' && t !== 'dark') {
+                    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'paper';
+                }
+                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
                 var f = localStorage.getItem('appTypography');
-                if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
-                if (f === 'modern' || f === 'system') document.documentElement.setAttribute('data-typography', f);
+                if (f === 'modern' || f === 'editorial') { f = null; try { localStorage.removeItem('appTypography'); } catch (e) {} }
+                if (f === 'system') document.documentElement.setAttribute('data-typography', 'system');
             } catch (e) { /* localStorage may be unavailable in private mode */ }
         })();
     </script>
@@ -39,132 +51,29 @@
             }
         }
 
-        :root {
-            /* Warm earthy palette — Clay & Sand */
-            --bg: #F3ECE0;
-            --bg-2: #EAE0CE;
-            --card: #FBF6EC;
-            --ink: #26201A;
-            --ink-2: #5A4E3F;
-            --ink-3: #8A7A65;
-            --line: #DDD0B8;
-            --line-2: #C9B99C;
-            --primary: #B8593A;       /* terracotta */
-            --primary-soft: #E8BFAB;
-            --accent-1: #7A8450;      /* olive */
-            --accent-2: #C89A3E;      /* ochre */
-            --positive: #6B8248;
-            --negative: #B8593A;
-            --chip: #E8DDC8;
-            --ring: rgba(184, 89, 58, 0.22);
+        /* Design tokens (palettes, chrome, typography presets, radii,
+           shadows) live in /css/theme.css — shared by every page. */
 
-            /* Typography */
-            --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-            --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-            /* Backwards-compatible aliases (legacy --color-* / --font-* names
-               still referenced throughout this file) so the cascade keeps
-               resolving without touching every single rule. */
-            --font-display: var(--serif);
-            --font-body: var(--sans);
-
-            --color-bg-deep: var(--bg-2);
-            --color-bg-base: var(--bg);
-            --color-bg-elevated: var(--card);
-            --color-bg-surface: var(--bg-2);
-
-            --color-accent-primary: var(--primary);
-            --color-accent-secondary: var(--accent-2);
-            --color-accent-tertiary: var(--accent-1);
-            --color-accent-danger: var(--negative);
-
-            --color-success: var(--positive);
-            --color-success-muted: color-mix(in oklab, var(--positive) 18%, var(--card));
-            --color-danger: var(--negative);
-            --color-danger-muted: color-mix(in oklab, var(--negative) 18%, var(--card));
-            --color-info: #3F6E8C;
-
-            --color-text-primary: var(--ink);
-            --color-text-secondary: var(--ink-2);
-            --color-text-muted: var(--ink-3);
-
-            --color-border: var(--line);
-            --color-border-subtle: color-mix(in oklab, var(--line) 60%, var(--card));
-
-            --shadow-sm: 0 2px 8px rgba(38, 32, 26, 0.06);
-            --shadow-md: 0 8px 24px rgba(38, 32, 26, 0.08);
-            --shadow-lg: 0 16px 48px rgba(38, 32, 26, 0.12);
-            --shadow-glow: 0 0 40px var(--ring);
-
-            --radius-sm: 8px;
-            --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-xl: 18px;
-
-            --transition-fast: 0.15s ease;
-            --transition-base: 0.25s ease;
-            --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Skip link: visually hidden until focused via keyboard */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 300;
+            background: var(--primary);
+            color: var(--on-primary);
+            padding: 10px 16px;
+            border-radius: 0 0 var(--radius-md) 0;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
         }
+        .skip-link:focus { left: 0; }
 
-        /* Dark — warm dark with terracotta accents */
-        html[data-theme="dark"] {
-            --bg: #1A1612;
-            --bg-2: #221C16;
-            --card: #2A231C;
-            --ink: #F0E6D6;
-            --ink-2: #C9B99C;
-            --ink-3: #8A7A65;
-            --line: #3A302A;
-            --line-2: #4A3F36;
-            --primary: #D67A5C;
-            --primary-soft: #5A2E20;
-            --accent-1: #9CA868;
-            --accent-2: #D9B05A;
-            --positive: #8FA866;
-            --negative: #D67A5C;
-            --chip: #3A302A;
-            --ring: rgba(214, 122, 92, 0.28);
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.30);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.40);
-            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
-        }
-
-        /* Light — clean modern light with cool blue accent */
-        html[data-theme="light"] {
-            --bg: #FFFFFF;
-            --bg-2: #F5F5F5;
-            --card: #FAFAFA;
-            --ink: #1A1A1A;
-            --ink-2: #4A4A4A;
-            --ink-3: #888888;
-            --line: #E5E5E5;
-            --line-2: #D0D0D0;
-            --primary: #2563EB;
-            --primary-soft: #BFDBFE;
-            --accent-1: #059669;
-            --accent-2: #D97706;
-            --positive: #059669;
-            --negative: #DC2626;
-            --chip: #F0F0F0;
-            --ring: rgba(37, 99, 235, 0.18);
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.07);
-            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.10);
-        }
-
-        /* Typography presets — override font stacks; loaded fonts come from
-           the Google Fonts URL above (Editorial uses Instrument+Geist;
-           Modern uses Inter; System uses no Google Fonts). */
-        html[data-typography="modern"] {
-            --serif: "Inter", ui-sans-serif, system-ui, sans-serif;
-            --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        }
-        html[data-typography="system"] {
-            --serif: ui-serif, Georgia, "Iowan Old Style", serif;
-            --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
+        /* On the graphite chrome the theme --primary can be too dark for a
+           visible focus ring — use the bright chrome accent there. */
+        .sidebar :focus-visible,
+        .topbar :focus-visible { outline-color: var(--chrome-accent); }
 
         * {
             box-sizing: border-box;
@@ -227,8 +136,8 @@
             top: env(safe-area-inset-top, 0px);
             height: calc(100vh - env(safe-area-inset-top, 0px));
             overflow-y: auto;
-            background: var(--bg-2);
-            border-right: 1px solid var(--line);
+            background: var(--chrome-bg);
+            border-right: 1px solid var(--chrome-line);
             padding: 22px 16px 20px;
             display: flex;
             flex-direction: column;
@@ -243,29 +152,23 @@
         .brand-mark {
             width: 28px; height: 28px;
             border-radius: 50%;
-            background: var(--primary);
-            position: relative;
-            overflow: hidden;
+            background: var(--chrome-accent);
             flex: none;
         }
-        .brand-mark::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.35), transparent 60%);
-        }
         .brand-name {
-            font-family: var(--serif);
-            font-size: 22px;
+            font-family: var(--display);
+            font-weight: 600;
+            font-size: 19px;
+            letter-spacing: -0.01em;
             line-height: 1;
-            color: var(--ink);
+            color: var(--chrome-ink);
         }
         .brand-sub {
             font-family: var(--mono);
             font-size: 10px;
             letter-spacing: 0.08em;
             text-transform: uppercase;
-            color: var(--ink-3);
+            color: var(--chrome-ink-dim);
             margin-top: 4px;
         }
         .nav-section { display: flex; flex-direction: column; }
@@ -274,16 +177,16 @@
             font-size: 10px;
             letter-spacing: 0.1em;
             text-transform: uppercase;
-            color: var(--ink-3);
+            color: var(--chrome-ink-dim);
             padding: 12px 10px 6px;
         }
         .nav { display: flex; flex-direction: column; gap: 2px; }
         .nav-item {
             display: flex; align-items: center; gap: 10px;
             padding: 8px 10px;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             font-size: 13.5px;
-            color: var(--ink-2);
+            color: var(--chrome-ink-dim);
             cursor: pointer;
             border: 1px solid transparent;
             user-select: none;
@@ -298,49 +201,48 @@
         .nav-item .dot {
             width: 6px; height: 6px;
             border-radius: 50%;
-            background: var(--line-2);
+            background: rgba(255, 255, 255, 0.18);
             flex: none;
         }
-        .nav-item:hover { background: rgba(0,0,0,.03); }
+        .nav-item:hover { background: rgba(255,255,255,.05); color: var(--chrome-ink); }
         .nav-item.active {
-            background: var(--card);
-            color: var(--ink);
-            border-color: var(--line);
-            box-shadow: 0 1px 0 rgba(0,0,0,.02);
+            background: var(--chrome-active);
+            color: var(--chrome-ink);
+            border-color: transparent;
         }
-        .nav-item.active .dot { background: var(--primary); }
+        .nav-item.active .dot { background: var(--chrome-accent); }
         .nav-item[aria-disabled="true"] { opacity: 0.55; cursor: default; }
         .nav-item[aria-disabled="true"]:hover { background: transparent; }
         .sidebar-foot {
             margin-top: auto;
-            border-top: 1px dashed var(--line-2);
+            border-top: 1px dashed var(--chrome-line);
             padding-top: 14px;
             display: flex; gap: 10px; align-items: center;
             font-size: 12px;
-            color: var(--ink-2);
+            color: var(--chrome-ink-dim);
         }
         .sidebar-foot .avatar {
             width: 30px; height: 30px; border-radius: 50%;
-            background: linear-gradient(135deg, var(--accent-2), var(--primary));
+            background: var(--chrome-accent);
             display: grid; place-items: center;
-            color: #fff; font-size: 11px;
+            color: var(--chrome-bg); font-size: 11px;
             font-family: var(--mono); font-weight: 600;
             flex: none;
         }
-        .sidebar-foot .who-name { font-size: 13px; color: var(--ink); }
+        .sidebar-foot .who-name { font-size: 13px; color: var(--chrome-ink); }
         .sidebar-foot .who-plan {
             font-family: var(--mono); font-size: 10px;
             letter-spacing: 0.06em; text-transform: uppercase;
-            color: var(--ink-3); margin-top: 2px;
+            color: var(--chrome-ink-dim); margin-top: 2px;
         }
 
         /* ---------- Topbar ---------- */
         .topbar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 18px 28px;
-            border-bottom: 1px solid var(--line);
+            padding: 16px 28px;
+            border-bottom: 1px solid var(--chrome-line);
             gap: 18px;
-            background: var(--bg);
+            background: var(--chrome-bg);
             position: sticky;
             top: env(safe-area-inset-top, 0px);
             z-index: 50;
@@ -349,16 +251,16 @@
             display: none; /* shown only on narrow screens via media query */
             width: 40px; height: 40px;
             padding: 0;
-            border: 1px solid var(--line);
+            border: 1px solid var(--chrome-line);
             border-radius: var(--radius-md);
-            background: var(--card);
-            color: var(--ink);
+            background: transparent;
+            color: var(--chrome-ink);
             cursor: pointer;
             align-items: center;
             justify-content: center;
             flex: none;
         }
-        .topbar-hamburger:hover { background: var(--bg-2); }
+        .topbar-hamburger:hover { background: rgba(255,255,255,.06); }
         .topbar-hamburger svg { width: 20px; height: 20px; display: block; }
         .sidebar-backdrop {
             display: none;
@@ -372,16 +274,38 @@
             font-family: var(--mono);
             font-size: 11px;
             letter-spacing: 0.06em;
-            color: var(--ink-3);
+            color: var(--chrome-ink-dim);
             text-transform: uppercase;
         }
         .topbar-greeting {
-            font-family: var(--serif);
-            font-size: 28px;
+            font-family: var(--display);
+            font-size: 22px;
             line-height: 1.1;
-            color: var(--ink);
+            letter-spacing: -0.01em;
+            color: var(--chrome-ink);
             margin: 0;
-            font-weight: 400;
+            font-weight: 600;
+        }
+        /* Chrome-aware buttons: actions sitting on the graphite topbar */
+        .topbar .btn,
+        .topbar button {
+            background: transparent;
+            border-color: var(--chrome-line);
+            color: var(--chrome-ink);
+        }
+        .topbar .btn:hover,
+        .topbar button:hover { background: rgba(255,255,255,.06); border-color: var(--chrome-line); }
+        .topbar .btn.primary,
+        .topbar .add-entry-btn {
+            background: var(--chrome-accent);
+            border-color: transparent;
+            color: var(--chrome-bg);
+            font-weight: 600;
+        }
+        .topbar .btn.primary:hover,
+        .topbar .add-entry-btn:hover {
+            background: color-mix(in oklab, var(--chrome-accent) 88%, white);
+            color: var(--chrome-bg);
         }
         .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .view-toggle {
@@ -411,7 +335,6 @@
 
         /* ---------- Utility classes from prototype ---------- */
         .num { font-family: var(--mono); font-feature-settings: "tnum", "zero"; letter-spacing: -0.02em; }
-        .serif { font-family: var(--serif); font-weight: 400; letter-spacing: -0.015em; }
         .mono { font-family: var(--mono); }
         .tiny { font-size: 11px; }
         .muted { color: var(--ink-3); }
@@ -458,9 +381,10 @@
             min-height: 220px;
         }
         .hero-networth .bignum {
-            font-family: var(--serif);
-            font-weight: 400;
-            font-size: clamp(64px, 7vw, 110px);
+            font-family: var(--sans);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-size: clamp(56px, 6.5vw, 96px);
             line-height: 0.95;
             letter-spacing: -0.03em;
             color: var(--ink);
@@ -512,8 +436,10 @@
             text-transform: uppercase;
         }
         .kpi .value {
-            font-family: var(--serif);
-            font-size: 38px;
+            font-family: var(--sans);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-size: 32px;
             line-height: 1;
             color: var(--ink);
             letter-spacing: -0.02em;
@@ -553,6 +479,9 @@
             }
             .sidebar.open { transform: translateX(0); }
             .topbar-hamburger { display: inline-flex; }
+            /* Lock the page scroll while the drawer is open (class toggled
+               by openSidebar/closeSidebar in app.js). */
+            body.drawer-open { overflow: hidden; }
         }
         @media (max-width: 640px) {
             .hero-kpis { grid-template-columns: 1fr; }
@@ -765,12 +694,13 @@
             text-transform: uppercase;
         }
 
+        /* Ledger-rule tick: a short horizontal rule marks each section
+           heading, echoing the ruled lines of a paper ledger. */
         section h2::before {
             content: '';
-            width: 4px;
-            height: 14px;
+            width: 24px;
+            height: 2px;
             background: var(--primary);
-            border-radius: 2px;
         }
 
         .filters-section {
@@ -915,8 +845,8 @@
             border-color: var(--color-accent-primary);
         }
         .quick-range-btn.active {
-            background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-tertiary) 100%);
-            color: var(--color-bg-deep);
+            background: var(--primary);
+            color: var(--on-primary);
             border-color: transparent;
         }
 
@@ -1152,60 +1082,88 @@
             display: block;
         }
 
-        .summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 18px;
-            margin-bottom: 22px;
+        /* ── Budget status panel (4th slot of the charts grid) ── */
+        .budget-panel {
+            display: flex;
+            flex-direction: column;
         }
-
-        .summary-item {
-            background: var(--card);
-            padding: 22px;
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--line);
-            position: relative;
+        .budget-panel-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .budget-panel-head h3 {
+            margin: 0;
+            font-family: var(--display);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .budget-panel-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .budget-row { display: flex; flex-direction: column; gap: 5px; }
+        .budget-row--overall {
+            padding-bottom: 12px;
+            border-bottom: 1px dashed var(--line);
+        }
+        .budget-row-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+        }
+        .budget-row-name {
+            font-size: 12.5px;
+            color: var(--ink-2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
             overflow: hidden;
-            transition: border-color var(--transition-base);
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-
-        .summary-item:hover {
-            border-color: var(--line-2);
+        .budget-row-name .budget-dot {
+            width: 7px; height: 7px;
+            border-radius: 2px;
+            background: var(--budget-dot-color, var(--ink-3));
+            flex: none;
         }
-
-        .summary-item::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--primary);
-            opacity: 0;
-            transition: opacity var(--transition-base);
-        }
-
-        .summary-item:hover::before { opacity: 1; }
-
-        .summary-item span:first-child {
-            display: block;
+        .budget-row-nums {
             font-family: var(--mono);
             font-size: 11px;
-            color: var(--ink-2);
-            font-weight: 500;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
+            font-feature-settings: "tnum";
+            color: var(--ink-3);
+            white-space: nowrap;
         }
-
-        .summary-item span:last-child {
-            display: block;
-            font-family: var(--serif);
-            font-size: 38px;
-            line-height: 1;
-            font-weight: 400;
-            color: var(--ink);
-            letter-spacing: -0.02em;
+        .budget-row-track {
+            height: 6px;
+            border-radius: 9999px;
+            background: var(--bg-2);
+            overflow: hidden;
+        }
+        .budget-row-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.4s ease;
+        }
+        .budget-panel-empty {
+            font-size: 12.5px;
+            color: var(--ink-3);
+            margin: auto 0;
+            text-align: center;
+        }
+        .budget-panel-manage {
+            margin-top: 14px;
+            align-self: flex-start;
         }
 
         .entries-table {
@@ -1290,12 +1248,6 @@
             0%, 100% { opacity: 0.3; transform: scale(0.85); }
             50%      { opacity: 1;   transform: scale(1.15); }
         }
-        .summary.is-loading .summary-item span:last-child {
-            opacity: 0.35;
-            filter: blur(2px);
-            transition: opacity 0.15s, filter 0.15s;
-        }
-
         /* ── Hero row + KPI loading state (issue #98) ──
            Dims the live numbers and overlays a shimmer block over the
            bignum / each KPI value while data is loading. The same
@@ -1466,9 +1418,13 @@
             animation: spin 0.6s linear infinite;
         }
 
-        /* Tag badge styles */
+        /* Tag badge styles — theme-neutral chip with a per-category color dot
+           (the dot color is the user's stored category color, set inline by
+           displayEntries via --tag-dot-color). */
         .tag {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
             padding: 0.25rem 0.6rem;
             border-radius: 9999px;
             font-size: 0.65rem;
@@ -1476,26 +1432,17 @@
             margin: 0.1rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            border: 1px solid transparent;
+            background: var(--chip);
+            color: var(--ink-2);
+            border: 1px solid var(--line);
         }
-
-        .tag-food { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
-        .tag-groceries { background: rgba(34, 197, 94, 0.15); color: #22c55e; border-color: rgba(34, 197, 94, 0.3); }
-        .tag-transport { background: rgba(59, 130, 246, 0.15); color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
-        .tag-travel { background: rgba(6, 182, 212, 0.15); color: #06b6d4; border-color: rgba(6, 182, 212, 0.3); }
-        .tag-entertainment { background: rgba(168, 85, 247, 0.15); color: #a855f7; border-color: rgba(168, 85, 247, 0.3); }
-        .tag-utilities { background: rgba(99, 102, 241, 0.15); color: #6366f1; border-color: rgba(99, 102, 241, 0.3); }
-        .tag-healthcare { background: rgba(236, 72, 153, 0.15); color: #ec4899; border-color: rgba(236, 72, 153, 0.3); }
-        .tag-education { background: rgba(20, 184, 166, 0.15); color: #14b8a6; border-color: rgba(20, 184, 166, 0.3); }
-        .tag-shopping { background: rgba(249, 115, 22, 0.15); color: #f97316; border-color: rgba(249, 115, 22, 0.3); }
-        .tag-subscription { background: rgba(132, 204, 22, 0.15); color: #84cc16; border-color: rgba(132, 204, 22, 0.3); }
-        .tag-housing { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border-color: rgba(148, 163, 184, 0.3); }
-        .tag-salary { background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
-        .tag-freelance { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; border-color: rgba(45, 212, 191, 0.3); }
-        .tag-investment { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
-        .tag-transfer { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
-        .tag-wedding { background: rgba(244, 114, 182, 0.15); color: #f472b6; border-color: rgba(244, 114, 182, 0.3); }
-        .tag-other { background: rgba(100, 116, 139, 0.15); color: #64748b; border-color: rgba(100, 116, 139, 0.3); }
+        .tag::before {
+            content: "";
+            width: 7px; height: 7px;
+            border-radius: 2px;
+            background: var(--tag-dot-color, var(--ink-3));
+            flex: none;
+        }
 
         /* Preview table selects */
         .preview-select {
@@ -1580,13 +1527,13 @@
         }
 
         .modal-content h2 {
-            font-family: var(--serif);
-            font-size: 28px;
-            font-weight: 400;
+            font-family: var(--display);
+            font-size: 24px;
+            font-weight: 600;
             line-height: 1.1;
             margin: 0 0 22px 0;
             color: var(--ink);
-            letter-spacing: -0.015em;
+            letter-spacing: -0.01em;
         }
 
         .close {
@@ -1611,25 +1558,6 @@
         }
 
         @media (max-width: 768px) {
-            .header-buttons {
-                margin-left: 0;
-                width: 100%;
-                margin-top: 1rem;
-                justify-content: center;
-                flex-wrap: wrap;
-            }
-
-            .header-buttons button {
-                flex: 1 1 auto;
-                min-width: 0;
-                font-size: 0.7rem;
-                padding: 0.6rem 0.9rem;
-                white-space: normal;
-                text-align: center;
-                line-height: 1.3;
-                word-break: break-word;
-            }
-
             .view-mode-toggle {
                 flex-direction: column;
                 align-items: flex-start;
@@ -1655,15 +1583,7 @@
                 height: 340px;
             }
 
-            .chart-wrapper[data-chart="categoryStacked"] {
-                height: 400px;
-            }
-
             .charts-container {
-                grid-template-columns: 1fr;
-            }
-
-            .summary {
                 grid-template-columns: 1fr;
             }
 
@@ -1674,37 +1594,9 @@
             section {
                 padding: 1.5rem;
             }
-
-            header {
-                padding: 1.25rem;
-            }
-
-            header h1 {
-                font-size: 1.35rem;
-            }
         }
 
         @media (max-width: 480px) {
-            header {
-                padding: 1rem;
-            }
-
-            .header-buttons {
-                width: 100%;
-                gap: 0.5rem;
-            }
-
-            .header-buttons button {
-                flex: 1;
-                min-width: 0;
-                padding: 0.6rem 0.5rem;
-                font-size: 0.65rem;
-                white-space: normal;
-                text-align: center;
-                letter-spacing: 0.02em;
-                line-height: 1.3;
-            }
-
             button {
                 white-space: normal;
                 text-align: center;
@@ -1746,7 +1638,6 @@
             .hero-networth { padding: 18px; min-height: 0; }
             .hero-networth .bignum { font-size: clamp(40px, 11vw, 64px); }
             .chart-wrapper { height: 280px; padding: 12px; }
-            .chart-wrapper[data-chart="categoryStacked"] { height: 320px; }
             .charts-container { gap: 1rem; }
         }
 
@@ -2119,16 +2010,18 @@
         }
         .couple-share-card:hover { border-color: var(--line-2); }
 
+        /* Ledger tick per person; the two partners get distinct hues
+           (evergreen vs petrol) that also color their progress bars. */
         .couple-share-card::before {
             content: '';
             position: absolute;
             top: 0;
-            left: 0;
-            right: 0;
+            left: 20px;
+            width: 24px;
             height: 2px;
         }
         .couple-share-card:first-child::before { background: var(--primary); }
-        .couple-share-card:last-child::before { background: var(--accent-1); }
+        .couple-share-card:last-child::before { background: var(--info); }
 
         .couple-share-card .person-name {
             font-family: var(--mono);
@@ -2141,10 +2034,11 @@
         }
 
         .couple-share-card .person-amount {
-            font-family: var(--serif);
-            font-size: 32px;
+            font-family: var(--sans);
+            font-variant-numeric: tabular-nums;
+            font-size: 30px;
             line-height: 1;
-            font-weight: 400;
+            font-weight: 600;
             color: var(--ink);
             letter-spacing: -0.02em;
             margin-bottom: 0.75rem;
@@ -2164,7 +2058,7 @@
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .couple-share-card:last-child .person-bar {
-            background: var(--accent-1);
+            background: var(--info);
             height: 100%;
             border-radius: 9999px;
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2191,8 +2085,8 @@
             content: '';
             position: absolute;
             top: 0;
-            left: 0;
-            right: 0;
+            left: 20px;
+            width: 24px;
             height: 2px;
             background: var(--positive);
         }
@@ -2206,11 +2100,12 @@
             margin-bottom: 0.5rem;
         }
         .couple-settlement .settlement-amount {
-            font-family: var(--serif);
-            font-size: 26px;
+            font-family: var(--sans);
+            font-variant-numeric: tabular-nums;
+            font-size: 24px;
             line-height: 1.1;
-            font-weight: 400;
-            letter-spacing: -0.015em;
+            font-weight: 600;
+            letter-spacing: -0.01em;
             color: var(--ink);
         }
         .couple-settlement .settlement-settled { color: var(--positive); }
@@ -2320,7 +2215,7 @@
             background: var(--card);
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
-            box-shadow: 0 12px 32px rgba(38, 32, 26, 0.16);
+            box-shadow: var(--shadow-lg);
             flex-direction: column;
             overflow: hidden;
         }
@@ -2335,10 +2230,10 @@
             border-bottom: 1px solid var(--line);
         }
         .chat-header-title {
-            font-family: var(--serif);
-            font-size: 18px;
+            font-family: var(--display);
+            font-size: 15px;
             line-height: 1;
-            font-weight: 400;
+            font-weight: 600;
             color: var(--ink);
             letter-spacing: -0.01em;
         }
@@ -2353,7 +2248,7 @@
             border-radius: 0.25rem;
             transition: color 0.15s;
         }
-        .chat-close-btn:hover { color: var(--color-text-primary, #e0e0e8); }
+        .chat-close-btn:hover { color: var(--ink); }
 
         .chat-messages {
             flex: 1;
@@ -2375,31 +2270,34 @@
         }
         .chat-message-user {
             align-self: flex-end;
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #1a1a2e;
+            background: var(--primary);
+            color: var(--on-primary);
         }
         .chat-message-assistant {
             align-self: flex-start;
-            background: var(--color-bg-surface, #2a2a3e);
-            color: var(--color-text-primary, #e0e0e8);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            color: var(--ink);
+            border: 1px solid var(--line);
         }
         .chat-message-assistant h3,
         .chat-message-assistant h4 {
             margin: 0.4rem 0 0.2rem;
             font-size: 0.88rem;
-            color: var(--color-accent-primary, #f59e0b);
+            font-weight: 600;
+            color: var(--ink);
         }
         .chat-message-assistant h4 { font-size: 0.82rem; }
-        .chat-message-assistant strong { color: var(--color-accent-primary, #f59e0b); }
+        .chat-message-assistant strong { color: var(--ink); font-weight: 600; }
+        .chat-message-assistant a { color: var(--primary); }
         .chat-message-assistant ul,
         .chat-message-assistant ol { margin: 0.3rem 0; padding-left: 1.25rem; }
         .chat-message-assistant li { margin-bottom: 0.15rem; }
         .chat-message-assistant code {
-            background: rgba(0,0,0,0.3);
+            background: var(--chip);
             padding: 0.1rem 0.35rem;
             border-radius: 0.2rem;
             font-size: 0.8rem;
+            font-family: var(--mono);
         }
         /* Markdown tables inside chat */
         .chat-md-table-wrap {
@@ -2413,37 +2311,38 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.78rem;
-            border: 1px solid rgba(148, 163, 184, 0.15);
-            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--line);
+            background: var(--card);
         }
         .chat-md-table th {
-            background: rgba(245, 158, 11, 0.12);
-            color: var(--color-accent-primary, #f59e0b);
+            background: var(--bg-2);
+            color: var(--ink-2);
+            font-family: var(--mono);
             padding: 0.4rem 0.65rem;
             text-align: left;
             font-weight: 600;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+            border-bottom: 1px solid var(--line);
             white-space: nowrap;
         }
         .chat-md-table td {
             padding: 0.35rem 0.65rem;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.07);
-            color: var(--color-text-primary, #e0e0e8);
+            border-bottom: 1px solid color-mix(in oklab, var(--line) 55%, var(--card));
+            color: var(--ink);
             white-space: nowrap;
         }
         .chat-md-table tr:last-child td {
             border-bottom: none;
         }
         .chat-md-table tr:hover td {
-            background: rgba(245, 158, 11, 0.04);
+            background: rgba(0, 0, 0, 0.02);
         }
         /* Fenced code blocks inside chat */
         .chat-message-assistant pre {
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(148, 163, 184, 0.1);
+            background: var(--chip);
+            border: 1px solid var(--line);
             border-radius: 0.4rem;
             padding: 0.65rem 0.85rem;
             overflow-x: auto;
@@ -2454,8 +2353,8 @@
             background: none;
             padding: 0;
             font-size: 0.78rem;
-            font-family: 'Courier New', Courier, monospace;
-            color: var(--color-text-primary, #e0e0e8);
+            font-family: var(--mono);
+            color: var(--ink);
         }
 
         .chat-input-area {
@@ -2505,14 +2404,14 @@
             display: flex;
             gap: 0.3rem;
             padding: 0.6rem 0.85rem;
-            background: var(--color-bg-surface, #2a2a3e);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            border: 1px solid var(--line);
             border-radius: 0.75rem;
         }
         .chat-loading-dot {
             width: 0.45rem;
             height: 0.45rem;
-            background: var(--color-text-secondary, #a0a0b0);
+            background: var(--ink-3);
             border-radius: 50%;
             animation: chatDotBounce 1.2s infinite;
         }
@@ -2526,9 +2425,9 @@
         .chat-confirm-card {
             align-self: flex-start;
             max-width: 85%;
-            border: 1px solid var(--color-accent-primary, #f59e0b);
+            border: 1px solid color-mix(in oklab, var(--primary) 45%, var(--line));
             border-radius: 0.75rem;
-            background: var(--color-bg-surface, #2a2a3e);
+            background: var(--card);
             padding: 0.85rem 1rem;
             font-size: 0.82rem;
             line-height: 1.45;
@@ -2536,21 +2435,22 @@
         .chat-confirm-title {
             text-transform: uppercase;
             font-size: 0.7rem;
-            font-weight: 700;
+            font-weight: 600;
+            font-family: var(--mono);
             letter-spacing: 0.05em;
-            color: var(--color-accent-primary, #f59e0b);
+            color: var(--primary);
             margin-bottom: 0.6rem;
         }
         .chat-confirm-entry {
-            background: rgba(0,0,0,0.2);
+            background: var(--bg-2);
             border-radius: 0.4rem;
             padding: 0.5rem 0.65rem;
             margin-bottom: 0.6rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             font-size: 0.78rem;
         }
         .chat-confirm-entry strong {
-            color: var(--color-text-primary, #e0e0e8);
+            color: var(--ink);
         }
         .chat-confirm-changes {
             display: flex;
@@ -2567,24 +2467,23 @@
         }
         .chat-confirm-change-label {
             font-weight: 600;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             min-width: 5rem;
         }
         .chat-confirm-change-current {
             text-decoration: line-through;
-            color: var(--color-text-secondary, #a0a0b0);
-            opacity: 0.7;
+            color: var(--ink-3);
         }
         .chat-confirm-change-arrow {
-            color: var(--color-text-secondary, #a0a0b0);
-            opacity: 0.5;
+            color: var(--ink-3);
+            opacity: 0.6;
         }
         .chat-confirm-change-new {
-            color: #34d399;
+            color: var(--positive);
             font-weight: 600;
         }
         .chat-confirm-entry-group + .chat-confirm-entry-group {
-            border-top: 1px solid var(--color-border, #333);
+            border-top: 1px solid var(--line);
             margin-top: 0.6rem;
             padding-top: 0.6rem;
         }
@@ -2597,8 +2496,8 @@
             padding: 0.45rem 0.75rem;
             border: none;
             border-radius: 0.4rem;
-            background: linear-gradient(135deg, #34d399, #059669);
-            color: #fff;
+            background: var(--positive);
+            color: var(--on-primary);
             font-weight: 600;
             font-size: 0.78rem;
             cursor: pointer;
@@ -2607,11 +2506,11 @@
         .chat-confirm-btn:hover { opacity: 0.9; }
         .chat-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .chat-confirm-btn--danger {
-            background: linear-gradient(135deg, #f87171, #dc2626);
+            background: var(--negative);
         }
         .chat-confirm-warning {
             font-size: 0.72rem;
-            color: #fca5a5;
+            color: var(--negative);
             margin-top: 0.4rem;
             display: flex;
             align-items: center;
@@ -2620,7 +2519,7 @@
         .chat-confirm-progress {
             margin-top: 0.45rem;
             font-size: 0.75rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-3);
             font-style: italic;
             text-align: center;
         }
@@ -2629,16 +2528,16 @@
             max-width: 90%;
             margin: 0.25rem 0 0.1rem;
             padding: 0.4rem 0.6rem;
-            background: rgba(99, 102, 241, 0.08);
-            border: 1px solid rgba(99, 102, 241, 0.25);
+            background: color-mix(in oklab, var(--info) 7%, var(--card));
+            border: 1px solid color-mix(in oklab, var(--info) 30%, var(--card));
             border-radius: 0.5rem;
             font-size: 0.72rem;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
         }
         .chat-tools-summary {
             cursor: pointer;
             font-weight: 600;
-            color: #818cf8;
+            color: var(--info);
             list-style: none;
             display: flex;
             align-items: center;
@@ -2667,36 +2566,36 @@
             align-items: baseline;
             gap: 0.3rem;
             padding: 0.2rem 0.35rem;
-            border-left: 2px solid #818cf8;
-            background: rgba(255, 255, 255, 0.02);
+            border-left: 2px solid var(--info);
+            background: var(--bg-2);
             border-radius: 0.25rem;
         }
-        .chat-tools-item--error { border-left-color: #ef4444; }
-        .chat-tools-item--pending { border-left-color: #f59e0b; }
+        .chat-tools-item--error { border-left-color: var(--negative); }
+        .chat-tools-item--pending { border-left-color: var(--warning); }
         .chat-tools-name {
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            color: #c7d2fe;
+            font-family: var(--mono);
+            color: var(--info);
             font-weight: 600;
         }
         .chat-tools-args {
-            color: var(--color-text-secondary, #a0a0b0);
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--ink-3);
+            font-family: var(--mono);
             font-size: 0.68rem;
         }
-        .chat-tools-result { color: #86efac; }
-        .chat-tools-error { color: #fca5a5; }
+        .chat-tools-result { color: var(--positive); }
+        .chat-tools-error { color: var(--negative); }
         .chat-tools-duration {
             margin-left: auto;
-            color: #6b7280;
+            color: var(--ink-3);
             font-size: 0.65rem;
         }
         .chat-cancel-btn {
             flex: 1;
             padding: 0.45rem 0.75rem;
-            border: 1px solid var(--color-border, #333);
+            border: 1px solid var(--line);
             border-radius: 0.4rem;
             background: transparent;
-            color: var(--color-text-secondary, #a0a0b0);
+            color: var(--ink-2);
             font-weight: 600;
             font-size: 0.78rem;
             cursor: pointer;
@@ -2713,19 +2612,19 @@
             font-weight: 500;
         }
         .chat-confirm-result--success {
-            background: rgba(52, 211, 153, 0.15);
-            color: #34d399;
-            border: 1px solid rgba(52, 211, 153, 0.3);
+            background: color-mix(in oklab, var(--positive) 14%, var(--card));
+            color: var(--positive);
+            border: 1px solid color-mix(in oklab, var(--positive) 35%, var(--card));
         }
         .chat-confirm-result--error {
-            background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            background: color-mix(in oklab, var(--negative) 14%, var(--card));
+            color: var(--negative);
+            border: 1px solid color-mix(in oklab, var(--negative) 35%, var(--card));
         }
         .chat-confirm-result--info {
-            background: rgba(160, 160, 176, 0.1);
-            color: var(--color-text-secondary, #a0a0b0);
-            border: 1px solid var(--color-border, #333);
+            background: var(--bg-2);
+            color: var(--ink-2);
+            border: 1px solid var(--line);
         }
 
         @media (max-width: 768px) {
@@ -2830,10 +2729,11 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#mainContent" data-i18n="a11y.skipToContent">Skip to content</a>
     <button class="lang-toggle" data-i18n-title="lang.switch.title" onclick="setLang(getLang()==='en'?'pt':'en')" aria-label="Toggle language">🌐</button>
 
     <!-- AI Chat Widget -->
-    <button id="chatFab" class="chat-fab" data-i18n-title="chat.title" data-i18n-aria-label="chat.title">
+    <button id="chatFab" class="chat-fab" aria-expanded="false" aria-controls="chatWindow" data-i18n-title="chat.title" data-i18n-aria-label="chat.title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </button>
     <div id="chatWindow" class="chat-window">
@@ -2898,6 +2798,10 @@
         <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
 
     <div class="container">
+        <!-- Hidden action bus: app.js wires its handlers to these buttons
+             (addEntryBtn/openBulkUploadModal/settingsBtn/adminPanelBtn/
+             logoutBtn) and the visible topbar/sidebar controls proxy their
+             clicks here. Do not delete. -->
         <header class="legacy-header" hidden aria-hidden="true">
             <h1 data-i18n="common.assetManagement">Asset Management</h1>
             <div class="header-buttons">
@@ -2921,7 +2825,7 @@
                 <button type="button" id="topbarAddEntryBtn" class="btn primary" data-i18n-title="dash.addEntry" title="Add New Entry"><span aria-hidden="true">+</span> <span data-i18n="dash.addEntry">Add New Entry</span></button>
             </div>
         </div>
-        <main>
+        <main id="mainContent" tabindex="-1">
             <!-- Add Entry Modal -->
             <div id="entryModal" class="modal">
                 <div class="modal-content">
@@ -3286,27 +3190,8 @@
                                 <button type="button" id="manageCategoriesBtn" class="link-btn" data-i18n="category.manage">Manage</button>
                             </div>
                             <div id="categoryChips" class="category-chips" role="group" data-i18n-aria-label="dash.category" aria-label="Categories"></div>
-                            <!-- Hidden native select kept for backwards-compat / testing; populated from chips -->
-                            <select id="categoryFilter" multiple hidden aria-hidden="true" tabindex="-1">
-                                <option value="food">Food</option>
-                                <option value="groceries">Groceries</option>
-                                <option value="transport">Transport</option>
-                                <option value="travel">Travel</option>
-                                <option value="entertainment">Entertainment</option>
-                                <option value="utilities">Utilities</option>
-                                <option value="healthcare">Healthcare</option>
-                                <option value="education">Education</option>
-                                <option value="shopping">Shopping</option>
-                                <option value="subscription">Subscription</option>
-                                <option value="housing">Housing</option>
-                                <option value="salary">Salary</option>
-                                <option value="freelance">Freelance</option>
-                                <option value="investment">Investment</option>
-                                <option value="transfer">Transfer</option>
-                                <option value="wedding">Wedding</option>
-                                <option value="other">Other</option>
-                            </select>
                         </div>
+                        <button id="selectAllCategories" class="filter-btn" data-i18n="filter.selectAllCats">All Categories</button>
                         <button id="clearFilters" class="filter-btn" data-i18n="dash.clearFilters">Clear Filters</button>
                     </div>
                     <div id="activeFiltersBar" class="active-filters-bar" hidden>
@@ -3395,6 +3280,9 @@
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                     <div class="chart-wrapper" data-chart="incomeVsExpense">
+                        <div class="chart-type-toggle" role="group" data-i18n-aria-label="chart.avgToggleHelp" aria-label="Average lines">
+                            <button type="button" class="chart-type-btn active" id="avgLinesToggle" aria-pressed="true" data-i18n="chart.avgToggle" data-i18n-title="chart.avgToggleHelp" title="Show or hide the average lines">Avg</button>
+                        </div>
                         <canvas id="incomeVsExpenseChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
@@ -3403,34 +3291,25 @@
                         <div class="chart-type-toggle" role="group" data-i18n-aria-label="filter.chartType" aria-label="Chart type">
                             <button type="button" class="chart-type-btn active" data-type="bar" aria-pressed="true" data-i18n="filter.chartBar" data-i18n-title="filter.chartBar" title="Bar">Bar</button>
                             <button type="button" class="chart-type-btn" data-type="doughnut" aria-pressed="false" data-i18n="filter.chartDoughnut" data-i18n-title="filter.chartDoughnut" title="Doughnut">Doughnut</button>
+                            <button type="button" class="chart-type-btn" data-type="stacked" aria-pressed="false" data-i18n="filter.chartStacked" data-i18n-title="filter.chartStacked" title="Trend">Trend</button>
                         </div>
                         <canvas id="categoryChart"></canvas>
                         <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
-                    <div class="chart-wrapper" data-chart="categoryStacked">
-                        <canvas id="categoryStackedChart"></canvas>
-                        <div class="chart-empty-state" hidden data-i18n="chart.noData">No data for current filters</div>
+                    <div class="chart-wrapper budget-panel" data-chart="budget" data-i18n-title="budget.panelHelp" title="Current calendar month, your budgets only — filters don't apply.">
+                        <div class="budget-panel-head">
+                            <h3 data-i18n="dash.budgetStatus">Budget status</h3>
+                            <span class="mono tiny muted" id="budgetPanelMonth"></span>
+                        </div>
+                        <div id="budgetStatusBody" class="budget-panel-body"></div>
+                        <button type="button" id="budgetPanelManageBtn" class="btn ghost budget-panel-manage" data-i18n="budget.manageLink">Manage budgets</button>
                         <div class="chart-loading-overlay" hidden><div class="chart-skeleton"></div></div>
                     </div>
                 </div>
             </section>
             <section class="entries-section">
                 <h2 data-i18n="dash.registeredEntries">Registered Entries</h2>
-                <div class="summary">
-                    <div class="summary-item">
-                        <span data-i18n="dash.totalIncome">Total Income</span>
-                        <span id="totalIncome">$0.00</span>
-                    </div>
-                    <div class="summary-item">
-                        <span data-i18n="dash.totalExpenses">Total Expenses</span>
-                        <span id="totalExpenses">$0.00</span>
-                    </div>
-                    <div class="summary-item">
-                        <span data-i18n="dash.netBalance">Net Balance</span>
-                        <span id="netBalance">$0.00</span>
-                    </div>
-                </div>
                 <div class="entries-table">
                     <div id="entriesTableLoadingOverlay" class="table-loading-overlay" hidden role="status" aria-live="polite">
                         <span class="spinner-dot" aria-hidden="true"></span>
