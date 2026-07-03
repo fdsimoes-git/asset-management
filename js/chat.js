@@ -338,7 +338,16 @@
     }
 
     function escapeHtml(str) {
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // Kept in sync with app.js escapeHtml: quotes are escaped too, so a
+        // future attribute-context callsite here can't reintroduce the
+        // attribute-breakout XSS this PR hardened app.js against. Current
+        // callsites are all element-text context.
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function formatFieldValue(key, value) {

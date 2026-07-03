@@ -1424,6 +1424,20 @@ app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
             updatedAt: new Date().toISOString()
         });
 
+        // Revoke any existing sessions so a stolen/active session cookie
+        // cannot outlive the password change — resetting the password is the
+        // remediation a compromised user is told to perform. Best-effort:
+        // the password is already changed, so a cleanup failure here must not
+        // turn a successful reset into an error.
+        try {
+            const revoked = await db.deleteSessionsByUserId(user.id);
+            // Forensics breadcrumb: >0 means live sessions existed at reset
+            // time (possibly the attacker's, if the reset was remediation).
+            console.log(`Password reset for user ${user.id}: revoked ${revoked} session(s)`);
+        } catch (revokeErr) {
+            console.error('Failed to revoke sessions after password reset:', revokeErr.message);
+        }
+
         // Clear brute-force lockouts since user proved identity via email
         resetFailedLogins(username);
         clearResetAttempts(username);

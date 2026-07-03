@@ -2188,11 +2188,14 @@ processBulkPdfBtn.addEventListener('click', async () => {
     }
 });
 
-// Helper function to escape HTML to prevent XSS
+// Helper function to escape HTML to prevent XSS.
+// textContent -> innerHTML escapes & < > but NOT quotes; we escape " and '
+// as well so values interpolated into HTML *attribute* contexts (e.g.
+// value="..." / aria-label="...") cannot break out of the attribute.
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // Helper function to validate month format (YYYY-MM)
