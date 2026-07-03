@@ -5063,6 +5063,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // the correct palette + labels. Self-heals via the GET
                 // endpoint if the user has no rows yet.
                 await loadUserCategories();
+                // Initial fill of the dashboard budget panel — deliberately
+                // after the categories load so panelRowLabel resolves
+                // localized labels instead of raw server slugs (and after
+                // auth is confirmed, so we don't fetch budgets for a session
+                // that's about to be redirected to login).
+                refreshBudgetPanel();
                 // Now that we know the user id, reload filters under their
                 // key (they were loaded under 'anon' at DOMContentLoaded).
                 // Always reset — falling back to defaults when the user has
@@ -5712,9 +5718,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     } catch {}
 
-    // Initial fill of the dashboard budget panel (current calendar month)
-    refreshBudgetPanel();
-
-    // Fetch current user on load
+    // Fetch current user on load (also triggers the initial budget-panel
+    // fill once categories are known — see fetchCurrentUser)
     fetchCurrentUser();
 });
