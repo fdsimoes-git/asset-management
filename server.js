@@ -1424,7 +1424,10 @@ app.post('/api/reset-password', loginLimiter, asyncHandler(async (req, res) => {
         // the password is already changed, so a cleanup failure here must not
         // turn a successful reset into an error.
         try {
-            await db.deleteSessionsByUserId(user.id);
+            const revoked = await db.deleteSessionsByUserId(user.id);
+            // Forensics breadcrumb: >0 means live sessions existed at reset
+            // time (possibly the attacker's, if the reset was remediation).
+            console.log(`Password reset for user ${user.id}: revoked ${revoked} session(s)`);
         } catch (revokeErr) {
             console.error('Failed to revoke sessions after password reset:', revokeErr.message);
         }
