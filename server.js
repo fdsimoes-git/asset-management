@@ -5913,6 +5913,68 @@ const upload = multer({
     }
 });
 
+// ── PDF-extraction JSON recovery helpers ────────────────────────────
+//
+// Providers without server-enforced structured output (Anthropic — the
+// Claude Code OAuth identity block makes fenced/annotated replies more
+// likely — and Copilot-served models that ignore response_format) can
+// wrap the JSON in markdown fences, prepend a "Here is the JSON:"
+// preamble, or run out of output tokens mid-array on a large invoice.
+// Each of those used to surface to the user as a blanket
+// "Failed to parse AI response" 500 that failed the whole upload.
+
+// Pull the JSON document out of a raw model reply: a fenced block (whole
+// reply or embedded in prose) wins, else trim any prose before the first
+// '{'/'[' and after the last '}'/']'.
+function extractJsonPayload(raw) {
+    let s = String(raw || '').trim();
+    const wholeFence = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+    if (wholeFence) return wholeFence[1].trim();
+    const embeddedFence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (embeddedFence && /[{[]/.test(embeddedFence[1])) return embeddedFence[1].trim();
+    const start = s.search(/[{[]/);
+    if (start > 0) s = s.slice(start);
+    const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+    if (end !== -1 && end < s.length - 1) s = s.slice(0, end + 1);
+    return s.trim();
+}
+
+// Recover the complete objects from an "entries" array that was cut off
+// mid-generation (stop_reason === 'max_tokens'). Walks the string with a
+// string-aware depth counter and JSON.parses each balanced top-level
+// object individually, so one malformed item never sinks the rest.
+// Returns null when nothing could be recovered.
+function salvageTruncatedEntries(raw) {
+    const s = String(raw || '');
+    const entriesKey = s.search(/"entries"\s*:/);
+    const arrStart = s.indexOf('[', entriesKey === -1 ? 0 : entriesKey);
+    if (arrStart === -1) return null;
+    const objects = [];
+    let depth = 0, objStart = -1, inString = false, escaped = false;
+    for (let i = arrStart + 1; i < s.length; i++) {
+        const ch = s[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === '\\') escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '{') { if (depth === 0) objStart = i; depth++; continue; }
+        if (ch === '}') {
+            if (depth > 0) depth--;
+            if (depth === 0 && objStart !== -1) {
+                try { objects.push(JSON.parse(s.slice(objStart, i + 1))); }
+                catch { /* skip malformed object, keep scanning */ }
+                objStart = -1;
+            }
+            continue;
+        }
+        if (ch === ']' && depth === 0) break;
+    }
+    return objects.length > 0 ? objects : null;
+}
+
 // PDF processing endpoint with AI (Gemini, OpenAI, or Anthropic based on user preference)
 app.post('/api/process-pdf', requireAuth, pdfUploadLimiter, (req, res, next) => {
     upload.single('pdfFile')(req, res, (err) => {
@@ -6055,11 +6117,15 @@ RULES:
 - The "tag" field MUST be exactly one of the slugs listed below — copy the slug verbatim (the token before the opening parenthesis on each line). Never invent a new slug, never include the parentheses, never use the human label, and never emit a slug that is not in this exact list:
 ${categoryListForPrompt}
 - Return JSON with an "entries" array, each item having: month (YYYY-MM), amount (number), description (string), tag (string), type ("expense" or "income")
+- Output raw minified JSON only: a single line with no markdown code fences, no commentary, and no indentation or line breaks
 
 DOCUMENT:
 ${text}`;
 
         let aiResponse;
+        // Set when the provider reports it stopped at the output-token
+        // ceiling — the JSON tail is missing and salvage (below) applies.
+        let aiTruncated = false;
 
         if (provider === 'openai') {
             console.log('Starting OpenAI API call...');
@@ -6072,6 +6138,7 @@ ${text}`;
                     temperature: 0.2
                 });
                 aiResponse = response.choices[0]?.message?.content || '{}';
+                if (response.choices[0]?.finish_reason === 'length') aiTruncated = true;
             } catch (openaiError) {
                 console.error('OpenAI API error details:', openaiError.message);
                 throw openaiError;
@@ -6083,13 +6150,41 @@ ${text}`;
             try {
                 // No `temperature`: Opus 4.7+ / Sonnet 5 / Fable 5 reject sampling
                 // params with a 400; the system prompt already pins the output format.
-                const response = await anthropicClient.messages.create({
+                //
+                // 16384 (up from 4096): a full credit-card invoice easily
+                // carries 50-100+ transactions, and the JSON for those alone
+                // overflows a 4096 output ceiling — the reply was cut
+                // mid-array and every such upload failed with "Failed to
+                // parse AI response". Some user-selectable Claude models cap
+                // output below 16384 and reject the request outright, so we
+                // transparently retry at 4096 (same fallback pattern as the
+                // chat endpoint).
+                let pdfMaxTokens = 16384;
+                const callAnthropicPdf = async () => anthropicClient.messages.create({
                     model: resolveModel(req.user, 'anthropic', 'pdf'),
-                    max_tokens: 4096,
+                    max_tokens: pdfMaxTokens,
                     system: buildAnthropicSystemPrompt(anthropicAuth,
                         'You are a financial document parser. Respond with valid JSON only — no markdown, no code fences, no commentary.'),
                     messages: [{ role: 'user', content: prompt }]
                 });
+                let response;
+                try {
+                    response = await callAnthropicPdf();
+                } catch (err) {
+                    const status = err && (err.status || err.statusCode);
+                    const m = (err && err.message) ? err.message.toLowerCase() : '';
+                    const maxTokensReject = (!status || status === 400)
+                        && (m.includes('max_tokens') || m.includes('max tokens')
+                            || m.includes('output token') || m.includes('output tokens'));
+                    if (!maxTokensReject) throw err;
+                    console.warn('Anthropic rejected max_tokens=' + pdfMaxTokens + ', retrying at 4096:', err.message);
+                    pdfMaxTokens = 4096;
+                    response = await callAnthropicPdf();
+                }
+                if (response.stop_reason === 'max_tokens') {
+                    aiTruncated = true;
+                    console.warn('Anthropic PDF extraction hit the max_tokens output ceiling — response is truncated');
+                }
                 aiResponse = response.content
                     .filter(b => b.type === 'text')
                     .map(b => b.text)
@@ -6118,6 +6213,7 @@ ${text}`;
                     }, { headers: copilotDynamicHeaders(copilotMessages) })
                 );
                 aiResponse = response.choices[0]?.message?.content || '{}';
+                if (response.choices[0]?.finish_reason === 'length') aiTruncated = true;
             } catch (copilotError) {
                 console.error('Copilot API error details:', copilotError.message);
                 throw copilotError;
@@ -6188,95 +6284,107 @@ ${text}`;
                 throw geminiError;
             }
             aiResponse = response.text;
+            if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') aiTruncated = true;
             console.log('Gemini response received, length:', aiResponse.length);
         }
 
-        // Strip markdown code fences if present (Anthropic may wrap JSON in ```json...```)
-        let cleanedResponse = aiResponse.trim();
-        const fenceMatch = cleanedResponse.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
-        if (fenceMatch) cleanedResponse = fenceMatch[1].trim();
+        // Strip markdown fences / prose the model may have wrapped around
+        // the JSON despite the system prompt (most common on the Anthropic
+        // OAuth path, where the Claude Code identity block is mandatory).
+        const cleanedResponse = extractJsonPayload(aiResponse);
 
         // Parse the structured JSON response
         let entries = [];
+        let parsed = null;
         try {
-            const parsed = JSON.parse(cleanedResponse);
+            parsed = JSON.parse(cleanedResponse);
+        } catch (parseError) {
+            // Usually output truncated mid-array at the max_tokens ceiling.
+            // Recover every complete entry object instead of failing the
+            // whole upload — the user still reviews each row in the preview
+            // table before anything is saved.
+            const salvaged = salvageTruncatedEntries(cleanedResponse);
+            if (!salvaged) {
+                console.error('Error parsing AI response:', parseError.message);
+                return res.status(500).json({
+                    message: 'Failed to parse AI response. Please check the PDF format.'
+                });
+            }
+            console.warn('process-pdf: JSON.parse failed (' + parseError.message + ') — salvaged '
+                + salvaged.length + ' complete entries from '
+                + (aiTruncated ? 'a max_tokens-truncated ' : 'a malformed ') + provider + ' response');
+            parsed = { entries: salvaged };
+        }
 
-            // Extract entries from the response
-            if (parsed.entries && Array.isArray(parsed.entries)) {
-                entries = parsed.entries;
-            } else if (Array.isArray(parsed)) {
-                entries = parsed;
+        // Extract entries from the response
+        if (parsed.entries && Array.isArray(parsed.entries)) {
+            entries = parsed.entries;
+        } else if (Array.isArray(parsed)) {
+            entries = parsed;
+        }
+
+        // Validate and clean the entries
+        entries = entries.filter(entry => {
+            if (!entry || !entry.description) return false;
+            const amount = typeof entry.amount === 'string'
+                ? parseFloat(entry.amount.replace(/[^\d.-]/g, '').replace(',', '.'))
+                : entry.amount;
+            return entry.month && !isNaN(amount) && amount > 0;
+        });
+
+        // Normalize: convert single tag to tags array, set default type
+        entries = entries.map(entry => {
+            // Handle tag (single string) to tags array conversion
+            let tags = [];
+            if (entry.tag && typeof entry.tag === 'string') {
+                tags = [entry.tag.toLowerCase().trim()];
+            } else if (Array.isArray(entry.tags)) {
+                tags = entry.tags.slice(0, 1).map(t => String(t).toLowerCase().trim());
+            }
+            // Issue #87 follow-up: coerce any slug the AI returned that
+            // isn't in the caller's allowed set (e.g. a hallucinated
+            // tag, a leading dash from a non-schema-enforced provider,
+            // or a stale default that the user has since deleted) to
+            // a safe fallback so the preview table never shows an
+            // orphan tag the user didn't ask for. Gemini already
+            // enforces this via the responseSchema enum; this is the
+            // safety net for OpenAI/Anthropic/Copilot.
+            //
+            // Before declaring drift, try cheap recovery first:
+            //   - strip common leading list markers ('-', '*', '•', '>'),
+            //     leading whitespace, and quotes/backticks
+            //   - take the first slug-shaped token (matches the
+            //     CATEGORY_SLUG_REGEX shape) so 'food (Food)' or
+            //     'food,' or 'food.' all recover to 'food'
+            // This avoids losing a correct categorization to a purely
+            // formatting-level artifact.
+            if (tags.length > 0 && !allowedSlugSet.has(tags[0])) {
+                const cleaned = tags[0]
+                    .replace(/^[\s\-*•>"'`]+/, '')   // leading markers / quotes
+                    .replace(/[\s,.;:!?"'`]+$/, ''); // trailing punctuation
+                const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9-]{0,29})/);
+                if (firstSlugLike && allowedSlugSet.has(firstSlugLike[0])) {
+                    tags = [firstSlugLike[0]];
+                }
+            }
+            if (tags.length === 0 || !allowedSlugSet.has(tags[0])) {
+                tags = [fallbackSlug];
             }
 
-            // Validate and clean the entries
-            entries = entries.filter(entry => {
-                if (!entry || !entry.description) return false;
-                const amount = typeof entry.amount === 'string'
-                    ? parseFloat(entry.amount.replace(/[^\d.-]/g, '').replace(',', '.'))
-                    : entry.amount;
-                return entry.month && !isNaN(amount) && amount > 0;
-            });
+            // Determine type (default to expense if not specified)
+            let type = 'expense';
+            if (entry.type && (entry.type === 'income' || entry.type === 'expense')) {
+                type = entry.type;
+            }
 
-            // Normalize: convert single tag to tags array, set default type
-            entries = entries.map(entry => {
-                // Handle tag (single string) to tags array conversion
-                let tags = [];
-                if (entry.tag && typeof entry.tag === 'string') {
-                    tags = [entry.tag.toLowerCase().trim()];
-                } else if (Array.isArray(entry.tags)) {
-                    tags = entry.tags.slice(0, 1).map(t => String(t).toLowerCase().trim());
-                }
-                // Issue #87 follow-up: coerce any slug the AI returned that
-                // isn't in the caller's allowed set (e.g. a hallucinated
-                // tag, a leading dash from a non-schema-enforced provider,
-                // or a stale default that the user has since deleted) to
-                // a safe fallback so the preview table never shows an
-                // orphan tag the user didn't ask for. Gemini already
-                // enforces this via the responseSchema enum; this is the
-                // safety net for OpenAI/Anthropic/Copilot.
-                //
-                // Before declaring drift, try cheap recovery first:
-                //   - strip common leading list markers ('-', '*', '•', '>'),
-                //     leading whitespace, and quotes/backticks
-                //   - take the first slug-shaped token (matches the
-                //     CATEGORY_SLUG_REGEX shape) so 'food (Food)' or
-                //     'food,' or 'food.' all recover to 'food'
-                // This avoids losing a correct categorization to a purely
-                // formatting-level artifact.
-                if (tags.length > 0 && !allowedSlugSet.has(tags[0])) {
-                    const cleaned = tags[0]
-                        .replace(/^[\s\-*•>"'`]+/, '')   // leading markers / quotes
-                        .replace(/[\s,.;:!?"'`]+$/, ''); // trailing punctuation
-                    const firstSlugLike = cleaned.match(/[a-z0-9](?:[a-z0-9-]{0,29})/);
-                    if (firstSlugLike && allowedSlugSet.has(firstSlugLike[0])) {
-                        tags = [firstSlugLike[0]];
-                    }
-                }
-                if (tags.length === 0 || !allowedSlugSet.has(tags[0])) {
-                    tags = [fallbackSlug];
-                }
-
-                // Determine type (default to expense if not specified)
-                let type = 'expense';
-                if (entry.type && (entry.type === 'income' || entry.type === 'expense')) {
-                    type = entry.type;
-                }
-
-                return {
-                    ...entry,
-                    tags,
-                    type,
-                    userId: req.user.id,  // Associate with current user
-                    id: Date.now() + Math.floor(Math.random() * 10000)
-                };
-            });
-
-        } catch (parseError) {
-            console.error('Error parsing AI response:', parseError.message);
-            return res.status(500).json({
-                message: 'Failed to parse AI response. Please check the PDF format.'
-            });
-        }
+            return {
+                ...entry,
+                tags,
+                type,
+                userId: req.user.id,  // Associate with current user
+                id: Date.now() + Math.floor(Math.random() * 10000)
+            };
+        });
 
         console.log('PDF processing complete, extracted', entries.length, 'entries');
         res.json(entries);
