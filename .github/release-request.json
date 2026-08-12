@@ -1,0 +1,6 @@
+{
+  "tag": "v4.0.1",
+  "title": "v4.0.1 — PDF bulk-upload parse fixes + dependency security bumps",
+  "target": "951b6089225e9c17ed27dc524ea6987f0a638dea",
+  "notes": ".github/releases/v4.0.1.md"
+}

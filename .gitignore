@@ -20,6 +20,7 @@ data/
 *.json
 !package.json
 !package-lock.json
+!.github/release-request.json
 
 # SSL certificates (regenerate on deployment)
 ssl/
