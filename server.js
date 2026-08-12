@@ -5930,8 +5930,17 @@ function extractJsonPayload(raw) {
     let s = String(raw || '').trim();
     const wholeFence = s.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
     if (wholeFence) return wholeFence[1].trim();
-    const embeddedFence = s.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-    if (embeddedFence && /[{[]/.test(embeddedFence[1])) return embeddedFence[1].trim();
+    // Scan every embedded fenced block, preferring the one that carries
+    // the entries payload — a reply quoting an example snippet in an
+    // earlier fence must not shadow the real JSON in a later one.
+    const fenceRe = /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/g;
+    let fence, firstJsonish = null;
+    while ((fence = fenceRe.exec(s)) !== null) {
+        const body = fence[1].trim();
+        if (/"entries"\s*:/.test(body)) return body;
+        if (!firstJsonish && /[{[]/.test(body)) firstJsonish = body;
+    }
+    if (firstJsonish) return firstJsonish;
     const start = s.search(/[{[]/);
     if (start > 0) s = s.slice(start);
     const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
@@ -6181,10 +6190,7 @@ ${text}`;
                     pdfMaxTokens = 4096;
                     response = await callAnthropicPdf();
                 }
-                if (response.stop_reason === 'max_tokens') {
-                    aiTruncated = true;
-                    console.warn('Anthropic PDF extraction hit the max_tokens output ceiling — response is truncated');
-                }
+                if (response.stop_reason === 'max_tokens') aiTruncated = true;
                 aiResponse = response.content
                     .filter(b => b.type === 'text')
                     .map(b => b.text)
@@ -6286,6 +6292,13 @@ ${text}`;
             aiResponse = response.text;
             if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') aiTruncated = true;
             console.log('Gemini response received, length:', aiResponse.length);
+        }
+
+        // Log truncation even when the cut output still parses (e.g. a cut
+        // exactly between entries that salvage never sees) — the entry
+        // count being silently short is otherwise invisible in the logs.
+        if (aiTruncated) {
+            console.warn('process-pdf: ' + provider + ' output stopped at the output-token ceiling — response is likely truncated');
         }
 
         // Strip markdown fences / prose the model may have wrapped around
