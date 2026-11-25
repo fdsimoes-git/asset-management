@@ -9,7 +9,7 @@ Secure multi-user asset management web app with AI-powered expense tracking. Nod
 ## Commands
 
 ```bash
-# Install dependencies (Node.js 18.18+, 20.9+, or 22+ required by connect-pg-simple)
+# Install dependencies (Node.js 20.9+ or 22+: connect-pg-simple needs 20.9+ on the 20.x line, nodemailer 10 dropped Node 18)
 npm install
 
 # Apply the database schema (no migration framework; DDL is idempotent via IF NOT EXISTS)
